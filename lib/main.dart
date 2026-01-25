@@ -344,10 +344,11 @@ class _HomeScreenState extends State<HomeScreen> {
       _countdownSeconds = 179;
     });
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_countdownSeconds > 0)
+      if (_countdownSeconds > 0) {
         setState(() => _countdownSeconds--);
-      else
+      } else {
         timer.cancel();
+      }
     });
   }
 
