@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'config.dart';
 import 'home_screen.dart';
-import 'auth_screens.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
