@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'config.dart';
 import 'contacts_screen.dart';
+import 'safety_score_screen.dart'; // IMPORT THE NEW FILE
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -48,6 +49,12 @@ class _HomeScreenState extends State<HomeScreen>
     });
   }
 
+  // Placeholder for map navigation
+  void _goToLiveMap() {
+    print("Navigate to Live Map Page");
+    // You can push a new route here later
+  }
+
   void _startCountdown() {
     _secondsRemaining = 180;
     _countdownTimer?.cancel();
@@ -57,7 +64,6 @@ class _HomeScreenState extends State<HomeScreen>
           _secondsRemaining--;
         } else {
           _countdownTimer?.cancel();
-          // Trigger actual alert here
         }
       });
     });
@@ -111,7 +117,6 @@ class _HomeScreenState extends State<HomeScreen>
                     const SizedBox(height: 30),
 
                     // Status Pill
-                    // (We keep this Teal to indicate "Safe Area", but the button below will be Blue)
                     if (!_isPanicMode)
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -148,16 +153,15 @@ class _HomeScreenState extends State<HomeScreen>
                         ),
                       ),
 
-                    // SOS Interface (Center)
+                    // SOS Interface
                     Expanded(
                       child: Center(
                         child: _isPanicMode ? _buildPanicUI() : _buildSafeUI(),
                       ),
                     ),
 
-                    // Panic Action Buttons (Bottom)
+                    // Action Buttons
                     if (_isPanicMode) ...[
-                      // 1. Cancel Button (Teal/Safe Color)
                       SizedBox(
                         width: double.infinity,
                         height: 55,
@@ -181,17 +185,12 @@ class _HomeScreenState extends State<HomeScreen>
                                   color: Colors.white)),
                         ),
                       ),
-
                       const SizedBox(height: 16),
-
-                      // 2. Send Now Button (RED - BIG & DANGEROUS)
                       SizedBox(
                         width: double.infinity,
                         height: 55,
                         child: ElevatedButton.icon(
-                          onPressed: () {
-                            // Instant Send Logic
-                          },
+                          onPressed: () {},
                           icon: const Icon(Icons.send, color: Colors.white),
                           label: const Text("SEND HELP NOW",
                               style: TextStyle(
@@ -199,8 +198,7 @@ class _HomeScreenState extends State<HomeScreen>
                                   fontWeight: FontWeight.bold,
                                   color: Colors.white)),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor:
-                                AppColors.alertRed, // Red Background
+                            backgroundColor: AppColors.alertRed,
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(16)),
                             elevation: 4,
@@ -209,8 +207,6 @@ class _HomeScreenState extends State<HomeScreen>
                           ),
                         ),
                       ),
-
-                      // Spacer for footer
                       const SizedBox(height: 120),
                     ] else ...[
                       const SizedBox(height: 100),
@@ -221,12 +217,10 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
 
-          // 2. MAP SCREEN (Index 1)
+          // 2. SAFETY SCORE / MAP SCREEN (Index 1) - UPDATED
           Offstage(
             offstage: _selectedIndex != 1,
-            child: const Center(
-                child: Text("Map Feature Coming Soon",
-                    style: TextStyle(color: Colors.white))),
+            child: SafetyScoreScreen(onViewMap: _goToLiveMap),
           ),
 
           // 3. CONTACTS SCREEN (Index 2)
@@ -298,8 +292,6 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   // --- SUB-WIDGETS ---
-
-  // FIXED: Changed colors from Teal to PrimarySky (Blue) for the idle state
   Widget _buildSafeUI() {
     return GestureDetector(
       onTapDown: (_) => _startHolding(),
@@ -308,7 +300,6 @@ class _HomeScreenState extends State<HomeScreen>
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Pulse Animation - NOW BLUE
           ScaleTransition(
             scale: Tween(begin: 1.0, end: 1.08).animate(_pulseController),
             child: Container(
@@ -316,7 +307,6 @@ class _HomeScreenState extends State<HomeScreen>
               height: 260,
               decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  // Changed to PrimarySky (Blue)
                   color: AppColors.primarySky.withOpacity(0.1),
                   boxShadow: [
                     BoxShadow(
@@ -326,20 +316,16 @@ class _HomeScreenState extends State<HomeScreen>
                   ]),
             ),
           ),
-
-          // Progress Ring
           SizedBox(
             width: 260,
             height: 260,
             child: CustomPaint(
               painter: ModernRingPainter(
                   progress: _holdProgress,
-                  color: AppColors.primarySky, // Fills with Blue
+                  color: AppColors.primarySky,
                   trackColor: AppColors.surfaceCard.withOpacity(0.5)),
             ),
           ),
-
-          // Center Icon & Text
           Column(
             mainAxisSize: MainAxisSize.min,
             children: [
