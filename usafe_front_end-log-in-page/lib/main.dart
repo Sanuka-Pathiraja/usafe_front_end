@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'config.dart'; // Connects your colors and MockDatabase
-import 'auth_screens.dart'; // Connects Splash, Login, and Signup
+import 'config.dart'; // Connects your colors
+import 'auth_screens.dart'; // Connects Splash, Login
+import 'home_screen.dart'; // <--- MAKE SURE THIS IS IMPORTED
 
 void main() {
   runApp(const USafeApp());
@@ -14,16 +15,12 @@ class USafeApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'USafe',
-
-      // Applying the Modern Dark Theme globally
       theme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: AppColors.background,
         primaryColor: AppColors.primarySky,
         useMaterial3: true,
         fontFamily: 'Roboto',
-
-        // Modernized Input Field Theme for the whole app
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           fillColor: AppColors.surfaceCard,
@@ -34,9 +31,8 @@ class USafeApp extends StatelessWidget {
           prefixIconColor: AppColors.primarySky,
         ),
       ),
-
-      // Start the app at the modernized Splash Screen
-      home: const SplashScreen(),
+      // CHANGE THIS LINE BELOW:
+      home: const HomeScreen(),
     );
   }
 }
