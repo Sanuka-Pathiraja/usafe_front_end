@@ -32,8 +32,7 @@ class MockDatabase {
   }
 
   static bool validateLogin(String email, String password) {
-    // FIX: For testing, we allow ANY login if the fields are not empty.
-    // This stops the "Invalid Credentials" error while you test the design.
+    // Allows any login for testing purposes
     if (email.isNotEmpty && password.isNotEmpty) {
       return true;
     }
