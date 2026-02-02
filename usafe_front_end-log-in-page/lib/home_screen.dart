@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'config.dart';
-import 'contacts_screen.dart'; // CONNECTS YOUR NEW CONTACTS PAGE
+import 'contacts_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -15,13 +15,13 @@ class _HomeScreenState extends State<HomeScreen>
   // Navigation State
   int _selectedIndex = 0;
 
-  // SOS Logic Variables
+  // SOS Logic
   bool _isPanicMode = false;
   bool _isHolding = false;
   double _holdProgress = 0.0;
   Timer? _holdTimer;
   Timer? _countdownTimer;
-  int _secondsRemaining = 180; // 3 Minutes
+  int _secondsRemaining = 180;
   late AnimationController _pulseController;
 
   @override
@@ -41,8 +41,7 @@ class _HomeScreenState extends State<HomeScreen>
     super.dispose();
   }
 
-  // --- LOGIC FUNCTIONS ---
-
+  // --- LOGIC ---
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
@@ -58,6 +57,7 @@ class _HomeScreenState extends State<HomeScreen>
           _secondsRemaining--;
         } else {
           _countdownTimer?.cancel();
+          // Trigger actual alert here
         }
       });
     });
@@ -93,18 +93,11 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   // --- UI BUILDER ---
-
   @override
   Widget build(BuildContext context) {
-    // Brand Colors
-    final Color safeColor = const Color(0xFF26A69A); // Teal/Green
-    final Color panicColor = const Color(0xFFE53935); // Matte Red
-    final Color backgroundColor = const Color(0xFF151B28); // Deep Blueish Matte
-
     return Scaffold(
-      backgroundColor: backgroundColor,
+      backgroundColor: AppColors.background,
 
-      // --- BODY WITH SCREEN SWITCHING ---
       body: Stack(
         children: [
           // 1. HOME SCREEN (Index 0)
@@ -118,43 +111,53 @@ class _HomeScreenState extends State<HomeScreen>
                     const SizedBox(height: 30),
 
                     // Status Pill
+                    // (We keep this Teal to indicate "Safe Area", but the button below will be Blue)
                     if (!_isPanicMode)
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
+                            horizontal: 20, vertical: 10),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.05),
-                          borderRadius: BorderRadius.circular(20),
+                          color: AppColors.surfaceCard,
+                          borderRadius: BorderRadius.circular(30),
                           border:
-                              Border.all(color: Colors.white.withOpacity(0.1)),
+                              Border.all(color: Colors.white.withOpacity(0.05)),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Container(
-                                width: 8,
-                                height: 8,
+                                width: 10,
+                                height: 10,
                                 decoration: BoxDecoration(
-                                    color: safeColor, shape: BoxShape.circle)),
-                            const SizedBox(width: 8),
+                                    color: AppColors.safetyTeal,
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                          color: AppColors.safetyTeal
+                                              .withOpacity(0.5),
+                                          blurRadius: 6,
+                                          spreadRadius: 1)
+                                    ])),
+                            const SizedBox(width: 10),
                             const Text("Your Area: Safe",
                                 style: TextStyle(
-                                    color: Colors.white70, fontSize: 14)),
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500)),
                           ],
                         ),
                       ),
 
-                    // Centered SOS Interface
+                    // SOS Interface (Center)
                     Expanded(
                       child: Center(
-                        child: _isPanicMode
-                            ? _buildPanicUI(panicColor)
-                            : _buildSafeUI(safeColor),
+                        child: _isPanicMode ? _buildPanicUI() : _buildSafeUI(),
                       ),
                     ),
 
-                    // Action Buttons (Only in Panic Mode)
+                    // Panic Action Buttons (Bottom)
                     if (_isPanicMode) ...[
+                      // 1. Cancel Button (Teal/Safe Color)
                       SizedBox(
                         width: double.infinity,
                         height: 55,
@@ -166,31 +169,51 @@ class _HomeScreenState extends State<HomeScreen>
                             });
                           },
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: safeColor,
+                            backgroundColor: AppColors.safetyTeal,
                             shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(30)),
-                            elevation: 0,
+                                borderRadius: BorderRadius.circular(16)),
+                            elevation: 4,
                           ),
-                          child: const Text("Cancel SOS",
+                          child: const Text("CANCEL SOS",
                               style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold,
                                   color: Colors.white)),
                         ),
                       ),
-                      const SizedBox(height: 20),
-                      TextButton(
-                        onPressed: () {/* Send Now Logic */},
-                        child: const Text("Send Now",
-                            style: TextStyle(
-                                color: Color(0xFFE53935),
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold)),
+
+                      const SizedBox(height: 16),
+
+                      // 2. Send Now Button (RED - BIG & DANGEROUS)
+                      SizedBox(
+                        width: double.infinity,
+                        height: 55,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            // Instant Send Logic
+                          },
+                          icon: const Icon(Icons.send, color: Colors.white),
+                          label: const Text("SEND HELP NOW",
+                              style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor:
+                                AppColors.alertRed, // Red Background
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16)),
+                            elevation: 4,
+                            side: BorderSide(
+                                color: Colors.white.withOpacity(0.2), width: 1),
+                          ),
+                        ),
                       ),
+
+                      // Spacer for footer
+                      const SizedBox(height: 120),
                     ] else ...[
-                      const SizedBox(
-                          height:
-                              100), // Spacer to avoid overlap with floating footer
+                      const SizedBox(height: 100),
                     ],
                   ],
                 ),
@@ -198,7 +221,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
 
-          // 2. MAP SCREEN (Index 1 - Placeholder)
+          // 2. MAP SCREEN (Index 1)
           Offstage(
             offstage: _selectedIndex != 1,
             child: const Center(
@@ -206,13 +229,13 @@ class _HomeScreenState extends State<HomeScreen>
                     style: TextStyle(color: Colors.white))),
           ),
 
-          // 3. CONTACTS SCREEN (Index 2 - THE NEW PAGE)
+          // 3. CONTACTS SCREEN (Index 2)
           Offstage(
             offstage: _selectedIndex != 2,
             child: const ContactsScreen(),
           ),
 
-          // 4. PROFILE SCREEN (Index 3 - Placeholder)
+          // 4. PROFILE SCREEN (Index 3)
           Offstage(
             offstage: _selectedIndex != 3,
             child: const Center(
@@ -222,18 +245,19 @@ class _HomeScreenState extends State<HomeScreen>
         ],
       ),
 
-      // --- MODERN OVAL FOOTER ---
+      // --- FOOTER ---
       extendBody: true,
       bottomNavigationBar: Container(
         margin: const EdgeInsets.only(left: 20, right: 20, bottom: 30),
         decoration: BoxDecoration(
-          color: const Color(0xFF1C2436),
+          color: AppColors.surfaceCard,
           borderRadius: BorderRadius.circular(50),
+          border: Border.all(color: Colors.white.withOpacity(0.05)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.3),
-              blurRadius: 10,
-              offset: const Offset(0, 5),
+              color: Colors.black.withOpacity(0.4),
+              blurRadius: 15,
+              offset: const Offset(0, 8),
             ),
           ],
         ),
@@ -247,8 +271,8 @@ class _HomeScreenState extends State<HomeScreen>
             elevation: 0,
             showSelectedLabels: false,
             showUnselectedLabels: false,
-            selectedItemColor: safeColor,
-            unselectedItemColor: Colors.white,
+            selectedItemColor: AppColors.primarySky,
+            unselectedItemColor: Colors.white38,
             items: const [
               BottomNavigationBarItem(
                   icon: Icon(Icons.shield_outlined, size: 28),
@@ -275,7 +299,8 @@ class _HomeScreenState extends State<HomeScreen>
 
   // --- SUB-WIDGETS ---
 
-  Widget _buildSafeUI(Color color) {
+  // FIXED: Changed colors from Teal to PrimarySky (Blue) for the idle state
+  Widget _buildSafeUI() {
     return GestureDetector(
       onTapDown: (_) => _startHolding(),
       onTapUp: (_) => _stopHolding(),
@@ -283,67 +308,100 @@ class _HomeScreenState extends State<HomeScreen>
       child: Stack(
         alignment: Alignment.center,
         children: [
+          // Pulse Animation - NOW BLUE
           ScaleTransition(
-            scale: Tween(begin: 1.0, end: 1.05).animate(_pulseController),
+            scale: Tween(begin: 1.0, end: 1.08).animate(_pulseController),
             child: Container(
               width: 260,
               height: 260,
               decoration: BoxDecoration(
-                  shape: BoxShape.circle, color: color.withOpacity(0.05)),
+                  shape: BoxShape.circle,
+                  // Changed to PrimarySky (Blue)
+                  color: AppColors.primarySky.withOpacity(0.1),
+                  boxShadow: [
+                    BoxShadow(
+                        color: AppColors.primarySky.withOpacity(0.2),
+                        blurRadius: 30,
+                        spreadRadius: 5)
+                  ]),
             ),
           ),
+
+          // Progress Ring
           SizedBox(
             width: 260,
             height: 260,
             child: CustomPaint(
               painter: ModernRingPainter(
                   progress: _holdProgress,
-                  color: color,
-                  trackColor: Colors.white.withOpacity(0.05)),
+                  color: AppColors.primarySky, // Fills with Blue
+                  trackColor: AppColors.surfaceCard.withOpacity(0.5)),
             ),
           ),
-          const Text(
-            "Hold to Activate SOS",
-            style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.5),
-          ),
+
+          // Center Icon & Text
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.touch_app_outlined,
+                  color: Colors.white.withOpacity(0.8), size: 32),
+              const SizedBox(height: 10),
+              const Text("Hold to Activate",
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600)),
+              const SizedBox(height: 4),
+              const Text("SOS",
+                  style: TextStyle(
+                      color: AppColors.primarySky,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.5)),
+            ],
+          )
         ],
       ),
     );
   }
 
-  Widget _buildPanicUI(Color color) {
-    int minutes = _secondsRemaining ~/ 60;
-    int seconds = _secondsRemaining % 60;
-    String timeStr = "$minutes:${seconds.toString().padLeft(2, '0')}";
-
+  Widget _buildPanicUI() {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         const Text("SOS ACTIVATED",
             style: TextStyle(
-                color: Colors.white,
-                fontSize: 22,
+                color: AppColors.alertRed,
+                fontSize: 24,
                 fontWeight: FontWeight.bold,
-                letterSpacing: 1.0)),
+                letterSpacing: 1.5)),
         const SizedBox(height: 40),
         Stack(
           alignment: Alignment.center,
           children: [
+            Container(
+              width: 280,
+              height: 280,
+              decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [
+                BoxShadow(
+                    color: AppColors.alertRed.withOpacity(0.2),
+                    blurRadius: 40,
+                    spreadRadius: 5)
+              ]),
+            ),
             SizedBox(
               width: 280,
               height: 280,
               child: CircularProgressIndicator(
                 value: _secondsRemaining / 180,
                 strokeWidth: 12,
-                backgroundColor: Colors.white10,
-                valueColor: AlwaysStoppedAnimation<Color>(color),
+                backgroundColor: AppColors.surfaceCard,
+                valueColor:
+                    const AlwaysStoppedAnimation<Color>(AppColors.alertRed),
               ),
             ),
-            Text(timeStr,
+            Text(
+                "${_secondsRemaining ~/ 60}:${(_secondsRemaining % 60).toString().padLeft(2, '0')}",
                 style: const TextStyle(
                     fontSize: 64,
                     fontWeight: FontWeight.bold,
@@ -351,46 +409,43 @@ class _HomeScreenState extends State<HomeScreen>
           ],
         ),
         const SizedBox(height: 30),
-        const Text(
-          "An alert with your location will be sent to\nyour emergency contacts when the timer ends.",
-          textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.grey, fontSize: 14, height: 1.5),
-        ),
+        const Text("An alert will be sent to your emergency contacts.",
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey, fontSize: 14)),
       ],
     );
   }
 }
 
-// --- PAINTER CLASS ---
 class ModernRingPainter extends CustomPainter {
   final double progress;
   final Color color;
   final Color trackColor;
-
   ModernRingPainter(
       {required this.progress, required this.color, required this.trackColor});
-
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2;
-
-    final trackPaint = Paint()
-      ..color = trackColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 12
-      ..strokeCap = StrokeCap.round;
-    canvas.drawCircle(center, radius, trackPaint);
-
+    canvas.drawCircle(
+        center,
+        radius,
+        Paint()
+          ..color = trackColor
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 14
+          ..strokeCap = StrokeCap.round);
     if (progress > 0) {
-      final progressPaint = Paint()
-        ..color = color
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 12
-        ..strokeCap = StrokeCap.round;
-
-      canvas.drawArc(Rect.fromCircle(center: center, radius: radius),
-          -math.pi / 2, 2 * math.pi * progress, false, progressPaint);
+      canvas.drawArc(
+          Rect.fromCircle(center: center, radius: radius),
+          -math.pi / 2,
+          2 * math.pi * progress,
+          false,
+          Paint()
+            ..color = color
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 14
+            ..strokeCap = StrokeCap.round);
     }
   }
 
