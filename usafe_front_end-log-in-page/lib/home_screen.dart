@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:math' as math;
-import 'config.dart'; // Imports your AppColors
+import 'config.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -11,16 +11,22 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
+  // Logic Variables
   bool _isPanicMode = false;
   bool _isHolding = false;
   double _holdProgress = 0.0;
+
+  // Timer Variables
   Timer? _holdTimer;
+  Timer? _countdownTimer;
+  int _secondsRemaining = 180; // 3 Minutes
+
+  // Animation Controller for "Breathing" effect
   late AnimationController _pulseController;
 
   @override
   void initState() {
     super.initState();
-    // Setup a pulsing animation for the idle state
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
@@ -30,7 +36,26 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void dispose() {
     _pulseController.dispose();
+    _holdTimer?.cancel();
+    _countdownTimer?.cancel();
     super.dispose();
+  }
+
+  // --- LOGIC ---
+
+  void _startCountdown() {
+    _secondsRemaining = 180;
+    _countdownTimer?.cancel();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      setState(() {
+        if (_secondsRemaining > 0) {
+          _secondsRemaining--;
+        } else {
+          // Timer finished
+          _countdownTimer?.cancel();
+        }
+      });
+    });
   }
 
   void _startHolding() {
@@ -39,12 +64,15 @@ class _HomeScreenState extends State<HomeScreen>
       _isHolding = true;
       _holdProgress = 0.0;
     });
+
+    // Smooth progress update (60fps)
     _holdTimer = Timer.periodic(const Duration(milliseconds: 16), (timer) {
       setState(() {
-        _holdProgress += 0.015;
+        _holdProgress += 0.015; // Speed of fill
         if (_holdProgress >= 1.0) {
           _holdTimer?.cancel();
           _isPanicMode = true;
+          _startCountdown(); // Trigger the 3-minute timer
         }
       });
     });
@@ -52,11 +80,21 @@ class _HomeScreenState extends State<HomeScreen>
 
   void _stopHolding() {
     _holdTimer?.cancel();
-    setState(() {
-      _isHolding = false;
-      _holdProgress = 0.0;
-    });
+    if (!_isPanicMode) {
+      setState(() {
+        _isHolding = false;
+        _holdProgress = 0.0;
+      });
+    }
   }
+
+  String _formatTime(int totalSeconds) {
+    int mins = totalSeconds ~/ 60;
+    int secs = totalSeconds % 60;
+    return "$mins:${secs.toString().padLeft(2, '0')}";
+  }
+
+  // --- UI ---
 
   @override
   Widget build(BuildContext context) {
@@ -65,10 +103,10 @@ class _HomeScreenState extends State<HomeScreen>
       body: Container(
         width: double.infinity,
         decoration: const BoxDecoration(
-          // Subtle radial gradient to give depth to the dark background
+          // Deep Navy Radial Gradient matches Login Page vibe
           gradient: RadialGradient(
             center: Alignment.center,
-            radius: 1.5,
+            radius: 1.4,
             colors: [AppColors.surfaceCard, AppColors.background],
           ),
         ),
@@ -77,39 +115,44 @@ class _HomeScreenState extends State<HomeScreen>
             children: [
               const SizedBox(height: 30),
 
-              // --- STATUS PILL (Modernized) ---
+              // --- 1. STATUS PILL (Glassmorphism) ---
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                 decoration: BoxDecoration(
-                  color: AppColors.surfaceCard.withOpacity(0.8),
+                  color: AppColors.surfaceCard.withOpacity(0.6),
                   borderRadius: BorderRadius.circular(30),
                   border: Border.all(color: Colors.white10),
-                  boxShadow: [
-                    BoxShadow(
-                        color: Colors.black.withOpacity(0.3),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4))
-                  ],
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                          color: AppColors.successGreen,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                                color: AppColors.successGreen, blurRadius: 6)
-                          ]),
+                    // Blinking Green Dot
+                    TweenAnimationBuilder(
+                      tween: Tween<double>(begin: 0, end: 1),
+                      duration: const Duration(seconds: 1),
+                      builder: (context, val, child) {
+                        return Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: AppColors.successGreen,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                  color:
+                                      AppColors.successGreen.withOpacity(val),
+                                  blurRadius: 8)
+                            ],
+                          ),
+                        );
+                      },
+                      onEnd: () => setState(() {}),
                     ),
                     const SizedBox(width: 10),
                     const Text("STATUS: SAFE",
                         style: TextStyle(
-                            color: AppColors.textWhite,
+                            color: Colors.white,
                             fontWeight: FontWeight.bold,
                             letterSpacing: 1.2,
                             fontSize: 12)),
@@ -119,7 +162,35 @@ class _HomeScreenState extends State<HomeScreen>
 
               const Spacer(),
 
-              // --- SOS INTERACTION ---
+              // --- 2. TIMER DISPLAY (Only visible in Panic Mode) ---
+              if (_isPanicMode)
+                Column(
+                  children: [
+                    const Text("SOS SIGNAL LIVE",
+                        style: TextStyle(
+                            color: AppColors.dangerRed,
+                            letterSpacing: 2,
+                            fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 10),
+                    Text(
+                      _formatTime(_secondsRemaining),
+                      style: const TextStyle(
+                        fontFamily: 'monospace', // Digital clock look
+                        fontSize: 60,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        shadows: [
+                          Shadow(color: AppColors.dangerRed, blurRadius: 20)
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+
+              if (!_isPanicMode)
+                const Spacer(), // Spacer to push button down if no timer
+
+              // --- 3. SOS BUTTON (The Core Interaction) ---
               GestureDetector(
                 onTapDown: (_) => _startHolding(),
                 onTapUp: (_) => _stopHolding(),
@@ -127,48 +198,50 @@ class _HomeScreenState extends State<HomeScreen>
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
-                    // Outer Glow Ring (Animated)
-                    if (!_isPanicMode)
+                    // Pulse Effect (Only when not holding)
+                    if (!_isPanicMode && !_isHolding)
                       ScaleTransition(
-                        scale: Tween(begin: 1.0, end: 1.05)
+                        scale: Tween(begin: 1.0, end: 1.1)
                             .animate(_pulseController),
                         child: Container(
-                          width: 280,
-                          height: 280,
+                          width: 260,
+                          height: 260,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             border: Border.all(
-                                color: AppColors.primarySky.withOpacity(0.1),
+                                color: AppColors.primarySky.withOpacity(0.2),
                                 width: 1),
                             boxShadow: [
                               BoxShadow(
                                   color: AppColors.primarySky.withOpacity(0.1),
-                                  blurRadius: 20,
-                                  spreadRadius: 0)
+                                  blurRadius: 20)
                             ],
                           ),
                         ),
                       ),
 
-                    // Progress Painter
+                    // Progress Ring
                     SizedBox(
-                      width: 280,
-                      height: 280,
+                      width: 260,
+                      height: 260,
                       child: CustomPaint(
                         painter: RingPainter(
                           progress: _holdProgress,
                           color: _isPanicMode
                               ? AppColors.dangerRed
                               : AppColors.primarySky,
-                          trackColor: AppColors.surfaceCard,
+                          trackColor: Colors.white10,
                         ),
                       ),
                     ),
 
                     // Central Button
-                    Container(
-                      width: 220,
-                      height: 220,
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: _isHolding
+                          ? 210
+                          : 220, // Shrink slightly when pressing
+                      height: _isHolding ? 210 : 220,
                       decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: _isPanicMode
@@ -187,31 +260,30 @@ class _HomeScreenState extends State<HomeScreen>
                             color: _isPanicMode
                                 ? AppColors.dangerRed
                                 : Colors.white10,
-                            width: 1,
                           )),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
-                              _isPanicMode
-                                  ? Icons.warning_amber_rounded
-                                  : Icons.fingerprint,
-                              size: 48,
-                              color: _isPanicMode
-                                  ? AppColors.dangerRed
-                                  : AppColors.primarySky),
-                          const SizedBox(height: 16),
+                            _isPanicMode
+                                ? Icons.warning_amber_rounded
+                                : Icons.fingerprint,
+                            size: 50,
+                            color: _isPanicMode
+                                ? AppColors.dangerRed
+                                : AppColors.primarySky,
+                          ),
+                          const SizedBox(height: 10),
                           Text(
-                            _isPanicMode ? "SOS\nACTIVE" : "HOLD FOR\nSOS",
+                            _isPanicMode ? "SENDING\nALERT" : "HOLD FOR\nSOS",
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: _isPanicMode
                                   ? AppColors.dangerRed
                                   : Colors.white,
-                              fontSize: 20,
                               fontWeight: FontWeight.bold,
-                              letterSpacing: 1.5,
-                              height: 1.2,
+                              fontSize: 18,
+                              letterSpacing: 1.2,
                             ),
                           ),
                         ],
@@ -222,37 +294,34 @@ class _HomeScreenState extends State<HomeScreen>
               ),
 
               const Spacer(),
+              const Spacer(),
 
-              // --- CANCEL BUTTON (Only visible when active) ---
+              // --- 4. CANCEL BUTTON ---
               AnimatedOpacity(
-                duration: const Duration(milliseconds: 300),
+                duration: const Duration(milliseconds: 500),
                 opacity: _isPanicMode ? 1.0 : 0.0,
                 child: Padding(
-                  padding: const EdgeInsets.only(bottom: 50),
-                  child: Container(
-                    height: 50,
+                  padding: const EdgeInsets.only(bottom: 40),
+                  child: SizedBox(
                     width: 200,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(30),
-                      boxShadow: const [
-                        BoxShadow(color: Colors.white24, blurRadius: 12)
-                      ],
-                    ),
-                    child: TextButton(
-                      onPressed: () => setState(() => _isPanicMode = false),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.close, color: Colors.black),
-                          SizedBox(width: 8),
-                          Text("CANCEL SOS",
-                              style: TextStyle(
-                                  color: Colors.black,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16)),
-                        ],
+                    height: 50,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        setState(() {
+                          _isPanicMode = false;
+                          _countdownTimer?.cancel();
+                        });
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.black,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30)),
+                        elevation: 5,
                       ),
+                      child: const Text("CANCEL SOS",
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 16)),
                     ),
                   ),
                 ),
@@ -265,7 +334,7 @@ class _HomeScreenState extends State<HomeScreen>
   }
 }
 
-// --- CUSTOM PAINTER FOR RING ---
+// --- RING PAINTER (Smooth & Neon) ---
 class RingPainter extends CustomPainter {
   final double progress;
   final Color color;
@@ -279,20 +348,20 @@ class RingPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2;
 
-    // Draw the subtle track
+    // Track
     final trackPaint = Paint()
-      ..color = trackColor.withOpacity(0.5)
+      ..color = trackColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = 6;
     canvas.drawCircle(center, radius, trackPaint);
 
-    // Draw the progress arc (Neon Glow Effect)
+    // Progress
     final progressPaint = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
       ..strokeWidth = 6
-      ..maskFilter = const MaskFilter.blur(BlurStyle.solid, 2); // Subtle glow
+      ..maskFilter = const MaskFilter.blur(BlurStyle.solid, 4); // Neon Glow
 
     canvas.drawArc(
       Rect.fromCircle(center: center, radius: radius),
