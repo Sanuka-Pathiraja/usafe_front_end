@@ -8,6 +8,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_stripe: ^9.0.0
+  http: ^1.0.0
   cupertino_icons: ^1.0.8
   flutter_contacts: ^1.1.9
   geolocator: ^13.0.2
