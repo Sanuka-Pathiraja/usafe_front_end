@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
-import 'dart:async'; // For Timer logic (SOS hold & countdown)
-import 'dart:math' as math; // For drawing arcs in the CustomPainter
-import 'config.dart'; // Brand colors (AppColors)
+import 'dart:async'; // For Timers (SOS hold & countdown)
+import 'dart:math' as math; // For drawing arcs
+import 'config.dart'; // Brand colors
 import 'contacts_screen.dart';
 import 'safety_score_screen.dart';
+import 'profile_screen.dart'; // IMPORTED: Connects the new Profile Page
 
 /// ---------------------------------------------------------------------------
-/// HOME SCREEN
+/// HOME SCREEN DASHBOARD
 ///
-/// This is the main dashboard of the application. It handles:
-/// 1. Bottom Navigation (Home, Map, Contacts, Profile).
-/// 2. The Core SOS Logic (Hold-to-activate, Countdown, Panic State).
-/// 3. Displaying the Safety Score screen when 'Map' is clicked.
+/// The central hub of the application. It manages:
+/// 1. The Bottom Navigation Bar (switching between Home, Map, Contacts, Profile).
+/// 2. The SOS Mechanism (Hold-to-activate, Countdown, Panic Mode).
 /// ---------------------------------------------------------------------------
 
 class HomeScreen extends StatefulWidget {
@@ -26,23 +26,23 @@ class _HomeScreenState extends State<HomeScreen>
   // STATE VARIABLES
   // ---------------------------------------------------------------------------
 
-  // Controls which tab is currently visible (0: Home, 1: Map, 2: Contacts, 3: Profile)
+  // Tracks the active tab (0: Home, 1: Map, 2: Contacts, 3: Profile)
   int _selectedIndex = 0;
 
-  // -- SOS System State --
-  bool _isPanicMode = false; // True if SOS has been triggered
-  bool _isHolding = false; // True if user is currently pressing the button
-  double _holdProgress = 0.0; // 0.0 to 1.0 (Progress of the hold circle)
+  // -- SOS Logic State --
+  bool _isPanicMode = false; // True if SOS is triggered
+  bool _isHolding = false; // True while user presses the button
+  double _holdProgress = 0.0; // 0.0 -> 1.0 (Progress of the ring)
 
   // -- Timers & Animation --
-  Timer? _holdTimer; // Runs while holding the button (fills the ring)
-  Timer? _countdownTimer; // Runs after SOS triggers (3 min countdown)
-  int _secondsRemaining = 180; // 3 Minutes in seconds
+  Timer? _holdTimer; // Fills the ring while holding
+  Timer? _countdownTimer; // Counts down from 3 mins after activation
+  int _secondsRemaining = 180; // 3 Minutes (180 seconds)
   late AnimationController
-      _pulseController; // Handles the "breathing" animation of the button
+      _pulseController; // "Breathing" animation for the button
 
   // ---------------------------------------------------------------------------
-  // LIFECYCLE METHODS
+  // LIFECYCLE
   // ---------------------------------------------------------------------------
 
   @override
@@ -57,7 +57,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   void dispose() {
-    // Always clean up timers and controllers to prevent memory leaks
+    // Cleanup timers and controllers to prevent memory leaks
     _pulseController.dispose();
     _holdTimer?.cancel();
     _countdownTimer?.cancel();
@@ -65,25 +65,28 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   // ---------------------------------------------------------------------------
-  // LOGIC & FUNCTIONS
+  // NAVIGATION LOGIC
   // ---------------------------------------------------------------------------
 
-  /// Handles switching tabs in the bottom navigation bar.
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
     });
   }
 
-  /// Placeholder for future map navigation logic.
+  // Navigation callback for the Safety Score Screen
   void _goToLiveMap() {
     print("Navigate to Live Map Page");
-    // TODO: Push the actual Google Maps route here
+    // TODO: Add actual navigation to Google Maps widget here
   }
 
-  /// Starts the 3-minute countdown when Panic Mode is active.
+  // ---------------------------------------------------------------------------
+  // SOS LOGIC
+  // ---------------------------------------------------------------------------
+
+  // Starts the 3-minute panic countdown
   void _startCountdown() {
-    _secondsRemaining = 180; // Reset to 3 mins
+    _secondsRemaining = 180;
     _countdownTimer?.cancel();
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() {
@@ -91,17 +94,15 @@ class _HomeScreenState extends State<HomeScreen>
           _secondsRemaining--;
         } else {
           _countdownTimer?.cancel();
-          // TODO: Trigger the actual API call to send the emergency alert here
+          // TODO: Trigger Backend API Alert Here
         }
       });
     });
   }
 
-  /// Called when the user presses down on the SOS button.
-  /// Increments progress every 16ms to fill the ring smoothly.
+  // Detects "Hold Down" gesture to fill the ring
   void _startHolding() {
-    if (_isPanicMode) return; // Prevent holding if already in panic mode
-
+    if (_isPanicMode) return;
     setState(() {
       _isHolding = true;
       _holdProgress = 0.0;
@@ -109,21 +110,18 @@ class _HomeScreenState extends State<HomeScreen>
 
     _holdTimer = Timer.periodic(const Duration(milliseconds: 16), (timer) {
       setState(() {
-        _holdProgress +=
-            0.012; // Increment speed (adjust this to change hold time)
-
-        // Threshold reached (Ring full)
+        _holdProgress += 0.012; // Adjust speed of fill here
         if (_holdProgress >= 1.0) {
+          // Threshold reached: Activate Panic Mode
           _holdTimer?.cancel();
-          _isPanicMode = true; // Trigger SOS
-          _startCountdown(); // Start the timer
+          _isPanicMode = true;
+          _startCountdown();
         }
       });
     });
   }
 
-  /// Called when the user releases the button.
-  /// Resets progress if the threshold wasn't reached.
+  // Detects release of the button
   void _stopHolding() {
     _holdTimer?.cancel();
     if (!_isPanicMode) {
@@ -135,18 +133,19 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   // ---------------------------------------------------------------------------
-  // MAIN UI BUILDER
+  // UI BUILDER
   // ---------------------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background, // Deep Matte Midnight
+      backgroundColor:
+          AppColors.background, // Deep Matte Midnight (Solid Color)
 
-      // Using a Stack to keep all screens alive in the background.
-      // 'Offstage' hides screens without destroying their state.
+      // Stack allows us to keep the screens alive in the background
+      // 'Offstage' hides screens without destroying their state
       body: Stack(
         children: [
-          // --- TAB 0: HOME DASHBOARD ---
+          // --- TAB 0: HOME DASHBOARD (SOS) ---
           Offstage(
             offstage: _selectedIndex != 0,
             child: SafeArea(
@@ -156,8 +155,7 @@ class _HomeScreenState extends State<HomeScreen>
                   children: [
                     const SizedBox(height: 30),
 
-                    // 1. Status Pill (Visual indicator of safety)
-                    // Hides when in Panic Mode to reduce clutter
+                    // 1. Status Pill (Hidden during Panic Mode)
                     if (!_isPanicMode)
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -194,10 +192,12 @@ class _HomeScreenState extends State<HomeScreen>
                         ),
                       ),
 
-                    // 2. The Main Interface (Swaps between Safe Circle and Panic Timer)
+                    // 2. Main SOS Interface (Center of Screen)
                     Expanded(
                       child: Center(
-                        child: _isPanicMode ? _buildPanicUI() : _buildSafeUI(),
+                        child: _isPanicMode
+                            ? _buildPanicUI() // Show Red Timer
+                            : _buildSafeUI(), // Show Blue Ring
                       ),
                     ),
 
@@ -210,7 +210,7 @@ class _HomeScreenState extends State<HomeScreen>
                         child: ElevatedButton(
                           onPressed: () {
                             setState(() {
-                              _isPanicMode = false; // Reset State
+                              _isPanicMode = false;
                               _countdownTimer?.cancel();
                             });
                           },
@@ -229,14 +229,12 @@ class _HomeScreenState extends State<HomeScreen>
                       ),
                       const SizedBox(height: 16),
 
-                      // Instant Send Button
+                      // Instant Send Button (Big Red Button)
                       SizedBox(
                         width: double.infinity,
                         height: 55,
                         child: ElevatedButton.icon(
-                          onPressed: () {
-                            // TODO: Implement instant alert logic
-                          },
+                          onPressed: () {/* Instant Send Logic */},
                           icon: const Icon(Icons.send, color: Colors.white),
                           label: const Text("SEND HELP NOW",
                               style: TextStyle(
@@ -244,8 +242,7 @@ class _HomeScreenState extends State<HomeScreen>
                                   fontWeight: FontWeight.bold,
                                   color: Colors.white)),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor:
-                                AppColors.alertRed, // High contrast Red
+                            backgroundColor: AppColors.alertRed,
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(16)),
                             elevation: 4,
@@ -265,7 +262,6 @@ class _HomeScreenState extends State<HomeScreen>
           ),
 
           // --- TAB 1: MAP / SAFETY SCORE ---
-          // Shows the SafetyScoreScreen (which links to the Map)
           Offstage(
             offstage: _selectedIndex != 1,
             child: SafetyScoreScreen(onViewMap: _goToLiveMap),
@@ -277,20 +273,16 @@ class _HomeScreenState extends State<HomeScreen>
             child: const ContactsScreen(),
           ),
 
-          // --- TAB 3: PROFILE (Placeholder) ---
+          // --- TAB 3: PROFILE ---
           Offstage(
             offstage: _selectedIndex != 3,
-            child: const Center(
-                child: Text("Profile Feature Coming Soon",
-                    style: TextStyle(color: Colors.white))),
+            child: const ProfileScreen(), // Displays the Profile UI
           ),
         ],
       ),
 
-      // -----------------------------------------------------------------------
-      // CUSTOM BOTTOM NAVIGATION BAR (Floating Oval Style)
-      // -----------------------------------------------------------------------
-      extendBody: true, // Allows content to flow behind the floating footer
+      // --- CUSTOM FLOATING FOOTER ---
+      extendBody: true,
       bottomNavigationBar: Container(
         margin: const EdgeInsets.only(left: 20, right: 20, bottom: 30),
         decoration: BoxDecoration(
@@ -313,7 +305,7 @@ class _HomeScreenState extends State<HomeScreen>
             backgroundColor: Colors.transparent,
             type: BottomNavigationBarType.fixed,
             elevation: 0,
-            showSelectedLabels: false, // Clean look without text
+            showSelectedLabels: false,
             showUnselectedLabels: false,
             selectedItemColor: AppColors.primarySky,
             unselectedItemColor: Colors.white38,
@@ -342,11 +334,10 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   // ---------------------------------------------------------------------------
-  // HELPER WIDGETS
+  // HELPER WIDGETS (SOS STATES)
   // ---------------------------------------------------------------------------
 
-  /// The UI shown when the app is in "Safe" mode (Idle state).
-  /// Features a breathing circle and hold detection.
+  // State 1: Safe (Idle Mode)
   Widget _buildSafeUI() {
     return GestureDetector(
       onTapDown: (_) => _startHolding(),
@@ -355,7 +346,7 @@ class _HomeScreenState extends State<HomeScreen>
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // 1. The Breathing Pulse Animation
+          // Pulse Animation (Blue)
           ScaleTransition(
             scale: Tween(begin: 1.0, end: 1.08).animate(_pulseController),
             child: Container(
@@ -363,8 +354,7 @@ class _HomeScreenState extends State<HomeScreen>
               height: 260,
               decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color:
-                      AppColors.primarySky.withOpacity(0.1), // Brand Blue Glow
+                  color: AppColors.primarySky.withOpacity(0.1),
                   boxShadow: [
                     BoxShadow(
                         color: AppColors.primarySky.withOpacity(0.2),
@@ -373,8 +363,7 @@ class _HomeScreenState extends State<HomeScreen>
                   ]),
             ),
           ),
-
-          // 2. The Progress Ring (Fills up when held)
+          // Progress Ring (Draws the arc)
           SizedBox(
             width: 260,
             height: 260,
@@ -385,8 +374,7 @@ class _HomeScreenState extends State<HomeScreen>
                   trackColor: AppColors.surfaceCard.withOpacity(0.5)),
             ),
           ),
-
-          // 3. Central Icon & Text
+          // Center Icon & Text
           Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -412,8 +400,7 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  /// The UI shown when SOS has been triggered.
-  /// Features a countdown timer and Red alert styling.
+  // State 2: Panic (Active Mode)
   Widget _buildPanicUI() {
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -444,14 +431,14 @@ class _HomeScreenState extends State<HomeScreen>
               width: 280,
               height: 280,
               child: CircularProgressIndicator(
-                value: _secondsRemaining / 180, // Normalizes 180s to 0.0-1.0
+                value: _secondsRemaining / 180,
                 strokeWidth: 12,
                 backgroundColor: AppColors.surfaceCard,
                 valueColor:
                     const AlwaysStoppedAnimation<Color>(AppColors.alertRed),
               ),
             ),
-            // Countdown Text (MM:SS)
+            // Countdown Text
             Text(
                 "${_secondsRemaining ~/ 60}:${(_secondsRemaining % 60).toString().padLeft(2, '0')}",
                 style: const TextStyle(
@@ -470,13 +457,12 @@ class _HomeScreenState extends State<HomeScreen>
 }
 
 // ---------------------------------------------------------------------------
-// CUSTOM PAINTER (For the Hold-Progress Ring)
+// CUSTOM PAINTER (RING ANIMATION)
 // ---------------------------------------------------------------------------
 class ModernRingPainter extends CustomPainter {
   final double progress;
   final Color color;
   final Color trackColor;
-
   ModernRingPainter(
       {required this.progress, required this.color, required this.trackColor});
 
@@ -485,28 +471,28 @@ class ModernRingPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2;
 
-    // Draw the background track (Grey ring)
-    final trackPaint = Paint()
-      ..color = trackColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 14
-      ..strokeCap = StrokeCap.round;
-    canvas.drawCircle(center, radius, trackPaint);
+    // Draw background track (Grey)
+    canvas.drawCircle(
+        center,
+        radius,
+        Paint()
+          ..color = trackColor
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 14
+          ..strokeCap = StrokeCap.round);
 
-    // Draw the active progress arc (Blue ring)
+    // Draw progress arc (Colored)
     if (progress > 0) {
-      final progressPaint = Paint()
-        ..color = color
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 14
-        ..strokeCap = StrokeCap.round;
-
       canvas.drawArc(
           Rect.fromCircle(center: center, radius: radius),
-          -math.pi / 2, // Start from top
-          2 * math.pi * progress, // Sweep angle based on hold progress
+          -math.pi / 2,
+          2 * math.pi * progress,
           false,
-          progressPaint);
+          Paint()
+            ..color = color
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 14
+            ..strokeCap = StrokeCap.round);
     }
   }
 
