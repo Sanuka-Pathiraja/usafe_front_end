@@ -1,23 +1,36 @@
 import 'package:flutter/material.dart';
-import 'dart:async';
-import 'config.dart';
-import 'home_screen.dart'; // Make sure this matches your file name
+import 'dart:async'; // For Timer logic (Splash screen delay)
+import 'config.dart'; // Brand colors (AppColors) & Mock Database
+import 'home_screen.dart'; // Target screen after successful login
 
-// --- REUSABLE BACKGROUND GRADIENT ---
+/// ---------------------------------------------------------------------------
+/// AUTHENTICATION FLOW
+///
+/// This file contains all screens related to user onboarding and access:
+/// 1. SplashScreen: Brand logo animation on app launch.
+/// 2. LoginScreen: Email/Password entry.
+/// 3. SignupScreen: Account creation.
+/// 4. ForgotPasswordScreen: Password reset flow.
+/// ---------------------------------------------------------------------------
+
+// --- HELPER: BACKGROUND GRADIENT ---
+// Ensures a consistent visual theme across all auth screens.
 BoxDecoration _buildBackgroundGradient() {
   return const BoxDecoration(
     gradient: LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
       colors: [
-        AppColors.background, // Uses AppColors from config.dart
-        Color(0xFF0F1218),
+        AppColors.background, // Deep Matte Midnight
+        Color(0xFF0F1218), // Fades to near-black
       ],
     ),
   );
 }
 
-// --- SPLASH SCREEN ---
+// ---------------------------------------------------------------------------
+// 1. SPLASH SCREEN
+// ---------------------------------------------------------------------------
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
   @override
@@ -32,12 +45,16 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void initState() {
     super.initState();
+
+    // Setup Fade Animation (1.5 seconds)
     _controller = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 1500));
     _fadeAnimation = CurvedAnimation(parent: _controller, curve: Curves.easeIn);
+
+    // Start Animation
     _controller.forward();
 
-    // Navigate to Login after 3 seconds
+    // Timer: Navigate to Login Screen after 3 seconds
     Timer(const Duration(seconds: 3), () {
       Navigator.pushReplacement(
           context, MaterialPageRoute(builder: (_) => const LoginScreen()));
@@ -46,7 +63,7 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   void dispose() {
-    _controller.dispose();
+    _controller.dispose(); // Cleanup animation controller
     super.dispose();
   }
 
@@ -61,7 +78,7 @@ class _SplashScreenState extends State<SplashScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Logo
+                // Logo with Glow Effect
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
@@ -81,6 +98,8 @@ class _SplashScreenState extends State<SplashScreen>
                   ),
                 ),
                 const SizedBox(height: 30),
+
+                // App Name
                 const Text(
                   "USafe",
                   style: TextStyle(
@@ -91,6 +110,8 @@ class _SplashScreenState extends State<SplashScreen>
                   ),
                 ),
                 const SizedBox(height: 10),
+
+                // Tagline
                 const Text(
                   "Intelligent Personal Safety",
                   style: TextStyle(
@@ -107,7 +128,9 @@ class _SplashScreenState extends State<SplashScreen>
   }
 }
 
-// --- LOGIN SCREEN ---
+// ---------------------------------------------------------------------------
+// 2. LOGIN SCREEN
+// ---------------------------------------------------------------------------
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
   @override
@@ -115,16 +138,19 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  // Input Controllers
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
+  // Logic: Verify credentials against MockDatabase
   void _handleLogin() {
     if (MockDatabase.validateLogin(
         _emailController.text.trim(), _passwordController.text.trim())) {
-      // Navigate to Home Screen
+      // Success: Go to Home
       Navigator.pushReplacement(
           context, MaterialPageRoute(builder: (_) => const HomeScreen()));
     } else {
+      // Failure: Show Error SnackBar
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Please enter an email and password."),
@@ -148,6 +174,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const SizedBox(height: 20),
+
+                  // Header Logo
                   Center(
                     child: Image.asset(
                       'assets/usafe_logo.png',
@@ -157,6 +185,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 30),
+
+                  // Welcome Text
                   const Text("Welcome Back!",
                       textAlign: TextAlign.center,
                       style: TextStyle(
@@ -170,6 +200,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           TextStyle(fontSize: 16, color: AppColors.textGrey)),
                   const SizedBox(height: 50),
 
+                  // Input Fields
                   _buildModernInput(
                       _emailController, "Email", Icons.email_outlined),
                   const SizedBox(height: 20),
@@ -177,6 +208,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       _passwordController, "Password", Icons.lock_outline,
                       isPassword: true),
 
+                  // Forgot Password Link
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
@@ -193,7 +225,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   const SizedBox(height: 30),
 
-                  // Gradient Login Button
+                  // Main Action Button (Gradient)
                   Container(
                     height: 55,
                     decoration: BoxDecoration(
@@ -227,6 +259,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
 
                   const SizedBox(height: 40),
+
+                  // Divider
                   const Row(children: [
                     Expanded(child: Divider(color: Colors.white12)),
                     Padding(
@@ -237,7 +271,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ]),
                   const SizedBox(height: 30),
 
-                  // Google Button
+                  // Social Login (Google)
                   SizedBox(
                     height: 55,
                     child: OutlinedButton(
@@ -269,6 +303,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
 
                   const SizedBox(height: 40),
+
+                  // Signup Link
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -296,6 +332,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  // Helper widget for consistent Input Fields
   Widget _buildModernInput(
       TextEditingController controller, String label, IconData icon,
       {bool isPassword = false}) {
@@ -326,7 +363,9 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-// --- SIGNUP SCREEN ---
+// ---------------------------------------------------------------------------
+// 3. SIGNUP SCREEN
+// ---------------------------------------------------------------------------
 class SignupScreen extends StatelessWidget {
   const SignupScreen({super.key});
   @override
@@ -342,7 +381,7 @@ class SignupScreen extends StatelessWidget {
             padding: const EdgeInsets.all(32),
             child: Column(
               children: [
-                // Header
+                // Header (Back Button + Title)
                 Row(
                   children: [
                     IconButton(
@@ -362,13 +401,14 @@ class SignupScreen extends StatelessWidget {
                     style: TextStyle(color: AppColors.textGrey, fontSize: 16)),
                 const SizedBox(height: 40),
 
+                // Form Fields
                 _buildModernInput(emailCtrl, "Email", Icons.email_outlined),
                 const SizedBox(height: 20),
                 _buildModernInput(passCtrl, "Password", Icons.lock_outline,
                     isPassword: true),
                 const SizedBox(height: 40),
 
-                // Gradient Button
+                // Create Account Button
                 Container(
                   width: double.infinity,
                   height: 55,
@@ -393,8 +433,10 @@ class SignupScreen extends StatelessWidget {
                     onPressed: () {
                       if (emailCtrl.text.isNotEmpty &&
                           passCtrl.text.isNotEmpty) {
+                        // Register user in mock DB
                         MockDatabase.registerUser(
                             emailCtrl.text, passCtrl.text);
+                        // Show success message
                         ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
                                 content:
@@ -419,6 +461,7 @@ class SignupScreen extends StatelessWidget {
     );
   }
 
+  // Reusing the same input style
   Widget _buildModernInput(
       TextEditingController controller, String label, IconData icon,
       {bool isPassword = false}) {
@@ -449,7 +492,9 @@ class SignupScreen extends StatelessWidget {
   }
 }
 
-// --- FORGOT PASSWORD SCREEN ---
+// ---------------------------------------------------------------------------
+// 4. FORGOT PASSWORD SCREEN
+// ---------------------------------------------------------------------------
 class ForgotPasswordScreen extends StatelessWidget {
   const ForgotPasswordScreen({super.key});
   @override
@@ -462,6 +507,7 @@ class ForgotPasswordScreen extends StatelessWidget {
             padding: const EdgeInsets.all(32),
             child: Column(
               children: [
+                // Header
                 Row(
                   children: [
                     IconButton(
@@ -477,6 +523,8 @@ class ForgotPasswordScreen extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 60),
+
+                // Icon
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
@@ -486,6 +534,8 @@ class ForgotPasswordScreen extends StatelessWidget {
                       size: 60, color: AppColors.primarySky),
                 ),
                 const SizedBox(height: 20),
+
+                // Instructions
                 const Text(
                   "Enter your email and we'll send you a link to get back into your account.",
                   textAlign: TextAlign.center,
@@ -493,6 +543,8 @@ class ForgotPasswordScreen extends StatelessWidget {
                       color: AppColors.textGrey, fontSize: 16, height: 1.5),
                 ),
                 const SizedBox(height: 40),
+
+                // Email Input
                 Container(
                   decoration: BoxDecoration(
                     color: AppColors.surfaceCard,
@@ -513,6 +565,8 @@ class ForgotPasswordScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 30),
+
+                // Send Link Button
                 Container(
                   width: double.infinity,
                   height: 55,
