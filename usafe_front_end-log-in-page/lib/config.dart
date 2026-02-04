@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // Import for storage
+import 'dart:convert'; // Import for JSON encoding
 
 // --- GLOBAL COLORS ---
 class AppColors {
-  // Deep Navy Background (Matches the "Right" Design)
+  // Deep Navy Background (Matches the preferred Blue design)
   static const Color background = Color(0xFF0A0E21);
-  static const Color backgroundBlack = Color(0xFF000000); // For gradient fade
+  static const Color backgroundBlack = Color(0xFF000000);
 
   // Input Fields & Cards
   static const Color surfaceCard = Color(0xFF1D1E33);
 
   // Brand Colors
-  static const Color primarySky = Color(0xFF448AFF); // Bright Blue text/icons
+  static const Color primarySky = Color(0xFF448AFF); // Bright Blue
   static const Color primaryNavy =
       Color(0xFF0D47A1); // Darker Blue for gradients
 
@@ -20,52 +22,88 @@ class AppColors {
   static const Color textGrey = Color(0xFF9CA3AF);
 }
 
-// --- MOCK DATABASE ---
+// --- MOCK DATABASE WITH PERSISTENCE ---
 class MockDatabase {
-  static final List<Map<String, String>> _users = [
-    {
-      'name': 'Sanuka Pathiraja',
-      'email': 'test@usafe.com',
-      'password': '123',
-      'blood': 'O+',
-      'age': '24',
-      'weight': '72kg'
-    },
-  ];
+  // We use 'dynamic' to handle JSON decoding safely
+  static Map<String, dynamic>? currentUser;
 
-  static Map<String, String>? currentUser;
+  // 1. Save the current user to local phone storage
+  static Future<void> saveUserLocally(Map<String, dynamic> user) async {
+    final prefs = await SharedPreferences.getInstance();
+    currentUser = user;
+    // We convert the user map to a String to save it
+    await prefs.setString('user_session', jsonEncode(user));
+  }
 
-  static void registerUser(String name, String email, String password) {
-    _users.add({
+  // 2. Load the user when the app starts
+  static Future<void> loadUserSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    String? userData = prefs.getString('user_session');
+    if (userData != null) {
+      currentUser = jsonDecode(userData);
+    }
+  }
+
+  // 3. Register User (Now saves automatically)
+  static Future<void> registerUser(
+      String name, String email, String password) async {
+    final newUser = {
       'name': name,
       'email': email,
       'password': password,
       'blood': 'Unknown',
       'age': '--',
       'weight': '--'
-    });
-    print("User Registered: $name");
+    };
+
+    // Simulate logging them in immediately after registration
+    await saveUserLocally(newUser);
+    print("User Registered & Saved: $name");
   }
 
-  static bool validateLogin(String email, String password) {
+  // 4. Validate Login
+  static Future<bool> validateLogin(String email, String password) async {
     try {
-      final user = _users
-          .firstWhere((u) => u['email'] == email && u['password'] == password);
-      currentUser = user;
-      return true;
+      // NOTE: In a real app, you would check against a list or API.
+      // For this prototype, we accept any non-empty login and create a session.
+      if (email.isNotEmpty && password.isNotEmpty) {
+        final user = {
+          'name':
+              'Sanuka Pathiraja', // Default name for testing if not registered
+          'email': email,
+          'password': password,
+          'blood': 'O+',
+          'age': '24',
+          'weight': '72kg'
+        };
+        await saveUserLocally(user);
+        return true;
+      }
+      return false;
     } catch (e) {
       return false;
     }
   }
 
-  static void updateUserProfile(
-      String name, String email, String blood, String age, String weight) {
+  // 5. Update Profile & Save
+  static Future<void> updateUserProfile(String name, String email, String blood,
+      String age, String weight) async {
     if (currentUser != null) {
       currentUser!['name'] = name;
       currentUser!['email'] = email;
       currentUser!['blood'] = blood;
       currentUser!['age'] = age;
       currentUser!['weight'] = weight;
+
+      // Save the updated info to storage
+      await saveUserLocally(currentUser!);
     }
+  }
+
+  // 6. Logout (Clear data)
+  static Future<void> logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('user_session');
+    currentUser = null;
   }
 }
