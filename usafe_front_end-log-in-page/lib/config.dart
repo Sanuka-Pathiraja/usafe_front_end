@@ -1,53 +1,71 @@
 import 'package:flutter/material.dart';
 
+// --- GLOBAL COLORS ---
 class AppColors {
-  // --- BRAND COLORS (From Logo) ---
-  static const Color primarySky =
-      Color(0xFF29B6F6); // The light blue of the shield
+  // Deep Navy Background (Matches the "Right" Design)
+  static const Color background = Color(0xFF0A0E21);
+  static const Color backgroundBlack = Color(0xFF000000); // For gradient fade
+
+  // Input Fields & Cards
+  static const Color surfaceCard = Color(0xFF1D1E33);
+
+  // Brand Colors
+  static const Color primarySky = Color(0xFF448AFF); // Bright Blue text/icons
   static const Color primaryNavy =
-      Color(0xFF1565C0); // The dark blue of "USafe" text
+      Color(0xFF0D47A1); // Darker Blue for gradients
 
-  // --- UI BASE COLORS ---
-  static const Color background = Color(0xFF151B28); // Deep Matte Midnight
-  static const Color surfaceCard =
-      Color(0xFF1C2436); // Lighter Card/Footer color
-  static const Color textLight = Color(0xFFFFFFFF); // White text
-  static const Color textGrey = Color(0xFFB0BEC5); // Greyed out text
-
-  // --- FUNCTIONAL COLORS ---
-  static const Color safetyTeal = Color(0xFF26A69A); // Success/Safe
-  static const Color alertRed = Color(0xFFE53935); // Panic/Danger
-  static const Color dangerRed = Color(0xFFE53935); // Alias for Danger
-
-  // --- GRADIENTS ---
-  static const LinearGradient primaryGradient = LinearGradient(
-    colors: [primarySky, primaryNavy],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-  );
+  // Status Colors
+  static const Color safetyTeal = Color(0xFF008080);
+  static const Color alertRed = Color(0xFFFF2E2E);
+  static const Color textGrey = Color(0xFF9CA3AF);
 }
 
-// --- DATABASE SIMULATION ---
-// This fixes the errors in Auth & Login screens
+// --- MOCK DATABASE ---
 class MockDatabase {
   static final List<Map<String, String>> _users = [
-    {'email': 'test@usafe.com', 'password': '123'},
+    {
+      'name': 'Sanuka Pathiraja',
+      'email': 'test@usafe.com',
+      'password': '123',
+      'blood': 'O+',
+      'age': '24',
+      'weight': '72kg'
+    },
   ];
 
-  static void registerUser(String email, String password) {
-    _users.add({'email': email, 'password': password});
-    debugPrint("User Registered: $email");
+  static Map<String, String>? currentUser;
+
+  static void registerUser(String name, String email, String password) {
+    _users.add({
+      'name': name,
+      'email': email,
+      'password': password,
+      'blood': 'Unknown',
+      'age': '--',
+      'weight': '--'
+    });
+    print("User Registered: $name");
   }
 
   static bool validateLogin(String email, String password) {
-    // Allows any login if fields are not empty (for testing)
-    // Or checks against the registered list
-    if (email.isEmpty || password.isEmpty) return false;
+    try {
+      final user = _users
+          .firstWhere((u) => u['email'] == email && u['password'] == password);
+      currentUser = user;
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
 
-    // Simple check: allows the default user OR any new user you just registered
-    bool isValid = _users
-        .any((user) => user['email'] == email && user['password'] == password);
-    return isValid ||
-        true; // remove '|| true' to enforce strict password checking
+  static void updateUserProfile(
+      String name, String email, String blood, String age, String weight) {
+    if (currentUser != null) {
+      currentUser!['name'] = name;
+      currentUser!['email'] = email;
+      currentUser!['blood'] = blood;
+      currentUser!['age'] = age;
+      currentUser!['weight'] = weight;
+    }
   }
 }
