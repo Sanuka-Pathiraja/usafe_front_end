@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'config.dart';
 import 'auth_screens.dart';
 
@@ -32,12 +31,10 @@ class MyApp extends StatelessWidget {
         brightness: Brightness.dark,
         scaffoldBackgroundColor: AppColors.background,
         useMaterial3: true,
-        textTheme: GoogleFonts.spaceGroteskTextTheme(
-          ThemeData.dark().textTheme,
-        ).apply(
-          bodyColor: AppColors.textSoft,
-          displayColor: Colors.white,
-        ),
+        textTheme: ThemeData.dark().textTheme.apply(
+              bodyColor: AppColors.textSoft,
+              displayColor: Colors.white,
+            ),
         colorScheme: const ColorScheme.dark(
           primary: AppColors.primarySky,
           secondary: AppColors.safetyTeal,
@@ -49,7 +46,7 @@ class MyApp extends StatelessWidget {
           elevation: 0,
           centerTitle: true,
           iconTheme: const IconThemeData(color: Colors.white),
-          titleTextStyle: GoogleFonts.spaceGrotesk(
+          titleTextStyle: const TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w700,
             color: Colors.white,
@@ -62,7 +59,7 @@ class MyApp extends StatelessWidget {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
             ),
-            textStyle: GoogleFonts.spaceGrotesk(
+            textStyle: const TextStyle(
               fontWeight: FontWeight.w700,
               letterSpacing: 0.4,
             ),
