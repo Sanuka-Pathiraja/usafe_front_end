@@ -1,27 +1,38 @@
-pluginManagement {
-    def flutterSdkPath = {
-        def properties = new Properties()
-        file("local.properties").withInputStream { properties.load(it) }
-        def flutterSdkPath = properties.getProperty("flutter.sdk")
-        assert flutterSdkPath != null, "flutter.sdk not set in local.properties"
-        return flutterSdkPath
-    }()
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    id "dev.flutter.flutter-gradle-plugin"
+}
 
-    includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
+android {
+    namespace "com.example.usafe_fresh"
+    compileSdkVersion flutter.compileSdkVersion
+    ndkVersion flutter.ndkVersion
 
-    repositories {
-        google()
-        mavenCentral()
-        gradlePluginPortal()
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = "1.8"
+    }
+
+    defaultConfig {
+        applicationId "com.example.usafe_fresh"
+        minSdkVersion flutter.minSdkVersion
+        targetSdkVersion flutter.targetSdkVersion
+        versionCode flutter.versionCode
+        versionName flutter.versionName
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.debug
+        }
     }
 }
 
-plugins {
-    id "dev.flutter.flutter-plugin-loader" version "1.0.0"
-    // FIX: Updated to 8.2.1 to support Java 21
-    id "com.android.application" version "8.2.1" apply false
-    // FIX: Updated Kotlin to match modern Gradle
-    id "org.jetbrains.kotlin.android" version "1.9.22" apply false
+flutter {
+    source "../.."
 }
-
-include ":app"
