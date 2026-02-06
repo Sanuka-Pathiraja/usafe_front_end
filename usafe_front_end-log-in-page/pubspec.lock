@@ -51,17 +51,6 @@ packages:
     version: "3.0.7"
   csslib:
     dependency: transitive
-<<<<<<< HEAD
-    description:
-      name: csslib
-      sha256: "09bad715f418841f976c77db72d5398dc1253c21fb9c0c7f0b0b985860b2d58e"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.0.2"
-  cupertino_icons:
-    dependency: "direct main"
-=======
->>>>>>> 25864e455d2821af66d1bef5c853f0886afc4387
     description:
       name: csslib
       sha256: "09bad715f418841f976c77db72d5398dc1253c21fb9c0c7f0b0b985860b2d58e"
@@ -133,17 +122,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_stripe
-<<<<<<< HEAD
-      sha256: "4f92660607b91310ec345948355c68843971d3f70673b529076707259b442513"
-      url: "https://pub.dev"
-    source: hosted
-    version: "9.6.0"
-=======
       sha256: dfa4f0cf2f64cf82fde57357283819688c3b985c6cd10c26f50dd4a5476e4924
       url: "https://pub.dev"
     source: hosted
     version: "10.1.0"
->>>>>>> 25864e455d2821af66d1bef5c853f0886afc4387
   flutter_test:
     dependency: "direct dev"
     description: flutter
@@ -210,6 +192,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.2.5"
+  google_fonts:
+    dependency: "direct main"
+    description:
+      name: google_fonts
+      sha256: df9763500dadba0155373e9cb44e202ce21bd9ed5de6bdbd05c5854e86839cb8
+      url: "https://pub.dev"
+    source: hosted
+    version: "6.3.0"
   google_maps:
     dependency: transitive
     description:
@@ -289,11 +279,7 @@ packages:
       sha256: "3df61194eb431efc39c4ceba583b95633a403f46c9fd341e550ce0bfa50e9aa5"
       url: "https://pub.dev"
     source: hosted
-<<<<<<< HEAD
-    version: "0.19.0"
-=======
     version: "0.20.2"
->>>>>>> 25864e455d2821af66d1bef5c853f0886afc4387
   json_annotation:
     dependency: transitive
     description:
@@ -366,6 +352,30 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.9.0"
+  path_provider:
+    dependency: transitive
+    description:
+      name: path_provider
+      sha256: "50c5dd5b6e1aaf6fb3a78b33f6aa3afca52bf903a8a5298f53101fdaee55bbcd"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.1.5"
+  path_provider_android:
+    dependency: transitive
+    description:
+      name: path_provider_android
+      sha256: d0d310befe2c8ab9e7f393288ccbb11b60c019c6b5afc21973eeee4dda2b35e9
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.2.17"
+  path_provider_foundation:
+    dependency: transitive
+    description:
+      name: path_provider_foundation
+      sha256: "4843174df4d288f5e29185bd6e72a6fbdf5a4a4602717eed565497429f179942"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.4.1"
   path_provider_linux:
     dependency: transitive
     description:
@@ -394,10 +404,10 @@ packages:
     dependency: "direct main"
     description:
       name: permission_handler
-      sha256: "18bf33f7fefbd812f37e72091a15575e72d5318854877e0e4035a24ac1113ecb"
+      sha256: "59adad729136f01ea9e35a48f5d1395e25cba6cea552249ddbe9cf950f5d7849"
       url: "https://pub.dev"
     source: hosted
-    version: "11.3.1"
+    version: "11.4.0"
   permission_handler_android:
     dependency: transitive
     description:
@@ -567,47 +577,26 @@ packages:
     dependency: transitive
     description:
       name: stripe_android
-<<<<<<< HEAD
-      sha256: "1de36b35c50f33e538c8e4bd6173f0ab8d7d8e6b9e05388488775e439c29b7d2"
-      url: "https://pub.dev"
-    source: hosted
-    version: "9.6.0+2"
-=======
       sha256: "74c977ae0a918949e84796a8a3524a68610f4719c66170f01592b4bc5196f049"
       url: "https://pub.dev"
     source: hosted
     version: "10.2.1"
->>>>>>> 25864e455d2821af66d1bef5c853f0886afc4387
   stripe_ios:
     dependency: transitive
     description:
       name: stripe_ios
-<<<<<<< HEAD
-      sha256: "4b176f4ee7eaf229815b90c3ff78935da9e01765f4d3153b76fd0d3d64680294"
-      url: "https://pub.dev"
-    source: hosted
-    version: "9.6.0"
-=======
       sha256: eb91cb9b971e22f865937309b0e5e4e0f5bcbfc39e671bd41c0fdaddbb5ad948
       url: "https://pub.dev"
     source: hosted
     version: "10.2.0"
->>>>>>> 25864e455d2821af66d1bef5c853f0886afc4387
   stripe_platform_interface:
     dependency: transitive
     description:
       name: stripe_platform_interface
-<<<<<<< HEAD
-      sha256: ac3c6ac938a26674ae8ae691d689e0b949ab1a8d270489f08d35446dd8d5bea0
-      url: "https://pub.dev"
-    source: hosted
-    version: "9.6.0"
-=======
       sha256: "1a2e3fe106bc723c0c0cda2f97f15bfef16944507621639c636041845a96ff57"
       url: "https://pub.dev"
     source: hosted
     version: "10.2.0"
->>>>>>> 25864e455d2821af66d1bef5c853f0886afc4387
   term_glyph:
     dependency: transitive
     description:

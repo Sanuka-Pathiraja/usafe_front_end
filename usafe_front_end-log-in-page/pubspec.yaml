@@ -4,42 +4,23 @@ publish_to: "none"
 version: 1.0.0+1
 
 environment:
-<<<<<<< HEAD
-  # Minimum SDK 2.17.0 is required for the code to run
-=======
->>>>>>> 25864e455d2821af66d1bef5c853f0886afc4387
   sdk: ">=2.17.0 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
 
-  # Core Functionality
-<<<<<<< HEAD
-  flutter_contacts: ^1.1.9
-  geolocator: ^13.0.2
-  url_launcher: ^6.3.1
-  intl: ^0.19.0
-  permission_handler: ^11.3.1
-  shared_preferences: ^2.3.5
-
-  # Maps & Payment
-  flutter_stripe: ^9.0.0
-  http: ^1.0.0
-  google_maps_flutter: ^2.10.0
-=======
   flutter_contacts: ^1.1.9+2
+  google_fonts: ^6.2.1
   permission_handler: ^11.3.1
   geolocator: ^12.0.0
   url_launcher: ^6.3.2
   intl: ^0.20.2
   shared_preferences: ^2.5.3
 
-  # Maps & Payment (Stripe fixed to 10.1.0)
   flutter_stripe: 10.1.0
   http: ^1.6.0
   google_maps_flutter: ^2.12.3
->>>>>>> 25864e455d2821af66d1bef5c853f0886afc4387
 
 dev_dependencies:
   flutter_test:
@@ -49,11 +30,6 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-<<<<<<< HEAD
-  # Assets are enabled because the files exist
-=======
-  # Assets
->>>>>>> 25864e455d2821af66d1bef5c853f0886afc4387
   assets:
     - assets/usafe_logo.png
     - assets/google.jpg

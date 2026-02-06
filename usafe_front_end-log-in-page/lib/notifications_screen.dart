@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-<<<<<<< HEAD
-import '../config.dart';
+import 'config.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -18,32 +17,44 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text("Notifications",
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: const Text(
+          "Notifications",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
         backgroundColor: Colors.transparent,
         iconTheme: const IconThemeData(color: Colors.white),
         elevation: 0,
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
+      body: AppBackground(
+        child: ListView(
+          padding: const EdgeInsets.all(24),
           children: [
             _buildSwitchTile(
-                "Push Notifications",
-                "Receive instant alerts on this device",
-                _pushEnabled,
-                (v) => setState(() => _pushEnabled = v)),
-            _buildSwitchTile("SMS Alerts", "Receive emergency alerts via text",
-                _smsEnabled, (v) => setState(() => _smsEnabled = v)),
+              "Push Notifications",
+              "Receive instant alerts on this device",
+              _pushEnabled,
+              (v) => setState(() => _pushEnabled = v),
+            ),
             _buildSwitchTile(
-                "Email Notifications",
-                "Receive weekly safety reports",
-                _emailEnabled,
-                (v) => setState(() => _emailEnabled = v)),
-            _buildSwitchTile("Marketing & Updates", "Product updates and news",
-                _promoEnabled, (v) => setState(() => _promoEnabled = v)),
+              "SMS Alerts",
+              "Receive emergency alerts via text",
+              _smsEnabled,
+              (v) => setState(() => _smsEnabled = v),
+            ),
+            _buildSwitchTile(
+              "Email Notifications",
+              "Receive weekly safety reports",
+              _emailEnabled,
+              (v) => setState(() => _emailEnabled = v),
+            ),
+            _buildSwitchTile(
+              "Marketing & Updates",
+              "Product updates and news",
+              _promoEnabled,
+              (v) => setState(() => _promoEnabled = v),
+            ),
           ],
         ),
       ),
@@ -51,40 +62,32 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Widget _buildSwitchTile(
-      String title, String subtitle, bool value, Function(bool) onChanged) {
+    String title,
+    String subtitle,
+    bool value,
+    Function(bool) onChanged,
+  ) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: AppColors.surfaceCard,
+        color: AppColors.surfaceCardSoft,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
       child: SwitchListTile(
         activeColor: AppColors.primarySky,
         inactiveTrackColor: Colors.grey.withOpacity(0.3),
-        title: Text(title,
-            style: const TextStyle(
-                color: Colors.white, fontWeight: FontWeight.bold)),
-        subtitle: Text(subtitle,
-            style: const TextStyle(color: AppColors.textGrey, fontSize: 12)),
+        title: Text(
+          title,
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: const TextStyle(color: AppColors.textGrey, fontSize: 12),
+        ),
         value: value,
         onChanged: onChanged,
       ),
     );
   }
 }
-=======
-import 'config.dart';
-
-class NotificationsScreen extends StatelessWidget {
-  const NotificationsScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Notifications")),
-      body: const Center(child: Text("Notifications Placeholder", style: TextStyle(color: Colors.white))),
-    );
-  }
-}
->>>>>>> 25864e455d2821af66d1bef5c853f0886afc4387

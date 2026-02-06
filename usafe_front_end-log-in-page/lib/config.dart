@@ -4,15 +4,91 @@ import 'dart:convert';
 
 // --- GLOBAL COLORS ---
 class AppColors {
-<<<<<<< HEAD
   static const Color background = Color(0xFF0A0E21);
-  static const Color backgroundBlack = Color(0xFF000000);
-  static const Color surfaceCard = Color(0xFF1D1E33);
-  static const Color primarySky = Color(0xFF448AFF);
-  static const Color primaryNavy = Color(0xFF0D47A1);
-  static const Color safetyTeal = Color(0xFF008080);
-  static const Color alertRed = Color(0xFFFF2E2E);
+  static const Color backgroundDeep = Color(0xFF070A16);
+  static const Color backgroundBlack = Color(0xFF03050A);
+  static const Color surfaceCard = Color(0xFF151A2D);
+  static const Color surfaceCardSoft = Color(0xFF1C2240);
+  static const Color primarySky = Color(0xFF4CC9F0);
+  static const Color primaryNavy = Color(0xFF0B1E4A);
+  static const Color safetyTeal = Color(0xFF1AA7A1);
+  static const Color alertRed = Color(0xFFFF4D5A);
   static const Color textGrey = Color(0xFF9CA3AF);
+  static const Color textSoft = Color(0xFFCBD5E1);
+}
+
+class AppBackground extends StatelessWidget {
+  final Widget child;
+  const AppBackground({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  AppColors.background,
+                  AppColors.backgroundDeep,
+                  AppColors.backgroundBlack,
+                ],
+              ),
+            ),
+          ),
+        ),
+        const _GlowBlob(
+          alignment: Alignment(-1.1, -0.9),
+          size: 260,
+          color: AppColors.primarySky,
+          opacity: 0.12,
+        ),
+        const _GlowBlob(
+          alignment: Alignment(1.0, 1.1),
+          size: 240,
+          color: AppColors.safetyTeal,
+          opacity: 0.1,
+        ),
+        child,
+      ],
+    );
+  }
+}
+
+class _GlowBlob extends StatelessWidget {
+  final Alignment alignment;
+  final double size;
+  final Color color;
+  final double opacity;
+
+  const _GlowBlob({
+    required this.alignment,
+    required this.size,
+    required this.color,
+    required this.opacity,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: alignment,
+      child: IgnorePointer(
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: RadialGradient(
+              colors: [color.withOpacity(opacity), Colors.transparent],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // --- MOCK DATABASE WITH PERSISTENCE ---
@@ -104,58 +180,5 @@ class MockDatabase {
     // Optional: Clear contacts on logout
     // await prefs.remove('trusted_contacts'); 
     currentUser = null;
-=======
-  // --- BACKGROUNDS ---
-  static const bgDark = Color(0xFF020617); // Pitch black-blue
-  static const bgLight = Color(0xFF0F172A); // Lighter navy
-  static const surface = Color(0xFF1E293B); // Slate card color
-  static final glass = Colors.white.withOpacity(0.05);
-  static final glassBorder = Colors.white.withOpacity(0.1);
-
-  // --- ACCENTS ---
-  static const primary = Color(0xFF06B6D4); // Electric Cyan
-  static const primaryDim = Color(0xFF0891B2);
-  static const alert = Color(0xFFEF4444); // Vivid Red
-  static const success = Color(0xFF10B981); // Emerald Green
-  
-  // --- TEXT ---
-  static const textMain = Colors.white;
-  static const textSub = Color(0xFF94A3B8); // Slate Grey
-}
-
-// --- MODELS ---
-class EmergencyContact {
-  final String id, name, phone, label;
-  EmergencyContact({required this.id, required this.name, required this.phone, required this.label});
-}
-
-// --- DATABASE ---
-class MockDatabase {
-  static Map<String, dynamic> currentUser = {
-    "name": "Sanuka Pathiraja",
-    "email": "sanuka@example.com",
-    "phone": "+94 77 123 4567"
-  };
-
-  // Used in Profile
-  static List<EmergencyContact> emergencyContacts = [
-    EmergencyContact(id: '1', name: "Jane Doe", phone: "0712345678", label: "Mother"),
-    EmergencyContact(id: '2', name: "John Smith", phone: "0771234567", label: "Partner"),
-  ];
-
-  // Used in Contacts Screen
-  static List<Map<String, String>> trustedContacts = [
-    {"name": "Jane Doe", "phone": "0712345678", "relation": "Mother"},
-    {"name": "John Smith", "phone": "0771234567", "relation": "Partner"},
-    {"name": "Dr. Emily", "phone": "0771234567", "relation": "Doctor"},
-  ];
-
-  static Future<void> saveTrustedContacts(List<Map<String, String>> list) async {
-    trustedContacts = list;
-  }
-  
-  static Future<void> updateUserProfile(Map<String, dynamic> data) async {
-    currentUser.addAll(data);
->>>>>>> 25864e455d2821af66d1bef5c853f0886afc4387
   }
 }

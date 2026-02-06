@@ -1,51 +1,27 @@
-pluginManagement {
-    def flutterSdkPath = {
-        def properties = new Properties()
-        file("local.properties").withInputStream { properties.load(it) }
-        def flutterSdkPath = properties.getProperty("flutter.sdk")
-        assert flutterSdkPath != null, "flutter.sdk not set in local.properties"
-        return flutterSdkPath
-    }()
-
-    includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
-
-    repositories {
-        google()
-        mavenCentral()
-        gradlePluginPortal()
-    }
-}
-
 plugins {
-    id "dev.flutter.flutter-plugin-loader" version "1.0.0"
-    // FIX: Updated to 8.2.1 to support Java 21
-    id "com.android.application" version "8.2.1" apply false
-    // FIX: Updated Kotlin to match modern Gradle
-    id "org.jetbrains.kotlin.android" version "1.9.22" apply false
+    id "com.android.application"
+    id "kotlin-android"
+    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    id "dev.flutter.flutter-gradle-plugin"
 }
 
-<<<<<<< HEAD
-include ":app"
-=======
 android {
-    namespace = "com.example.usafe_fresh"
+    namespace = "com.example.usafe_front_end"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
-        // UPDATED: Changed to Java 17 to fix warnings
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
     }
 
     kotlinOptions {
-        // UPDATED: Changed to Java 17 to fix warnings
-        jvmTarget = JavaVersion.VERSION_17
+        jvmTarget = JavaVersion.VERSION_1_8
     }
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.usafe_fresh"
+        applicationId = "com.example.usafe_front_end"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -66,4 +42,3 @@ android {
 flutter {
     source = "../.."
 }
->>>>>>> 25864e455d2821af66d1bef5c853f0886afc4387

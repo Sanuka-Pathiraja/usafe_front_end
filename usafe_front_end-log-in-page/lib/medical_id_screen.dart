@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'config.dart';
 
-<<<<<<< HEAD
 class MedicalIDScreen extends StatefulWidget {
   const MedicalIDScreen({super.key});
 
@@ -21,55 +20,62 @@ class _MedicalIDScreenState extends State<MedicalIDScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text("Medical ID",
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: const Text(
+          "Medical ID",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
         backgroundColor: Colors.transparent,
         iconTheme: const IconThemeData(color: Colors.white),
         elevation: 0,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildSectionHeader("Critical Information"),
-            const SizedBox(height: 16),
-            _buildInputArea("Allergies & Reactions", _allergiesController, 3),
-            const SizedBox(height: 20),
-            _buildInputArea("Medical Conditions", _conditionsController, 2),
-            const SizedBox(height: 20),
-            _buildInputArea("Current Medications", _medicationsController, 3),
-            const SizedBox(height: 30),
-            _buildSectionHeader("Emergency Notes"),
-            const SizedBox(height: 16),
-            _buildInputArea(
-                "Notes for First Responders", _emergencyNotesController, 4),
-            const SizedBox(height: 40),
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                      content: Text("Medical ID Saved"),
-                      backgroundColor: AppColors.safetyTeal));
-                  Navigator.pop(context);
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primarySky,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)),
-                ),
-                child: const Text("SAVE INFORMATION",
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold)),
+      body: AppBackground(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSectionHeader("Critical Information"),
+              const SizedBox(height: 16),
+              _buildInputArea("Allergies & Reactions", _allergiesController, 3),
+              const SizedBox(height: 20),
+              _buildInputArea("Medical Conditions", _conditionsController, 2),
+              const SizedBox(height: 20),
+              _buildInputArea("Current Medications", _medicationsController, 3),
+              const SizedBox(height: 30),
+              _buildSectionHeader("Emergency Notes"),
+              const SizedBox(height: 16),
+              _buildInputArea(
+                "Notes for First Responders",
+                _emergencyNotesController,
+                4,
               ),
-            ),
-          ],
+              const SizedBox(height: 40),
+              SizedBox(
+                width: double.infinity,
+                height: 55,
+                child: ElevatedButton(
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text("Medical ID Saved"),
+                        backgroundColor: AppColors.safetyTeal,
+                      ),
+                    );
+                    Navigator.pop(context);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primarySky,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: const Text("SAVE INFORMATION"),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -79,23 +85,26 @@ class _MedicalIDScreenState extends State<MedicalIDScreen> {
     return Text(
       title,
       style: const TextStyle(
-          color: AppColors.primarySky,
-          fontSize: 18,
-          fontWeight: FontWeight.bold),
+        color: AppColors.primarySky,
+        fontSize: 18,
+        fontWeight: FontWeight.bold,
+      ),
     );
   }
 
   Widget _buildInputArea(
-      String label, TextEditingController controller, int maxLines) {
+    String label,
+    TextEditingController controller,
+    int maxLines,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label,
-            style: const TextStyle(color: Colors.white70, fontSize: 14)),
+        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 14)),
         const SizedBox(height: 8),
         Container(
           decoration: BoxDecoration(
-            color: AppColors.surfaceCard,
+            color: AppColors.surfaceCardSoft,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: Colors.white.withOpacity(0.1)),
           ),
@@ -113,16 +122,3 @@ class _MedicalIDScreenState extends State<MedicalIDScreen> {
     );
   }
 }
-=======
-class MedicalIDScreen extends StatelessWidget {
-  const MedicalIDScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Medical ID")),
-      body: const Center(child: Text("Medical ID Placeholder", style: TextStyle(color: Colors.white))),
-    );
-  }
-}
->>>>>>> 25864e455d2821af66d1bef5c853f0886afc4387

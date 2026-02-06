@@ -57,9 +57,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                 ),
                 child: Image.asset(
                   'assets/usafe_logo.png', // USafe Logo Asset
-                  height: 100,
-                  width: 100,
-                  errorBuilder: (c, e, s) => const Icon(Icons.shield, size: 100, color: AppColors.primarySky),
+                  height: 140,
+                  width: 140,
+                  errorBuilder: (c, e, s) => const Icon(Icons.shield, size: 140, color: AppColors.primarySky),
                 ),
               ),
               const SizedBox(height: 20),
@@ -136,7 +136,7 @@ class _LoginScreenState extends State<LoginScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 // Logo Asset
-                Image.asset('assets/usafe_logo.png', height: 80, errorBuilder: (c, e, s) => const Icon(Icons.shield, size: 80, color: AppColors.primarySky)),
+                Image.asset('assets/usafe_logo.png', height: 120, errorBuilder: (c, e, s) => const Icon(Icons.shield, size: 120, color: AppColors.primarySky)),
                 const SizedBox(height: 30),
                 const Text("Welcome Back!", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
                 const SizedBox(height: 10),
@@ -228,7 +228,7 @@ class _SignupScreenState extends State<SignupScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Image.asset('assets/usafe_logo.png', height: 80, errorBuilder: (c, e, s) => const Icon(Icons.shield_moon, size: 80, color: AppColors.primarySky)),
+                Image.asset('assets/usafe_logo.png', height: 120, errorBuilder: (c, e, s) => const Icon(Icons.shield_moon, size: 120, color: AppColors.primarySky)),
                 const SizedBox(height: 30),
                 const Text("Create Account", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
                 const SizedBox(height: 10),

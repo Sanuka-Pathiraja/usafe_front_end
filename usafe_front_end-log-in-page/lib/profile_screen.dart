@@ -1,18 +1,11 @@
 import 'package:flutter/material.dart';
-<<<<<<< HEAD
-import 'config.dart'; // Imports AppColors & MockDatabase
-import 'auth_screens.dart'; // For Logout navigation
+import 'config.dart';
+import 'auth_screens.dart';
 import 'medical_id_screen.dart';
 import 'notifications_screen.dart';
 import 'privacy_screen.dart';
 import 'help_support_screen.dart';
-import 'contacts_screen.dart'; // NEW: Import the contacts screen
-=======
-import 'package:flutter_contacts/flutter_contacts.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'config.dart';
-import 'auth_screens.dart';
->>>>>>> 25864e455d2821af66d1bef5c853f0886afc4387
+import 'contacts_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -21,23 +14,16 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-<<<<<<< HEAD
-  bool _isEditing = false; 
+  bool _isEditing = false;
   late TextEditingController _nameController;
   late TextEditingController _emailController;
   late TextEditingController _bloodController;
   late TextEditingController _ageController;
   late TextEditingController _weightController;
-=======
-  final Map<String, dynamic> _user = MockDatabase.currentUser;
-  bool _isEditing = false;
-  late TextEditingController _nameController, _emailController, _phoneController;
->>>>>>> 25864e455d2821af66d1bef5c853f0886afc4387
 
   @override
   void initState() {
     super.initState();
-<<<<<<< HEAD
     final user = MockDatabase.currentUser ?? {
       'name': 'Guest User',
       'email': 'No Email',
@@ -63,7 +49,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Profile Updated!"), backgroundColor: AppColors.safetyTeal, duration: Duration(seconds: 1)),
+        const SnackBar(
+          content: Text("Profile Updated!"),
+          backgroundColor: AppColors.safetyTeal,
+          duration: Duration(seconds: 1),
+        ),
       );
     }
     setState(() {
@@ -79,46 +69,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _ageController.dispose();
     _weightController.dispose();
     super.dispose();
-=======
-    _nameController = TextEditingController(text: _user['name']);
-    _emailController = TextEditingController(text: _user['email']);
-    _phoneController = TextEditingController(text: _user['phone']);
-  }
-
-  Future<void> _pickContact() async {
-    if (await Permission.contacts.request().isGranted) {
-      final contact = await FlutterContacts.openExternalPick();
-      if (contact != null) {
-        final phone = contact.phones.isNotEmpty ? contact.phones.first.number : "No Number";
-        setState(() {
-          MockDatabase.emergencyContacts.add(EmergencyContact(id: DateTime.now().toString(), name: contact.displayName, phone: phone, label: 'Trusted'));
-        });
-      }
-    }
->>>>>>> 25864e455d2821af66d1bef5c853f0886afc4387
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-<<<<<<< HEAD
-      backgroundColor: AppColors.background, 
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
+      backgroundColor: Colors.transparent,
+      body: AppBackground(
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
               Stack(
                 alignment: Alignment.bottomRight,
                 children: [
                   Container(
                     padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: AppColors.primarySky, width: 2)),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppColors.primarySky, width: 2),
+                    ),
                     child: const CircleAvatar(
                       radius: 50,
-                      backgroundColor: AppColors.surfaceCard,
-                      backgroundImage: AssetImage('assets/avatar_placeholder.png'), 
+                      backgroundColor: AppColors.surfaceCardSoft,
                       child: Icon(Icons.person, size: 50, color: Colors.white38),
                     ),
                   ),
@@ -126,20 +101,57 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     onTap: _toggleEdit,
                     child: Container(
                       padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(color: _isEditing ? AppColors.safetyTeal : AppColors.primarySky, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 5, offset: const Offset(0, 3))]),
-                      child: Icon(_isEditing ? Icons.check : Icons.edit, color: Colors.white, size: 20),
+                      decoration: BoxDecoration(
+                        color:
+                            _isEditing ? AppColors.safetyTeal : AppColors.primarySky,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 5,
+                            offset: const Offset(0, 3),
+                          )
+                        ],
+                      ),
+                      child: Icon(
+                        _isEditing ? Icons.check : Icons.edit,
+                        color: Colors.white,
+                        size: 20,
+                      ),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 20),
-              _buildEditableField(controller: _nameController, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold), isTitle: true),
+              _buildEditableField(
+                controller: _nameController,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+                isTitle: true,
+              ),
               const SizedBox(height: 8),
-              _buildEditableField(controller: _emailController, style: const TextStyle(color: AppColors.textGrey, fontSize: 14), isTitle: false),
+              _buildEditableField(
+                controller: _emailController,
+                style: const TextStyle(color: AppColors.textGrey, fontSize: 14),
+                isTitle: false,
+              ),
               const SizedBox(height: 30),
               Container(
                 padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(color: AppColors.primaryNavy, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10, offset: const Offset(0, 5))]),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceCardSoft,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.25),
+                      blurRadius: 16,
+                      offset: const Offset(0, 8),
+                    )
+                  ],
+                ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
@@ -152,37 +164,46 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
               const SizedBox(height: 30),
-              
-              // --- MENU ITEMS ---
               _buildMenuTile(
-                icon: Icons.medical_services_outlined, 
-                title: "Medical ID & Allergies", 
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MedicalIDScreen()))
-              ),
-              
-              // NEW: Trusted Contacts Button
-              _buildMenuTile(
-                icon: Icons.contacts_outlined, 
-                title: "Trusted Contacts", 
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ContactsScreen()))
-              ),
-
-              _buildMenuTile(
-                icon: Icons.notifications_outlined, 
-                title: "Notifications", 
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen()))
+                icon: Icons.medical_services_outlined,
+                title: "Medical ID & Allergies",
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const MedicalIDScreen()),
+                ),
               ),
               _buildMenuTile(
-                icon: Icons.lock_outline, 
-                title: "Privacy & Security", 
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacyScreen()))
+                icon: Icons.contacts_outlined,
+                title: "Trusted Contacts",
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ContactsScreen()),
+                ),
               ),
               _buildMenuTile(
-                icon: Icons.help_outline, 
-                title: "Help & Support", 
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HelpSupportScreen()))
+                icon: Icons.notifications_outlined,
+                title: "Notifications",
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+                ),
               ),
-              
+              _buildMenuTile(
+                icon: Icons.lock_outline,
+                title: "Privacy & Security",
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const PrivacyScreen()),
+                ),
+              ),
+              _buildMenuTile(
+                icon: Icons.help_outline,
+                title: "Help & Support",
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const HelpSupportScreen()),
+                ),
+              ),
               const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
@@ -190,75 +211,104 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onPressed: () async {
                     await MockDatabase.logout();
                     if (!mounted) return;
-                    Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const LoginScreen()), (route) => false);
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(builder: (context) => const LoginScreen()),
+                      (route) => false,
+                    );
                   },
                   icon: const Icon(Icons.logout, color: AppColors.alertRed),
-                  label: const Text("Logout", style: TextStyle(color: AppColors.alertRed, fontSize: 16, fontWeight: FontWeight.bold)),
-                  style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 15), backgroundColor: AppColors.surfaceCard.withOpacity(0.5), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                  label: const Text(
+                    "Logout",
+                    style: TextStyle(
+                      color: AppColors.alertRed,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                    backgroundColor: AppColors.surfaceCardSoft.withOpacity(0.6),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
                 ),
               ),
-              const SizedBox(height: 100), 
+              const SizedBox(height: 100),
             ],
           ),
-=======
-      backgroundColor: Colors.transparent,
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.fromLTRB(20, 40, 20, 30),
-              decoration: const BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.vertical(bottom: Radius.circular(30))),
-              child: Column(children: [
-                CircleAvatar(radius: 50, backgroundColor: AppColors.bgDark, child: Text(_user['name'][0], style: const TextStyle(fontSize: 40, color: AppColors.primary, fontWeight: FontWeight.bold))),
-                const SizedBox(height: 15),
-                Text(_user['name'], style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-                Text(_user['email'], style: const TextStyle(color: AppColors.textSub, fontSize: 16)),
-              ]),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                 const Text("Emergency Contacts", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                 const SizedBox(height: 10),
-                 ...MockDatabase.emergencyContacts.map((c) => ListTile(
-                   title: Text(c.name, style: const TextStyle(color: Colors.white)),
-                   subtitle: Text(c.phone, style: const TextStyle(color: AppColors.textSub)),
-                   leading: const Icon(Icons.person, color: AppColors.primary),
-                   trailing: IconButton(icon: const Icon(Icons.delete, color: AppColors.alert), onPressed: () => setState(() => MockDatabase.emergencyContacts.remove(c))),
-                 )),
-              ]),
-            ),
-            Padding(padding: const EdgeInsets.all(20), child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: AppColors.alert), onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AuthScreen())), child: const Text("Log Out", style: TextStyle(color: Colors.white)))),
-          ],
->>>>>>> 25864e455d2821af66d1bef5c853f0886afc4387
         ),
       ),
     );
   }
-<<<<<<< HEAD
 
-  Widget _buildEditableField({required TextEditingController controller, required TextStyle style, required bool isTitle}) {
+  Widget _buildEditableField({
+    required TextEditingController controller,
+    required TextStyle style,
+    required bool isTitle,
+  }) {
     if (_isEditing) {
       return Container(
         width: isTitle ? 250 : 300,
         padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(color: AppColors.surfaceCard, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.primarySky.withOpacity(0.5))),
-        child: TextField(controller: controller, textAlign: TextAlign.center, style: style.copyWith(fontSize: isTitle ? 18 : 14), decoration: const InputDecoration(border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 8))),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceCard,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.primarySky.withOpacity(0.5)),
+        ),
+        child: TextField(
+          controller: controller,
+          textAlign: TextAlign.center,
+          style: style.copyWith(fontSize: isTitle ? 18 : 14),
+          decoration: const InputDecoration(
+            border: InputBorder.none,
+            isDense: true,
+            contentPadding: EdgeInsets.symmetric(vertical: 8),
+          ),
+        ),
       );
-    } else {
-      return Text(controller.text, style: style);
     }
+    return Text(controller.text, style: style);
   }
 
   Widget _buildVitalInput(String label, TextEditingController controller) {
     return Column(
       children: [
-        _isEditing 
-        ? SizedBox(
-            width: 60,
-            child: TextField(controller: controller, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold), decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.zero, border: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white)), enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white38)), focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white)))),
-          )
-        : Text(controller.text, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+        _isEditing
+            ? SizedBox(
+                width: 60,
+                child: TextField(
+                  controller: controller,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                    border: UnderlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white),
+                    ),
+                    enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white38),
+                    ),
+                    focusedBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white),
+                    ),
+                  ),
+                ),
+              )
+            : Text(
+                controller.text,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
         const SizedBox(height: 4),
         Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
       ],
@@ -269,20 +319,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Container(height: 30, width: 1, color: Colors.white24);
   }
 
-  Widget _buildMenuTile({required IconData icon, required String title, required VoidCallback onTap}) {
+  Widget _buildMenuTile({
+    required IconData icon,
+    required String title,
+    required VoidCallback onTap,
+  }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(color: AppColors.surfaceCard, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white.withOpacity(0.05))),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceCardSoft,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
       child: ListTile(
         onTap: onTap,
-        leading: Container(padding: const EdgeInsets.all(8), decoration: const BoxDecoration(color: AppColors.background, shape: BoxShape.circle), child: Icon(icon, color: AppColors.primarySky, size: 20)),
-        title: Text(title, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500)),
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: const BoxDecoration(
+            color: AppColors.background,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: AppColors.primarySky, size: 20),
+        ),
+        title: Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 15,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
         trailing: const Icon(Icons.chevron_right, color: Colors.white38, size: 20),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );
   }
-=======
->>>>>>> 25864e455d2821af66d1bef5c853f0886afc4387
 }
