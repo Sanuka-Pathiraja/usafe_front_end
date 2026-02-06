@@ -143,6 +143,18 @@ class MockDatabase {
     await saveUserLocally(newUser);
   }
 
+  static Future<void> saveBasicProfile(String name, String email) async {
+    final newUser = {
+      'name': name,
+      'email': email,
+      'password': '',
+      'blood': 'Unknown',
+      'age': '--',
+      'weight': '--'
+    };
+    await saveUserLocally(newUser);
+  }
+
   static Future<bool> validateLogin(String email, String password) async {
     try {
       if (email.isNotEmpty && password.isNotEmpty) {

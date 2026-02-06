@@ -121,7 +121,71 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
     await Future.delayed(const Duration(seconds: 1)); // Simulate loading
     if (!mounted) return;
+    await MockDatabase.validateLogin(
+      _emailController.text.trim(),
+      _passwordController.text.trim(),
+    );
     Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen()));
+  }
+
+  Future<void> _showNewUserDialog() async {
+    final nameController = TextEditingController();
+    final emailController = TextEditingController();
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: AppColors.surfaceCard,
+          title: const Text(
+            "New User Setup",
+            style: TextStyle(color: Colors.white),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _AuthField(
+                controller: nameController,
+                hint: "Full Name",
+                icon: Icons.person_outline,
+              ),
+              const SizedBox(height: 12),
+              _AuthField(
+                controller: emailController,
+                hint: "Email",
+                icon: Icons.email_outlined,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text("Cancel", style: TextStyle(color: Colors.white70)),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final name = nameController.text.trim();
+                final email = emailController.text.trim();
+                if (name.isEmpty || email.isEmpty) {
+                  return;
+                }
+                await MockDatabase.saveBasicProfile(name, email);
+                if (!mounted) return;
+                Navigator.pop(dialogContext);
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (_) => const HomeScreen()),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primarySky,
+              ),
+              child: const Text("Continue"),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -154,6 +218,21 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 20),
 
                 _PrimaryButton(text: "LOGIN", isLoading: _isLoading, onPressed: _handleLogin),
+
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: OutlinedButton(
+                    onPressed: _showNewUserDialog,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      side: BorderSide(color: Colors.white.withOpacity(0.2)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: const Text("New user? Set up profile"),
+                  ),
+                ),
 
                 if (widget.onToggle != null)
                   Padding(
@@ -214,6 +293,11 @@ class _SignupScreenState extends State<SignupScreen> {
     setState(() => _isLoading = true);
     await Future.delayed(const Duration(seconds: 1));
     if (!mounted) return;
+    await MockDatabase.registerUser(
+      _nameController.text.trim(),
+      _emailController.text.trim(),
+      _passwordController.text.trim(),
+    );
     Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen()));
   }
 
