@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+<<<<<<< HEAD
 import 'config.dart'; // Imports AppColors for brand consistency
 
 /// ---------------------------------------------------------------------------
@@ -175,11 +176,174 @@ class SafetyScoreScreen extends StatelessWidget {
               ),
             ],
           ),
+=======
+import 'config.dart';
+
+class SafetyScoreScreen extends StatelessWidget {
+  final VoidCallback? onViewMap;
+
+  const SafetyScoreScreen({super.key, this.onViewMap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: true,
+        automaticallyImplyLeading: false, // Removes default back button
+        title: const Text(
+          "My Safety Score",
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+            fontSize: 18,
+          ),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.more_vert, color: Colors.white),
+            onPressed: () {},
+          )
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 1. MAIN SAFETY CARD (UPDATED TO LOGO BLUE)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+              decoration: BoxDecoration(
+                // Use the Logo Blue (Cyan/Sky) here
+                color: const Color(0xFF00B4D8), 
+                borderRadius: BorderRadius.circular(30),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF00B4D8).withOpacity(0.3),
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  // Icon Circle
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.shield_outlined, color: Colors.white, size: 32),
+                  ),
+                  const SizedBox(height: 20),
+                  
+                  // Score Text
+                  RichText(
+                    text: const TextSpan(
+                      children: [
+                        TextSpan(
+                          text: "85",
+                          style: TextStyle(
+                            fontSize: 56,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                            height: 1.0,
+                          ),
+                        ),
+                        TextSpan(
+                          text: "/100",
+                          style: TextStyle(
+                            fontSize: 24,
+                            color: Colors.white70,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    "You are in a safe area",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 30),
+
+                  // View Details Button
+                  SizedBox(
+                    height: 50,
+                    width: 160,
+                    child: ElevatedButton(
+                      onPressed: onViewMap, 
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: const Color(0xFF00B4D8), // Blue text
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(25),
+                        ),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text("View Details", style: TextStyle(fontWeight: FontWeight.bold)),
+                          SizedBox(width: 5),
+                          Icon(Icons.arrow_forward, size: 18),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 30),
+
+            // 2. OTHER STATES
+            const Text(
+              "Other States",
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 15),
+
+            // Caution Card
+            _buildStateCard(
+              score: 62,
+              title: "Proceed with Caution",
+              color: Colors.amber,
+              bgColor: const Color(0xFF3A3320), 
+              icon: Icons.warning_amber_rounded,
+            ),
+
+            const SizedBox(height: 15),
+
+            // Risk Card
+            _buildStateCard(
+              score: 28,
+              title: "High Risk Area",
+              color: const Color(0xFFFF5252),
+              bgColor: const Color(0xFF382020), 
+              icon: Icons.dangerous_outlined,
+            ),
+          ],
+>>>>>>> 25864e455d2821af66d1bef5c853f0886afc4387
         ),
       ),
     );
   }
 
+<<<<<<< HEAD
   // ---------------------------------------------------------------------------
   // HELPER WIDGET: STATE CARD
   // ---------------------------------------------------------------------------
@@ -205,6 +369,23 @@ class SafetyScoreScreen extends StatelessWidget {
       child: Row(
         children: [
           // Colored Icon Circle
+=======
+  Widget _buildStateCard({
+    required int score,
+    required String title,
+    required Color color,
+    required Color bgColor,
+    required IconData icon,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Row(
+        children: [
+>>>>>>> 25864e455d2821af66d1bef5c853f0886afc4387
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
@@ -214,12 +395,16 @@ class SafetyScoreScreen extends StatelessWidget {
             child: Icon(icon, color: Colors.white, size: 24),
           ),
           const SizedBox(width: 16),
+<<<<<<< HEAD
 
           // Text Details
+=======
+>>>>>>> 25864e455d2821af66d1bef5c853f0886afc4387
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+<<<<<<< HEAD
                 Text(
                   score,
                   style: const TextStyle(
@@ -232,15 +417,53 @@ class SafetyScoreScreen extends StatelessWidget {
                   status,
                   style:
                       const TextStyle(color: AppColors.textGrey, fontSize: 13),
+=======
+                RichText(
+                  text: TextSpan(
+                    children: [
+                      TextSpan(
+                        text: "$score",
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const TextSpan(
+                        text: "/100",
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.white54,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.7),
+                    fontSize: 13,
+                  ),
+>>>>>>> 25864e455d2821af66d1bef5c853f0886afc4387
                 ),
               ],
             ),
           ),
+<<<<<<< HEAD
 
           // Trailing Arrow
           const Icon(Icons.chevron_right, color: Colors.white38),
+=======
+          Icon(Icons.arrow_forward_ios, color: Colors.white.withOpacity(0.3), size: 16),
+>>>>>>> 25864e455d2821af66d1bef5c853f0886afc4387
         ],
       ),
     );
   }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> 25864e455d2821af66d1bef5c853f0886afc4387

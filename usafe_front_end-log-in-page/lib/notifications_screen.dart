@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+<<<<<<< HEAD
 import '../config.dart';
 
 class NotificationsScreen extends StatefulWidget {
@@ -72,3 +73,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 }
+=======
+import 'config.dart';
+
+class NotificationsScreen extends StatelessWidget {
+  const NotificationsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Notifications")),
+      body: const Center(child: Text("Notifications Placeholder", style: TextStyle(color: Colors.white))),
+    );
+  }
+}
+>>>>>>> 25864e455d2821af66d1bef5c853f0886afc4387

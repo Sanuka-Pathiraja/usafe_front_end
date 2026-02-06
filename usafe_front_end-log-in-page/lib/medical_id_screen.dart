@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'config.dart';
 
+<<<<<<< HEAD
 class MedicalIDScreen extends StatefulWidget {
   const MedicalIDScreen({super.key});
 
@@ -112,3 +113,16 @@ class _MedicalIDScreenState extends State<MedicalIDScreen> {
     );
   }
 }
+=======
+class MedicalIDScreen extends StatelessWidget {
+  const MedicalIDScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Medical ID")),
+      body: const Center(child: Text("Medical ID Placeholder", style: TextStyle(color: Colors.white))),
+    );
+  }
+}
+>>>>>>> 25864e455d2821af66d1bef5c853f0886afc4387

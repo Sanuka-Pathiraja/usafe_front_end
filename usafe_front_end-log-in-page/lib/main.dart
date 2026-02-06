@@ -1,43 +1,96 @@
 import 'package:flutter/material.dart';
-import 'config.dart'; // Imports AppColors and MockDatabase
-import 'auth_screens.dart'; // Imports LoginScreen
-import 'home_screen.dart'; // Imports HomeScreen
+import 'package:flutter/services.dart';
+import 'config.dart';
+import 'auth_screens.dart';
 
-/// ---------------------------------------------------------------------------
-/// MAIN ENTRY POINT
-/// ---------------------------------------------------------------------------
-
-void main() async {
-  // 1. Required for async operations like loading storage before app starts
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // 2. Check if a user is already logged in
-  await MockDatabase.loadUserSession();
+<<<<<<< HEAD
+  
+  // Set orientation
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
 
   runApp(const USafeApp());
+=======
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.light, 
+  ));
+  runApp(const MyApp());
+>>>>>>> 25864e455d2821af66d1bef5c853f0886afc4387
 }
 
-class USafeApp extends StatelessWidget {
-  const USafeApp({super.key});
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      debugShowCheckedModeBanner: false,
       title: 'USafe',
-
+<<<<<<< HEAD
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: AppColors.background,
         useMaterial3: true,
+        fontFamily: 'Roboto',
       ),
-
-      // 3. LOGIC: If currentUser exists, go to Home. Otherwise, go to Login/Splash.
-      // We skip SplashScreen if logged in for faster access,
-      // or you can set home: const SplashScreen() and handle navigation there.
-      home: MockDatabase.currentUser != null
-          ? const HomeScreen()
-          : const SplashScreen(),
+      // This loads your Splash Screen, which checks the database and handles login
+      home: const SplashScreen(),
     );
   }
+=======
+      theme: ThemeData.dark().copyWith(
+        scaffoldBackgroundColor: AppColors.bgDark,
+        primaryColor: AppColors.primary,
+        colorScheme: const ColorScheme.dark(
+          primary: AppColors.primary,
+          secondary: AppColors.primary,
+          surface: AppColors.surface,
+        ),
+      ),
+      home: const SplashScreen(),
+    );
+  }
+}
+
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({super.key});
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) {
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AuthScreen()));
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.bgDark,
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.shield_moon, size: 80, color: AppColors.primary),
+            const SizedBox(height: 20),
+            const Text("USAFE", style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, letterSpacing: 5)),
+            const SizedBox(height: 40),
+            const CircularProgressIndicator(color: AppColors.primary),
+          ],
+        ),
+      ),
+    );
+  }
+>>>>>>> 25864e455d2821af66d1bef5c853f0886afc4387
 }

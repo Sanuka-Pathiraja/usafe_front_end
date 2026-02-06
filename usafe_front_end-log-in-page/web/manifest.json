@@ -1,6 +1,6 @@
 {
-    "name": "usafe_front_end",
-    "short_name": "usafe_front_end",
+    "name": "usafe_fresh",
+    "short_name": "usafe_fresh",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

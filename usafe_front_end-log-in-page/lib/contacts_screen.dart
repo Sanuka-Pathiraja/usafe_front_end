@@ -1,205 +1,76 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_contacts/flutter_contacts.dart';
-import 'config.dart'; // Imports AppColors
+import 'config.dart';
 
-class ContactsScreen extends StatefulWidget {
+class ContactsScreen extends StatelessWidget {
   const ContactsScreen({super.key});
 
   @override
-  State<ContactsScreen> createState() => _ContactsScreenState();
-}
+  Widget build(BuildContext context) {
+<<<<<<< HEAD
+    // Access data from Config
+    final contacts = MockDatabase.trustedContacts;
 
-class _ContactsScreenState extends State<ContactsScreen> {
-  // Example Data
-  final List<Map<String, String>> _emergencyContacts = [
-    {
-      'name': 'Jane Doe',
-      'number': '123-456',
-      'label': 'Mother',
-      'initials': 'JD'
-    },
-    {
-      'name': 'John Smith',
-      'number': '987-654',
-      'label': 'Partner',
-      'initials': 'JS'
-    },
-    {
-      'name': 'Dr. Emily Carter',
-      'number': '555-0199',
-      'label': 'Family Doctor',
-      'initials': 'DE'
-    },
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    _requestPermission();
-  }
-
-  Future<void> _requestPermission() async {
-    await FlutterContacts.requestPermission();
-  }
-
-  // --- LOGIC: ADD CONTACT ---
-  Future<void> _addContact() async {
-    if (_emergencyContacts.length >= 5) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text("Maximum 5 contacts reached."),
-        backgroundColor: AppColors.alertRed,
-      ));
-      return;
-    }
-
-    final Contact? contact = await FlutterContacts.openExternalPick();
-
-    if (contact != null && contact.phones.isNotEmpty) {
-      String name = contact.displayName;
-      String number = contact.phones.first.number;
-      String initials = name.isNotEmpty ? name[0].toUpperCase() : "?";
-      if (name.contains(" ") && name.split(" ").length > 1) {
-        initials =
-            name.split(" ").take(2).map((e) => e[0].toUpperCase()).join();
-      }
-
-      _showLabelDialog(name, number, initials);
-    }
-  }
-
-  void _showLabelDialog(String name, String number, String initials) {
-    TextEditingController labelController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surfaceCard,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text("Relationship Label",
-            style: TextStyle(color: Colors.white)),
-        content: TextField(
-          controller: labelController,
-          style: const TextStyle(color: Colors.white),
-          decoration: InputDecoration(
-            hintText: "e.g. Mother, Partner...",
-            hintStyle: const TextStyle(color: Colors.white38),
-            filled: true,
-            fillColor: AppColors.background,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: AppColors.primarySky),
+    return Scaffold(
+      backgroundColor: Colors.transparent, // Lets the Home radial gradient show through
+      body: Column(
+        children: [
+          // 1. HEADER
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 30, 24, 20),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  "Trusted Contacts",
+                  style: TextStyle(
+                    fontSize: 26, 
+                    fontWeight: FontWeight.bold, 
+                    color: Colors.white,
+                    letterSpacing: 0.5
+                  ),
+                ),
+                // Glassy Add Button
+                Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.glass,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.glassBorder),
+                  ),
+                  child: IconButton(
+                    icon: const Icon(Icons.person_add_alt_1_rounded, color: AppColors.primary),
+                    onPressed: () {
+                      // Add contact logic here
+                    },
+                  ),
+                ),
+              ],
             ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primarySky,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
+
+          // 2. CONTACT LIST
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
+              itemCount: contacts.length,
+              itemBuilder: (context, index) {
+                final contact = contacts[index];
+                return _buildContactCard(contact);
+              },
             ),
-            onPressed: () {
-              setState(() {
-                _emergencyContacts.add({
-                  'name': name,
-                  'number': number,
-                  'label': labelController.text.isEmpty
-                      ? "Emergency Contact"
-                      : labelController.text,
-                  'initials': initials,
-                });
-              });
-              Navigator.pop(context);
-            },
-            child: const Text("Save",
-                style: TextStyle(
-                    color: AppColors.background, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
     );
   }
 
-  void _removeContact(int index) {
-    setState(() {
-      _emergencyContacts.removeAt(index);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      // FIXED: Solid Brand Background (No Gradient)
-      backgroundColor: AppColors.background,
-
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Header Title
-            const Padding(
-              padding: EdgeInsets.only(top: 24, bottom: 20),
-              child: Text("Emergency Contacts",
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.5)),
-            ),
-
-            // Scrollable List
-            Expanded(
-              child: ListView.builder(
-                // FIXED: Added massive bottom padding so list items don't hide behind footer
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
-                itemCount: _emergencyContacts.length,
-                itemBuilder: (context, index) {
-                  final contact = _emergencyContacts[index];
-                  return _buildContactCard(contact, index);
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-
-      // --- FLOATING ACTION BUTTON ---
-      // FIXED: Used 'floatingActionButtonLocation' isn't enough, we use padding to push it up
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButton: Padding(
-        // FIXED: Increased bottom padding to 100 to clear the modern footer
-        padding: const EdgeInsets.only(bottom: 100),
-        child: SizedBox(
-          width: 65,
-          height: 65,
-          child: FloatingActionButton(
-            onPressed: _addContact,
-            backgroundColor: AppColors.primarySky,
-            elevation: 10,
-            shape: const CircleBorder(),
-            child: const Icon(Icons.add, size: 32, color: AppColors.background),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // --- CARD WIDGET ---
-  Widget _buildContactCard(Map<String, String> contact, int index) {
+  Widget _buildContactCard(Map<String, String> contact) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.surfaceCard,
+        color: AppColors.surface.withOpacity(0.9), // Slate card
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: AppColors.glassBorder), // Subtle border
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.3),
@@ -210,29 +81,40 @@ class _ContactsScreenState extends State<ContactsScreen> {
       ),
       child: Column(
         children: [
-          // 1. Header: Avatar + Info + Menu
+          // TOP ROW: Avatar & Details
           Row(
             children: [
-              // Avatar
+              // Avatar with glowing border
               Container(
-                width: 50,
-                height: 50,
+                width: 56, height: 56,
                 decoration: BoxDecoration(
-                  color: AppColors.primarySky.withOpacity(0.15),
+                  color: AppColors.bgDark,
                   shape: BoxShape.circle,
+                  border: Border.all(
+                    color: AppColors.primary.withOpacity(0.3), 
+                    width: 1.5
+                  ),
+                  boxShadow: [
+                     BoxShadow(
+                       color: AppColors.primary.withOpacity(0.1), 
+                       blurRadius: 12
+                     )
+                  ]
                 ),
-                alignment: Alignment.center,
-                child: Text(
-                  contact['initials'] ?? "?",
-                  style: const TextStyle(
-                      color: AppColors.primarySky,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18),
+                child: Center(
+                  child: Text(
+                    contact['name']![0],
+                    style: const TextStyle(
+                      fontSize: 24, 
+                      fontWeight: FontWeight.bold, 
+                      color: AppColors.primary
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(width: 16),
-
-              // Name & Label
+              
+              // Name & Relation
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -240,86 +122,127 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     Text(
                       contact['name']!,
                       style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 17),
+                        fontSize: 18, 
+                        fontWeight: FontWeight.bold, 
+                        color: Colors.white
+                      ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      contact['label']!,
-                      style:
-                          const TextStyle(color: Colors.white54, fontSize: 14),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.verified_user_rounded, 
+                          size: 14, 
+                          color: AppColors.success.withOpacity(0.8)
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          contact['relation']!,
+                          style: const TextStyle(
+                            fontSize: 14, 
+                            color: AppColors.textSub,
+                            fontWeight: FontWeight.w500
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
-
-              // Menu Icon
-              PopupMenuButton(
-                icon: const Icon(Icons.more_vert, color: Colors.white38),
-                color: AppColors.surfaceCard,
-                itemBuilder: (context) => [
-                  PopupMenuItem(
-                    value: 'delete',
-                    child: const Row(children: [
-                      Icon(Icons.delete_outline,
-                          color: AppColors.alertRed, size: 20),
-                      SizedBox(width: 8),
-                      Text("Remove", style: TextStyle(color: Colors.white)),
-                    ]),
-                    onTap: () => _removeContact(index),
-                  ),
-                ],
+              
+              // Menu Options
+              IconButton(
+                icon: Icon(Icons.more_horiz_rounded, color: AppColors.textSub.withOpacity(0.5)),
+                onPressed: () {},
               ),
             ],
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
+          
+          // Divider Line
+          Divider(color: Colors.white.withOpacity(0.05), height: 1),
+          
+          const SizedBox(height: 20),
 
-          // 2. Action Buttons
+          // BOTTOM ROW: Action Buttons
           Row(
             children: [
-              // Call Button
+              // Call Button (Ghost Style)
               Expanded(
-                child: SizedBox(
-                  height: 45,
-                  child: ElevatedButton.icon(
-                    onPressed: () {},
-                    icon:
-                        const Icon(Icons.phone, size: 18, color: Colors.white),
-                    label: const Text("Call"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryNavy,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
+                child: OutlinedButton.icon(
+                  onPressed: () {},
+                  icon: const Icon(Icons.call, size: 20),
+                  label: const Text("Call"),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: BorderSide(color: Colors.white.withOpacity(0.15)),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)
                     ),
                   ),
                 ),
               ),
               const SizedBox(width: 12),
-
-              // Alert Button
+              
+              // Alert Button (Solid Alert Color)
               Expanded(
-                child: SizedBox(
-                  height: 45,
-                  child: ElevatedButton.icon(
-                    onPressed: () {},
-                    icon: const Icon(Icons.notifications_active_outlined,
-                        size: 20, color: Colors.white),
-                    label: const Text("Alert"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.alertRed,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
+                child: ElevatedButton.icon(
+                  onPressed: () {},
+                  icon: const Icon(Icons.emergency_share, size: 20, color: Colors.white),
+                  label: const Text("Alert"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.alert,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    elevation: 8,
+                    shadowColor: AppColors.alert.withOpacity(0.4),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)
                     ),
                   ),
                 ),
               ),
             ],
-          ),
+          )
         ],
+=======
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: ListView.builder(
+        padding: const EdgeInsets.all(20),
+        itemCount: MockDatabase.trustedContacts.length,
+        itemBuilder: (context, index) {
+          final contact = MockDatabase.trustedContacts[index];
+          return Container(
+            margin: const EdgeInsets.only(bottom: 15),
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.glassBorder),
+            ),
+            child: Row(
+              children: [
+                CircleAvatar(backgroundColor: AppColors.bgDark, child: Text(contact['name']![0], style: const TextStyle(color: AppColors.primary))),
+                const SizedBox(width: 15),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(contact['name']!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                  Text(contact['relation']!, style: const TextStyle(color: AppColors.textSub)),
+                ])),
+                IconButton(icon: const Icon(Icons.call, color: AppColors.success), onPressed: () {}),
+                IconButton(icon: const Icon(Icons.warning, color: AppColors.alert), onPressed: () {}),
+              ],
+            ),
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {},
+        backgroundColor: AppColors.primary,
+        child: const Icon(Icons.add, color: Colors.black),
+>>>>>>> 25864e455d2821af66d1bef5c853f0886afc4387
       ),
     );
   }
