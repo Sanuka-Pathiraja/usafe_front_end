@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:flutter_contacts/flutter_contacts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
 import 'package:usafe_front_end/src/pages/home_screen.dart';
@@ -34,10 +36,28 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     _controller.forward();
 
     Timer(const Duration(seconds: 3), () async {
+      final prefs = await SharedPreferences.getInstance();
+      final bool authorized = prefs.getBool('authorization_seen') ?? false;
+      if (!authorized) {
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const AuthorizationScreen()),
+          );
+        }
+        return;
+      }
+
       if (MockDatabase.currentUser != null) {
-        if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen()));
+        if (mounted) {
+          Navigator.pushReplacement(
+              context, MaterialPageRoute(builder: (_) => const HomeScreen()));
+        }
       } else {
-        if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+        if (mounted) {
+          Navigator.pushReplacement(
+              context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+        }
       }
     });
   }
@@ -83,7 +103,97 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   }
 }
 
-// --- 3. LOGIN SCREEN ---
+// --- 3. AUTHORIZATION SCREEN ---
+class AuthorizationScreen extends StatelessWidget {
+  const AuthorizationScreen({super.key});
+
+  Future<void> _handleContinue(BuildContext context) async {
+    await FlutterContacts.requestPermission();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('authorization_seen', true);
+
+    if (!context.mounted) return;
+    if (MockDatabase.currentUser != null) {
+      Navigator.pushReplacement(
+          context, MaterialPageRoute(builder: (_) => const HomeScreen()));
+    } else {
+      Navigator.pushReplacement(
+          context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: _buildBackgroundGradient(),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+            child: Column(
+              children: [
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.primarySky.withOpacity(0.12),
+                  ),
+                  child: const Icon(Icons.contacts,
+                      size: 56, color: AppColors.primarySky),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Enable Contacts Access',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'USafe uses your phonebook to add trusted contacts for SOS alerts. We only store the contacts you choose.',
+                  style: TextStyle(color: AppColors.textGrey, fontSize: 14),
+                  textAlign: TextAlign.center,
+                ),
+                const Spacer(),
+                SizedBox(
+                  width: double.infinity,
+                  height: 54,
+                  child: ElevatedButton(
+                    onPressed: () => _handleContinue(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primarySky,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: const Text(
+                      'Continue',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// --- 4. LOGIN SCREEN ---
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
   @override
@@ -103,7 +213,18 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = false);
 
     if (success) {
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen()));
+      final prefs = await SharedPreferences.getInstance();
+      final bool authorized = prefs.getBool('authorization_seen') ?? false;
+      if (!mounted) return;
+      if (!authorized) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const AuthorizationScreen()),
+        );
+      } else {
+        Navigator.pushReplacement(
+            context, MaterialPageRoute(builder: (_) => const HomeScreen()));
+      }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Invalid email or password."), backgroundColor: AppColors.alertRed, behavior: SnackBarBehavior.floating),

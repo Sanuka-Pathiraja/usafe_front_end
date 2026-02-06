@@ -1,213 +1,374 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
 
-class ContactsScreen extends StatelessWidget {
+class ContactsScreen extends StatefulWidget {
   const ContactsScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    // Access data from Config
-    final contacts = MockDatabase.trustedContacts;
+  State<ContactsScreen> createState() => ContactsScreenState();
+}
 
+class ContactsScreenState extends State<ContactsScreen> {
+  static const int _minContacts = 3;
+  static const int _maxContacts = 5;
+  static const double _footerHeight = 70;
+  static const double _footerBottom = 30;
+  static const double _fabSize = 56;
+
+  final List<Map<String, String>> _contacts = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadContacts();
+  }
+
+  Future<void> _loadContacts() async {
+    await MockDatabase.loadTrustedContacts();
+    setState(() {
+      _contacts
+        ..clear()
+        ..addAll(MockDatabase.trustedContacts);
+      _loading = false;
+    });
+  }
+
+  Future<void> _addContactFromPhone() async {
+    if (_contacts.length >= _maxContacts) {
+      _showSnack('You can add up to $_maxContacts contacts only.');
+      return;
+    }
+
+    final bool granted = await FlutterContacts.requestPermission();
+    if (!granted) {
+      _showSnack('Contacts permission is required to add a contact.');
+      return;
+    }
+
+    final Contact? picked = await FlutterContacts.openExternalPick();
+    if (picked == null) return;
+
+    final Contact? fullContact =
+        await FlutterContacts.getContact(picked.id, withProperties: true);
+    if (fullContact == null || fullContact.phones.isEmpty) {
+      _showSnack('This contact does not have a phone number.');
+      return;
+    }
+
+    final String? phone = await _pickPhoneNumber(fullContact.phones);
+    if (phone == null) return;
+
+    final String? relation = await _promptRelation();
+    if (relation == null) return;
+
+    final String name = fullContact.displayName.trim().isNotEmpty
+        ? fullContact.displayName
+        : 'Unknown';
+
+    setState(() {
+      _contacts.add({
+        'name': name,
+        'relation': relation,
+        'phone': phone,
+      });
+    });
+
+    await MockDatabase.saveTrustedContacts(_contacts);
+  }
+
+  Future<void> openAddContact() async {
+    await _addContactFromPhone();
+  }
+
+  Future<String?> _pickPhoneNumber(List<Phone> phones) async {
+    if (phones.length == 1) {
+      return phones.first.number;
+    }
+
+    return showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: const Color(0xFF1B2026),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: ListView.separated(
+            shrinkWrap: true,
+            itemCount: phones.length,
+            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemBuilder: (context, index) {
+              final phone = phones[index].number;
+              return ListTile(
+                title: Text(phone, style: const TextStyle(color: Colors.white)),
+                onTap: () => Navigator.pop(context, phone),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Future<String?> _promptRelation() async {
+    final controller = TextEditingController();
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1B2026),
+          title: const Text('Relationship',
+              style: TextStyle(color: Colors.white)),
+          content: TextField(
+            controller: controller,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              hintText: 'e.g. Mother, Partner',
+              hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+              enabledBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: Colors.white.withOpacity(0.2)),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: Colors.white.withOpacity(0.5)),
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+            ),
+            TextButton(
+              onPressed: () {
+                final relation = controller.text.trim();
+                Navigator.pop(context, relation.isEmpty ? 'Contact' : relation);
+              },
+              child: const Text('Save', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+
+    controller.dispose();
+    return result;
+  }
+
+  Future<void> _removeContact(int index) async {
+    setState(() {
+      _contacts.removeAt(index);
+    });
+    await MockDatabase.saveTrustedContacts(_contacts);
+  }
+
+  void _showSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent, // Lets the Home radial gradient show through
-      body: Column(
-        children: [
-          // 1. HEADER
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 30, 24, 20),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        backgroundColor: AppColors.background,
+        elevation: 0,
+        leading: Navigator.canPop(context)
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+                onPressed: () => Navigator.pop(context),
+              )
+            : null,
+        title: const Text(
+          'Emergency Contacts',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+        ),
+        centerTitle: true,
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
               children: [
-                const Text(
-                  "Trusted Contacts",
-                  style: TextStyle(
-                    fontSize: 26, 
-                    fontWeight: FontWeight.bold, 
-                    color: Colors.white,
-                    letterSpacing: 0.5
+                const SizedBox(height: 10),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Add ${_minContacts}-$_maxContacts trusted contacts',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.6),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        '${_contacts.length}/$_maxContacts',
+                        style: TextStyle(
+                          color: _contacts.length < _minContacts
+                              ? Colors.orangeAccent
+                              : Colors.white70,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                // Glassy Add Button
-                Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.glass,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.glassBorder),
+                if (_contacts.length < _minContacts)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 6, 20, 6),
+                    child: Text(
+                      'Add at least $_minContacts contacts to enable alerts.',
+                      style: TextStyle(
+                        color: Colors.orange.withOpacity(0.9),
+                        fontSize: 12,
+                      ),
+                    ),
                   ),
-                  child: IconButton(
-                    icon: const Icon(Icons.person_add_alt_1_rounded, color: AppColors.primary),
-                    onPressed: () {
-                      // Add contact logic here
+                const SizedBox(height: 10),
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 140),
+                    itemCount: _contacts.length,
+                    itemBuilder: (context, index) {
+                      final contact = _contacts[index];
+                      return _buildContactCard(contact, index);
                     },
                   ),
                 ),
               ],
             ),
-          ),
+    );
+  }
 
-          // 2. CONTACT LIST
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
-              itemCount: contacts.length,
-              itemBuilder: (context, index) {
-                final contact = contacts[index];
-                return _buildContactCard(contact);
-              },
-            ),
+  Widget _buildContactCard(Map<String, String> contact, int index) {
+    final String name = contact['name'] ?? 'Unknown';
+    final String relation = contact['relation'] ?? 'Contact';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A2128),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 24,
+                backgroundColor: const Color(0xFF2B3440),
+                child: Text(
+                  name.isNotEmpty ? name[0] : '?',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      relation,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.6),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.more_horiz, color: Colors.white54),
+                onPressed: () => _showContactActions(index),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () {},
+                  icon: const Icon(Icons.call, size: 18),
+                  label: const Text('Call'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white70,
+                    side: BorderSide(color: Colors.white.withOpacity(0.1)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () {},
+                  icon: const Icon(Icons.warning_amber_rounded,
+                      size: 18, color: Colors.white),
+                  label: const Text('Alert'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFE53935),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _buildContactCard(Map<String, String> contact) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.surface.withOpacity(0.9), // Slate card
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.glassBorder), // Subtle border
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.3),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
-          )
-        ],
+  void _showContactActions(int index) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF1B2026),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      child: Column(
-        children: [
-          // TOP ROW: Avatar & Details
-          Row(
-            children: [
-              // Avatar with glowing border
-              Container(
-                width: 56, height: 56,
-                decoration: BoxDecoration(
-                  color: AppColors.bgDark,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: AppColors.primary.withOpacity(0.3), 
-                    width: 1.5
-                  ),
-                  boxShadow: [
-                     BoxShadow(
-                       color: AppColors.primary.withOpacity(0.1), 
-                       blurRadius: 12
-                     )
-                  ]
-                ),
-                child: Center(
-                  child: Text(
-                    contact['name']![0],
-                    style: const TextStyle(
-                      fontSize: 24, 
-                      fontWeight: FontWeight.bold, 
-                      color: AppColors.primary
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              
-              // Name & Relation
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      contact['name']!,
-                      style: const TextStyle(
-                        fontSize: 18, 
-                        fontWeight: FontWeight.bold, 
-                        color: Colors.white
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.verified_user_rounded, 
-                          size: 14, 
-                          color: AppColors.success.withOpacity(0.8)
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          contact['relation']!,
-                          style: const TextStyle(
-                            fontSize: 14, 
-                            color: AppColors.textSub,
-                            fontWeight: FontWeight.w500
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              
-              // Menu Options
-              IconButton(
-                icon: Icon(Icons.more_horiz_rounded, color: AppColors.textSub.withOpacity(0.5)),
-                onPressed: () {},
-              ),
-            ],
+      builder: (context) {
+        return SafeArea(
+          child: ListTile(
+            leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
+            title: const Text('Remove Contact',
+                style: TextStyle(color: Colors.white)),
+            onTap: () {
+              Navigator.pop(context);
+              _removeContact(index);
+            },
           ),
-
-          const SizedBox(height: 20),
-          
-          // Divider Line
-          Divider(color: Colors.white.withOpacity(0.05), height: 1),
-          
-          const SizedBox(height: 20),
-
-          // BOTTOM ROW: Action Buttons
-          Row(
-            children: [
-              // Call Button (Ghost Style)
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () {},
-                  icon: const Icon(Icons.call, size: 20),
-                  label: const Text("Call"),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: BorderSide(color: Colors.white.withOpacity(0.15)),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              
-              // Alert Button (Solid Alert Color)
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () {},
-                  icon: const Icon(Icons.emergency_share, size: 20, color: Colors.white),
-                  label: const Text("Alert"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.alert,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    elevation: 8,
-                    shadowColor: AppColors.alert.withOpacity(0.4),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          )
-        ],
-      ),
+        );
+      },
     );
   }
 }

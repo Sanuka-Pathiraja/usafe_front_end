@@ -1,246 +1,251 @@
 import 'package:flutter/material.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
-
-/// ---------------------------------------------------------------------------
-/// SAFETY SCORE SCREEN
-///
-/// This screen displays the user's current safety rating based on their location.
-/// It appears when the user taps the "Map" tab in the bottom navigation.
-///
-/// Features:
-/// 1. A large "Main Score Card" showing the current safety score (e.g., 85/100).
-/// 2. A button to navigate to the detailed Live Map.
-/// 3. A list of "Other States" (Caution, High Risk) for quick reference.
-/// ---------------------------------------------------------------------------
+import 'safety_map_screen.dart';
 
 class SafetyScoreScreen extends StatelessWidget {
-  // Callback function to handle navigation when "View Details" is clicked.
-  // This allows the parent widget (HomeScreen) to control the actual navigation logic.
-  final VoidCallback onViewMap;
+  final int safetyScore;
+  final bool showBottomNav;
 
-  const SafetyScoreScreen({super.key, required this.onViewMap});
+  const SafetyScoreScreen({
+    super.key,
+    this.safetyScore = 85,
+    this.showBottomNav = true,
+  });
 
-  // ---------------------------------------------------------------------------
-  // MAIN UI BUILDER
-  // ---------------------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background, // Deep Matte Midnight
+    final Color bgDark = AppColors.background;
+    final Color cardBlue = const Color(0xFF2962FF);
+    final Color cardYellowBg = const Color(0xFF2C2514);
+    final Color cardRedBg = const Color(0xFF2C1515);
+    final Color textWhite = Colors.white;
 
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // --- SECTION 1: HEADER ---
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24.0),
-                child: Center(
-                  child: Text(
-                    "My Safety Score",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
+    return Scaffold(
+      backgroundColor: bgDark,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back_ios, color: textWhite, size: 20),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          'My Safety Score',
+          style: TextStyle(color: textWhite, fontWeight: FontWeight.w600),
+        ),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: Icon(Icons.more_vert, color: textWhite),
+            onPressed: () {},
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: double.infinity,
+              height: 360,
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: cardBlue,
+                borderRadius: BorderRadius.circular(30),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.25),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.shield_outlined,
+                        color: Colors.white, size: 48),
+                  ),
+                  const SizedBox(height: 20),
+                  RichText(
+                    text: TextSpan(
+                      children: [
+                        TextSpan(
+                          text: '$safetyScore',
+                          style: const TextStyle(
+                            fontSize: 64,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const TextSpan(
+                          text: '/100',
+                          style: TextStyle(fontSize: 24, color: Colors.white70),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-              ),
-
-              // --- SECTION 2: MAIN SCORE CARD ---
-              // This is the large colored card showing the primary status.
-              Container(
-                width: double.infinity,
-                padding:
-                    const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
-                decoration: BoxDecoration(
-                  color: AppColors.primaryNavy, // Deep Navy Brand Color
-                  borderRadius: BorderRadius.circular(30),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.3), // Adds depth
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    // A. Logo Circle
-                    Container(
-                      padding: const EdgeInsets.all(15),
-                      decoration: BoxDecoration(
-                        color: Colors.white
-                            .withOpacity(0.1), // Subtle glass effect
-                        shape: BoxShape.circle,
-                      ),
-                      child: Image.asset(
-                        'assets/usafe_logo.png',
-                        height: 50,
-                        color:
-                            Colors.white, // Render logo in white for contrast
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // B. Score Text (e.g., "85/100")
-                    // Uses RichText to style the "85" differently from "/100"
-                    RichText(
-                      text: const TextSpan(
-                        children: [
-                          TextSpan(
-                            text: "85",
-                            style: TextStyle(
-                                fontSize: 60,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white),
-                          ),
-                          TextSpan(
-                            text: "/100",
-                            style:
-                                TextStyle(fontSize: 24, color: Colors.white70),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-
-                    // C. Status Message
-                    const Text(
-                      "You are in a safe area",
-                      style: TextStyle(color: Colors.white, fontSize: 16),
-                    ),
-                    const SizedBox(height: 30),
-
-                    // D. "View Details" Button
-                    ElevatedButton(
-                      onPressed:
-                          onViewMap, // Triggers the callback passed from Parent
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor:
-                            AppColors.primaryNavy, // Text matches card bg
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 30, vertical: 15),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(30),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'You are in a safe area',
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                  const SizedBox(height: 30),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const SafetyMapScreen(),
                         ),
-                        elevation: 0,
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: const Color(0xFF009688),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 32, vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
                       ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text("View Details",
-                              style: TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 16)),
-                          SizedBox(width: 8),
-                          Icon(Icons.arrow_forward, size: 20),
-                        ],
-                      ),
+                      elevation: 0,
                     ),
-                  ],
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('View Details',
+                            style: TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.bold)),
+                        SizedBox(width: 8),
+                        Icon(Icons.arrow_forward, size: 18),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 30),
+            Text(
+              'Other States',
+              style: TextStyle(
+                color: Colors.grey[400],
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 15),
+            _buildStateCard(
+              score: '62/100',
+              status: 'Proceed with Caution',
+              icon: Icons.warning_amber_rounded,
+              iconColor: Colors.white,
+              circleColor: Colors.orange,
+              bgColor: cardYellowBg,
+            ),
+            const SizedBox(height: 12),
+            _buildStateCard(
+              score: '28/100',
+              status: 'High Risk Area',
+              icon: Icons.cancel_outlined,
+              iconColor: Colors.white,
+              circleColor: Colors.redAccent,
+              bgColor: cardRedBg,
+            ),
+          ],
+        ),
+      ),
+      bottomNavigationBar:
+          showBottomNav ? _buildBottomNavBar(bgDark, cardBlue) : null,
+    );
+  }
+
+  Widget _buildStateCard({
+    required String score,
+    required String status,
+    required IconData icon,
+    required Color iconColor,
+    required Color circleColor,
+    required Color bgColor,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            backgroundColor: circleColor,
+            radius: 22,
+            child: Icon(icon, color: iconColor, size: 24),
+          ),
+          const SizedBox(width: 16),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                score,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
                 ),
               ),
-
-              const SizedBox(height: 30),
-
-              // --- SECTION 3: OTHER STATES LIST ---
-              const Text(
-                "Other States",
-                style: TextStyle(
-                    color: AppColors.textGrey,
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 15),
-
-              // Item 1: Caution Card (Amber)
-              _buildStateCard(
-                color: const Color(0xFFFBC02D),
-                icon: Icons.warning_amber_rounded,
-                score: "62/100",
-                status: "Proceed with Caution",
-              ),
-
-              const SizedBox(height: 15),
-
-              // Item 2: High Risk Card (Red)
-              _buildStateCard(
-                color: AppColors.alertRed,
-                icon: Icons.cancel_outlined,
-                score: "28/100",
-                status: "High Risk Area",
+              const SizedBox(height: 4),
+              Text(
+                status,
+                style: TextStyle(color: Colors.grey[400], fontSize: 12),
               ),
             ],
           ),
-        ),
+          const Spacer(),
+          Icon(Icons.chevron_right, color: Colors.grey[600]),
+        ],
       ),
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // HELPER WIDGET: STATE CARD
-  // ---------------------------------------------------------------------------
-  /// Reusable widget to build the rows for "Caution" and "High Risk" states.
-  ///
-  /// [color]  - The background color of the icon circle (e.g., Red, Amber).
-  /// [icon]   - The icon data to display.
-  /// [score]  - The score string (e.g., "28/100").
-  /// [status] - The descriptive text (e.g., "High Risk Area").
-  Widget _buildStateCard(
-      {required Color color,
-      required IconData icon,
-      required String score,
-      required String status}) {
+  Widget _buildBottomNavBar(Color bg, Color activeColor) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      height: 80,
       decoration: BoxDecoration(
-        color: AppColors.surfaceCard, // Dark background card
-        borderRadius: BorderRadius.circular(20),
-        border:
-            Border.all(color: Colors.white.withOpacity(0.05)), // Subtle border
+        color: bg,
+        border: Border(top: BorderSide(color: Colors.white.withOpacity(0.05))),
       ),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          // Colored Icon Circle
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: Colors.white, size: 24),
-          ),
-          const SizedBox(width: 16),
-
-          // Text Details
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  score,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  status,
-                  style:
-                      const TextStyle(color: AppColors.textGrey, fontSize: 13),
-                ),
-              ],
-            ),
-          ),
-
-          // Trailing Arrow
-          const Icon(Icons.chevron_right, color: Colors.white38),
+          _navIcon(Icons.home_filled, false),
+          _navIcon(Icons.map, true, activeColor: activeColor),
+          _navIcon(Icons.people, false),
+          _navIcon(Icons.person, false),
         ],
       ),
+    );
+  }
+
+  Widget _navIcon(IconData icon, bool isActive, {Color? activeColor}) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(
+          icon,
+          color: isActive ? (activeColor ?? Colors.white) : Colors.grey[600],
+          size: 26,
+        ),
+        if (isActive) const SizedBox(height: 4),
+        if (isActive)
+          Text(
+            'Map',
+            style: TextStyle(
+              color: activeColor,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+            ),
+          )
+      ],
     );
   }
 }
