@@ -1,16 +1,25 @@
-# usafe_fresh
+# USafe Front End
 
-A new Flutter project.
+## Run Locally
 
-## Getting Started
+1. Install Flutter (stable) and verify with `flutter doctor`.
+2. Get dependencies:
+   - `flutter pub get`
+3. Add your Google Maps API key (Android):
+   - Set `YOUR_GOOGLE_MAPS_API_KEY` in [android/app/src/main/AndroidManifest.xml](android/app/src/main/AndroidManifest.xml#L1)
+4. Run:
+   - `flutter run`
 
-This project is a starting point for a Flutter application.
+## Permissions
 
-A few resources to get you started if this is your first Flutter project:
+This app uses contacts to let you add trusted contacts from your phone book.
+The first time you enter the app, an authorization screen will request access.
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+Android:
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+- `android.permission.READ_CONTACTS` is required (already declared).
+
+## Notes
+
+- If you see an older build, run `flutter clean` and then `flutter run`.
+- For Maps to work, you must provide a valid API key.
