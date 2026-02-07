@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:async';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -316,10 +317,24 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildModernInput(TextEditingController controller, String label, IconData icon, {bool isPassword = false}) {
+  Widget _buildModernInput(
+    TextEditingController controller,
+    String label,
+    IconData icon, {
+    bool isPassword = false,
+    TextInputType? keyboardType,
+    List<TextInputFormatter>? inputFormatters,
+  }) {
     return Container(
       decoration: BoxDecoration(color: AppColors.surfaceCard, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white.withOpacity(0.05))),
-      child: TextFormField(controller: controller, obscureText: isPassword, style: const TextStyle(color: Colors.white), decoration: InputDecoration(labelText: label, labelStyle: const TextStyle(color: AppColors.textGrey), prefixIcon: Icon(icon, color: AppColors.primarySky), border: InputBorder.none, focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: AppColors.primarySky)), contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16))),
+      child: TextFormField(
+        controller: controller,
+        obscureText: isPassword,
+        keyboardType: keyboardType,
+        inputFormatters: inputFormatters,
+        style: const TextStyle(color: Colors.white),
+        decoration: InputDecoration(labelText: label, labelStyle: const TextStyle(color: AppColors.textGrey), prefixIcon: Icon(icon, color: AppColors.primarySky), border: InputBorder.none, focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: AppColors.primarySky)), contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16)),
+      ),
     );
   }
 }
@@ -335,6 +350,7 @@ class SignupScreen extends StatefulWidget {
 class _SignupScreenState extends State<SignupScreen> {
   final _nameCtrl = TextEditingController(); 
   final _emailCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   bool _isLoading = false;
 
@@ -360,6 +376,14 @@ class _SignupScreenState extends State<SignupScreen> {
                   const SizedBox(height: 20),
                   _buildModernInput(_emailCtrl, "Email", Icons.email_outlined),
                   const SizedBox(height: 20),
+                  _buildModernInput(
+                    _phoneCtrl,
+                    "Phone Number",
+                    Icons.phone_outlined,
+                    keyboardType: TextInputType.phone,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)],
+                  ),
+                  const SizedBox(height: 20),
                   _buildModernInput(_passCtrl, "Password", Icons.lock_outline, isPassword: true),
                   const SizedBox(height: 40),
                   Container(
@@ -370,15 +394,20 @@ class _SignupScreenState extends State<SignupScreen> {
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
                       
                       onPressed: _isLoading ? null : () async {
-                        if (_nameCtrl.text.isNotEmpty && _emailCtrl.text.isNotEmpty && _passCtrl.text.isNotEmpty) {
+                        final phone = _phoneCtrl.text.trim();
+                        final isPhoneValid = RegExp(r'^\d{10}$').hasMatch(phone);
+                        if (_nameCtrl.text.isNotEmpty && _emailCtrl.text.isNotEmpty && _passCtrl.text.isNotEmpty && isPhoneValid) {
                           setState(() => _isLoading = true);
-                          await MockDatabase.registerUser(_nameCtrl.text, _emailCtrl.text, _passCtrl.text);
+                          await MockDatabase.registerUser(_nameCtrl.text, _emailCtrl.text, phone, _passCtrl.text);
                           if (!mounted) return;
                           setState(() => _isLoading = false);
                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Account Created! You can Login now."), behavior: SnackBarBehavior.floating, backgroundColor: AppColors.safetyTeal));
                           Navigator.pop(context);
                         } else {
-                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please fill in all fields."), backgroundColor: AppColors.alertRed));
+                           final message = !isPhoneValid
+                               ? "Phone number must be 10 digits."
+                               : "Please fill in all fields.";
+                           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: AppColors.alertRed));
                         }
                       },
                       child: _isLoading 
@@ -395,10 +424,24 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
   
-  Widget _buildModernInput(TextEditingController controller, String label, IconData icon, {bool isPassword = false}) {
+  Widget _buildModernInput(
+    TextEditingController controller,
+    String label,
+    IconData icon, {
+    bool isPassword = false,
+    TextInputType? keyboardType,
+    List<TextInputFormatter>? inputFormatters,
+  }) {
     return Container(
       decoration: BoxDecoration(color: AppColors.surfaceCard, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white.withOpacity(0.05))),
-      child: TextFormField(controller: controller, obscureText: isPassword, style: const TextStyle(color: Colors.white), decoration: InputDecoration(labelText: label, labelStyle: const TextStyle(color: AppColors.textGrey), prefixIcon: Icon(icon, color: AppColors.primarySky), border: InputBorder.none, focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: AppColors.primarySky)), contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16))),
+      child: TextFormField(
+        controller: controller,
+        obscureText: isPassword,
+        keyboardType: keyboardType,
+        inputFormatters: inputFormatters,
+        style: const TextStyle(color: Colors.white),
+        decoration: InputDecoration(labelText: label, labelStyle: const TextStyle(color: AppColors.textGrey), prefixIcon: Icon(icon, color: AppColors.primarySky), border: InputBorder.none, focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: AppColors.primarySky)), contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16)),
+      ),
     );
   }
 }

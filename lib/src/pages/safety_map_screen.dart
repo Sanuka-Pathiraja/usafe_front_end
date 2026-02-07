@@ -23,6 +23,11 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   bool _isDangerCountdownActive = false;
   Timer? _dangerTimer;
   int _dangerSeconds = 10;
+  bool _audioReady = false;
+  bool _isDangerDialogOpen = false;
+  StateSetter? _dangerDialogSetState;
+  String _micStatusText = 'Safety Mode Off';
+  Color _micStatusColor = Colors.white70;
   final AudioAnalysisService _audioService = AudioAnalysisService();
 
   // Initial Camera Position (San Francisco placeholder)
@@ -51,39 +56,71 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   }
 
   Future<void> _initAudioService() async {
-    await _audioService.initialize();
+    final ok = await _audioService.initialize();
+    if (!mounted) return;
+    setState(() {
+      _audioReady = ok;
+      if (!ok) {
+        _micStatusText = _audioService.lastError ?? 'Audio model unavailable.';
+        _micStatusColor = Colors.orangeAccent;
+      }
+    });
     _audioService.onDistressDetected = (event, confidence) {
       if (!mounted) return;
+      if (!_isSafetyModeActive) return;
       _startDangerCountdown(reason: event);
     };
   }
 
-  void _toggleSafetyMode() {
+  Future<void> _toggleSafetyMode() async {
+    if (_isSafetyModeActive) {
+      setState(() {
+        _isSafetyModeActive = false;
+        _micStatusText = 'Safety Mode Off';
+        _micStatusColor = Colors.white70;
+      });
+      await _audioService.stopListening();
+      _cancelDangerCountdown();
+      return;
+    }
+
+    if (!_audioReady) {
+      _showStatusSnack('Audio model is not ready.');
+      setState(() {
+        _micStatusText = _audioService.lastError ?? 'Audio model unavailable.';
+        _micStatusColor = Colors.orangeAccent;
+      });
+      return;
+    }
+
+    final started = await _audioService.startListening();
+    if (!started) {
+      final message = _audioService.lastError ?? 'Microphone permission required.';
+      _showStatusSnack(message);
+      setState(() {
+        _micStatusText = message;
+        _micStatusColor = Colors.orangeAccent;
+      });
+      return;
+    }
+
     setState(() {
-      _isSafetyModeActive = !_isSafetyModeActive;
+      _isSafetyModeActive = true;
+      _micStatusText = 'Listening for distress signals';
+      _micStatusColor = Colors.redAccent;
     });
 
-    if (_isSafetyModeActive) {
-      _audioService.startListening();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content:
-              Text('Safety Mode Activated: Listening for distress signals...'),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
-    } else {
-      _audioService.stopListening();
-      _cancelDangerCountdown();
-    }
+    _showStatusSnack('Safety Mode Activated: Listening for distress signals...');
   }
 
   void _startDangerCountdown({required String reason}) {
-    if (_isDangerCountdownActive) return;
+    if (_isDangerCountdownActive || !_isSafetyModeActive) return;
 
     setState(() {
       _isDangerCountdownActive = true;
       _dangerSeconds = 10;
+      _micStatusText = 'Potential distress: $_dangerSeconds s';
+      _micStatusColor = Colors.orangeAccent;
     });
 
     _dangerTimer?.cancel();
@@ -94,21 +131,30 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
         setState(() {
           _isDangerCountdownActive = false;
           _dangerSeconds = 10;
+          if (_isSafetyModeActive) {
+            _micStatusText = 'Listening for distress signals';
+            _micStatusColor = Colors.redAccent;
+          }
         });
+        _closeDangerDialog();
         _triggerAlarm(reason: reason);
         return;
       }
       setState(() {
         _dangerSeconds -= 1;
+        _micStatusText = 'Potential distress: $_dangerSeconds s';
       });
+      _dangerDialogSetState?.call(() {});
     });
 
+    _isDangerDialogOpen = true;
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            _dangerDialogSetState = setDialogState;
             return AlertDialog(
               backgroundColor: const Color(0xFF1E1E1E),
               title: const Text(
@@ -116,13 +162,12 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                 style: TextStyle(color: Colors.white),
               ),
               content: Text(
-                'SOS will trigger in $_dangerSeconds seconds.\nAre you safe?',
+                'Detected: $reason\n\nSOS will trigger in $_dangerSeconds seconds.\nAre you safe?',
                 style: const TextStyle(color: Colors.white70),
               ),
               actions: [
                 TextButton(
                   onPressed: () {
-                    Navigator.pop(context);
                     _cancelDangerCountdown();
                   },
                   child: const Text("I'M SAFE",
@@ -133,7 +178,10 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
           },
         );
       },
-    );
+    ).then((_) {
+      _isDangerDialogOpen = false;
+      _dangerDialogSetState = null;
+    });
   }
 
   void _cancelDangerCountdown() {
@@ -142,10 +190,22 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
     setState(() {
       _isDangerCountdownActive = false;
       _dangerSeconds = 10;
+      if (_isSafetyModeActive) {
+        _micStatusText = 'Listening for distress signals';
+        _micStatusColor = Colors.redAccent;
+      } else {
+        _micStatusText = 'Safety Mode Off';
+        _micStatusColor = Colors.white70;
+      }
     });
+    _closeDangerDialog();
   }
 
   void _triggerAlarm({required String reason}) {
+    setState(() {
+      _micStatusText = 'Distress detected';
+      _micStatusColor = Colors.redAccent;
+    });
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -174,6 +234,20 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
           )
         ],
       ),
+    );
+  }
+
+  void _closeDangerDialog() {
+    if (!_isDangerDialogOpen || !mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+    _isDangerDialogOpen = false;
+    _dangerDialogSetState = null;
+  }
+
+  void _showStatusSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
     );
   }
 
@@ -331,6 +405,12 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
             ),
           ),
 
+          Positioned(
+            top: 120,
+            left: 20,
+            child: _buildMicStatusPill(),
+          ),
+
           // --- Bottom Floating Action Buttons ---
           Positioned(
             bottom: 30,
@@ -386,6 +466,31 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
         const SizedBox(width: 8),
         Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
       ],
+    );
+  }
+
+  Widget _buildMicStatusPill() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E).withOpacity(0.9),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _micStatusColor.withOpacity(0.5)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            _isSafetyModeActive ? Icons.hearing : Icons.mic_off,
+            size: 14,
+            color: _micStatusColor,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            _micStatusText,
+            style: TextStyle(color: _micStatusColor, fontSize: 12),
+          ),
+        ],
+      ),
     );
   }
 }
