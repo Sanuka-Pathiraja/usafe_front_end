@@ -24,7 +24,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // Main tab pages rendered via the bottom navigation.
     final pages = [
       const SOSDashboard(),
-      const SafetyScoreScreen(safetyScore: 85, showBottomNav: false),
+      const SafetyScoreScreen(initialScore: 85, showBottomNav: false),
       ContactsScreen(key: _contactsKey),
       const ProfileScreen(),
     ];

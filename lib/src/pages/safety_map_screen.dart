@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:usafe_front_end/src/services/audio_analysis_service.dart';
+import 'package:usafe_front_end/src/services/live_safety_score_service.dart';
+import 'package:usafe_front_end/src/services/motion_analysis_service.dart';
 
 class SafetyMapScreen extends StatefulWidget {
   const SafetyMapScreen({Key? key}) : super(key: key);
@@ -20,6 +23,8 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   late Animation<double> _pulseAnimation;
 
   bool _isSafetyModeActive = false;
+  bool _isAudioListening = false;
+  bool _isMotionListening = false;
   bool _isDangerCountdownActive = false;
   Timer? _dangerTimer;
   int _dangerSeconds = 10;
@@ -29,11 +34,24 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   String _micStatusText = 'Safety Mode Off';
   Color _micStatusColor = Colors.white70;
   final AudioAnalysisService _audioService = AudioAnalysisService();
+  final MotionAnalysisService _motionService = MotionAnalysisService();
 
-  // Initial Camera Position (San Francisco placeholder)
+  // Live Safety Score (dynamic, from external APIs)
+  final SafetyScoreInputsProvider _scoreProvider = SafetyScoreInputsProvider();
+  LiveSafetyScoreResult? _liveScoreResult;
+  String? _scoreDataSource; // e.g. "sunrise-sunset, openstreetmap"
+  String? _scoreError; // null when last fetch succeeded
+  bool _scoreLoading = false;
+  Timer? _scoreUpdateTimer;
+  LatLng? _currentPosition;
+  bool _scoreExpanded = false;
+  /// True when Safety Mode was auto-enabled by Red zone (Active Trigger). Used to return to passive in Green.
+  bool _safetyModeAutoEnabled = false;
+
+  // Initial camera: Sri Lanka (Colombo). App optimized for Sri Lanka.
   static final CameraPosition _kInitialPosition = const CameraPosition(
-    target: LatLng(37.7749, -122.4194),
-    zoom: 14.0,
+    target: LatLng(6.9271, 79.8612),
+    zoom: 12.0,
   );
 
   @override
@@ -53,6 +71,118 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
     );
 
     _initAudioService();
+    _initMotionService();
+    _initLiveScore();
+  }
+
+  void _initLiveScore() {
+    _updateLiveScore();
+    _scoreUpdateTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (mounted) _updateLiveScore();
+    });
+  }
+
+  Future<void> _updateLiveScore() async {
+    if (_scoreLoading) return;
+    setState(() {
+      _scoreLoading = true;
+      _scoreError = null;
+    });
+    final position = await _getScorePosition();
+    if (!mounted) return;
+    final safetyPosition = SafetyPosition(position.latitude, position.longitude);
+    final previousZone = _liveScoreResult?.zone;
+    final fetchResult = await _scoreProvider.getScoreAt(position: safetyPosition);
+    if (!mounted) return;
+    setState(() {
+      _scoreLoading = false;
+      _currentPosition = position;
+      if (fetchResult.result != null) {
+        _liveScoreResult = fetchResult.result;
+        _scoreDataSource = fetchResult.dataSource;
+        _scoreError = null;
+      } else {
+        _scoreError = fetchResult.error ?? 'Unable to update score';
+      }
+    });
+    final result = fetchResult.result;
+    if (result != null) {
+      // Active Trigger: Red zone → silently warm start audio (per spec: "phone silently wakes up its sensors").
+      if (result.isDanger && previousZone != SafetyZone.danger && !_isSafetyModeActive) {
+        _warmStartMonitoring();
+      }
+      // Green zone: return to passive mode to save battery when we had auto-enabled in Red.
+      if ((result.isSafe || result.isCaution) && previousZone == SafetyZone.danger && _safetyModeAutoEnabled) {
+        _returnToPassiveMode();
+      }
+    }
+  }
+
+  Future<LatLng> _getScorePosition() async {
+    try {
+      final permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        final requested = await Geolocator.requestPermission();
+        if (requested == LocationPermission.denied || requested == LocationPermission.deniedForever) {
+          return _currentPosition ?? _kInitialPosition.target;
+        }
+      }
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
+      );
+      return LatLng(pos.latitude, pos.longitude);
+    } catch (_) {
+      return _currentPosition ?? _kInitialPosition.target;
+    }
+  }
+
+  /// Active Trigger: when score drops to Red, silently warm start monitoring
+  /// (microphone and motion sensors wake up, ready to detect distress). No dialog—per spec.
+  Future<void> _warmStartMonitoring() async {
+    if (!mounted || _isSafetyModeActive) return;
+    bool audioStarted = false;
+    if (_audioReady) {
+      audioStarted = await _audioService.startListening();
+    }
+    final motionStarted = await _motionService.startListening();
+    if (!mounted) return;
+    if (!audioStarted && !motionStarted) {
+      _showStatusSnack(_audioService.lastError ?? 'Could not auto-enable monitoring.');
+      return;
+    }
+    setState(() {
+      _isSafetyModeActive = true;
+      _isAudioListening = audioStarted;
+      _isMotionListening = motionStarted;
+      _safetyModeAutoEnabled = true;
+      _micStatusText = audioStarted
+          ? 'Auto: Listening (high-risk area)'
+          : 'Auto: Motion monitoring (high-risk area)';
+      _micStatusColor = Colors.redAccent;
+    });
+    if (audioStarted) {
+      _showStatusSnack('High-risk area: monitoring auto-enabled. Mic is now listening for distress.');
+    } else {
+      _showStatusSnack('High-risk area: motion monitoring enabled. Mic unavailable.');
+    }
+  }
+
+  /// Green zone: return to passive mode (mic off) to save battery when we had auto-enabled in Red.
+  void _returnToPassiveMode() {
+    if (!_safetyModeAutoEnabled || !_isSafetyModeActive) return;
+    _audioService.stopListening();
+    _motionService.stopListening();
+    if (!mounted) return;
+    setState(() {
+      _isSafetyModeActive = false;
+      _isAudioListening = false;
+      _isMotionListening = false;
+      _safetyModeAutoEnabled = false;
+      _micStatusText = 'Safety Mode Off (passive)';
+      _micStatusColor = Colors.white70;
+    });
+    _cancelDangerCountdown();
+    _showStatusSnack('Back to safer area. Passive mode to save battery.');
   }
 
   Future<void> _initAudioService() async {
@@ -72,29 +202,36 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
     };
   }
 
+  void _initMotionService() {
+    _motionService.onMotionDetected = (event, confidence) {
+      if (!mounted) return;
+      if (!_isSafetyModeActive) return;
+      _startDangerCountdown(reason: event);
+    };
+  }
+
   Future<void> _toggleSafetyMode() async {
     if (_isSafetyModeActive) {
       setState(() {
         _isSafetyModeActive = false;
+        _isAudioListening = false;
+        _isMotionListening = false;
+        _safetyModeAutoEnabled = false;
         _micStatusText = 'Safety Mode Off';
         _micStatusColor = Colors.white70;
       });
       await _audioService.stopListening();
+      await _motionService.stopListening();
       _cancelDangerCountdown();
       return;
     }
 
-    if (!_audioReady) {
-      _showStatusSnack('Audio model is not ready.');
-      setState(() {
-        _micStatusText = _audioService.lastError ?? 'Audio model unavailable.';
-        _micStatusColor = Colors.orangeAccent;
-      });
-      return;
+    bool audioStarted = false;
+    if (_audioReady) {
+      audioStarted = await _audioService.startListening();
     }
-
-    final started = await _audioService.startListening();
-    if (!started) {
+    final motionStarted = await _motionService.startListening();
+    if (!audioStarted && !motionStarted) {
       final message = _audioService.lastError ?? 'Microphone permission required.';
       _showStatusSnack(message);
       setState(() {
@@ -106,11 +243,20 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
 
     setState(() {
       _isSafetyModeActive = true;
-      _micStatusText = 'Listening for distress signals';
+      _isAudioListening = audioStarted;
+      _isMotionListening = motionStarted;
+      _safetyModeAutoEnabled = false; // User chose to enable; don't auto-disable in Green.
+      _micStatusText = audioStarted
+          ? 'Listening for distress signals'
+          : 'Motion monitoring only';
       _micStatusColor = Colors.redAccent;
     });
 
-    _showStatusSnack('Safety Mode Activated: Listening for distress signals...');
+    if (audioStarted) {
+      _showStatusSnack('Safety Mode Activated: Listening for distress signals...');
+    } else {
+      _showStatusSnack('Safety Mode Activated: Motion monitoring only.');
+    }
   }
 
   void _startDangerCountdown({required String reason}) {
@@ -132,7 +278,13 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
           _isDangerCountdownActive = false;
           _dangerSeconds = 10;
           if (_isSafetyModeActive) {
-            _micStatusText = 'Listening for distress signals';
+            if (_isAudioListening) {
+              _micStatusText = 'Listening for distress signals';
+            } else if (_isMotionListening) {
+              _micStatusText = 'Motion monitoring only';
+            } else {
+              _micStatusText = 'Safety Mode Off';
+            }
             _micStatusColor = Colors.redAccent;
           }
         });
@@ -158,7 +310,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
             return AlertDialog(
               backgroundColor: const Color(0xFF1E1E1E),
               title: const Text(
-                'Suspicious Noise Detected',
+                'Potential Distress Detected',
                 style: TextStyle(color: Colors.white),
               ),
               content: Text(
@@ -191,7 +343,13 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
       _isDangerCountdownActive = false;
       _dangerSeconds = 10;
       if (_isSafetyModeActive) {
-        _micStatusText = 'Listening for distress signals';
+        if (_isAudioListening) {
+          _micStatusText = 'Listening for distress signals';
+        } else if (_isMotionListening) {
+          _micStatusText = 'Motion monitoring only';
+        } else {
+          _micStatusText = 'Safety Mode Off';
+        }
         _micStatusColor = Colors.redAccent;
       } else {
         _micStatusText = 'Safety Mode Off';
@@ -303,30 +461,27 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   }
 
   Set<Circle> _buildCircles(double pulseRadius) {
-    // Static + animated overlays representing risk zones.
+    // Example risk zones for Sri Lanka (Colombo area). Replace with real heat map data if needed.
     return {
-      // 🔴 HIGH RISK (Pulsing Animation)
       Circle(
         circleId: const CircleId('danger_zone_1'),
-        center: const LatLng(37.7780, -122.4100),
-        radius: pulseRadius, // Animated radius
+        center: const LatLng(6.9350, 79.8480),
+        radius: pulseRadius,
         fillColor: const Color(0xFFE53935).withOpacity(0.3),
         strokeColor: const Color(0xFFE53935),
         strokeWidth: 2,
       ),
-      // 🟠 MODERATE RISK (Static)
       Circle(
         circleId: const CircleId('moderate_zone_1'),
-        center: const LatLng(37.7700, -122.4120),
+        center: const LatLng(6.9100, 79.8800),
         radius: 400,
         fillColor: Colors.orange.withOpacity(0.25),
         strokeColor: Colors.orange,
         strokeWidth: 1,
       ),
-      // 🟢 SAFE ZONE (Static)
       Circle(
         circleId: const CircleId('safe_zone_1'),
-        center: const LatLng(37.7800, -122.4250),
+        center: const LatLng(6.9500, 79.9000),
         radius: 500,
         fillColor: const Color(0xFF00E676).withOpacity(0.2),
         strokeColor: const Color(0xFF00E676),
@@ -337,10 +492,12 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
 
   @override
   void dispose() {
+    _scoreUpdateTimer?.cancel();
     _pulseController.dispose();
     _dangerTimer?.cancel();
     if (_isSafetyModeActive) {
       _audioService.stopListening();
+      _motionService.stopListening();
     }
     super.dispose();
   }
@@ -411,6 +568,14 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
             child: _buildMicStatusPill(),
           ),
 
+          // Live Safety Score card (dynamic 0–100, Green / Orange / Red)
+          Positioned(
+            top: 170,
+            left: 20,
+            right: 20,
+            child: _buildLiveSafetyScoreCard(),
+          ),
+
           // --- Bottom Floating Action Buttons ---
           Positioned(
             bottom: 30,
@@ -420,8 +585,13 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                 FloatingActionButton(
                   heroTag: "recenter",
                   backgroundColor: const Color(0xFF1E1E1E),
-                  onPressed: () {
-                    // TODO: implement re-center to current location.
+                  onPressed: () async {
+                    final position = await _getScorePosition();
+                    if (!mounted) return;
+                    _mapController.animateCamera(
+                      CameraUpdate.newLatLng(position),
+                    );
+                    _updateLiveScore();
                   },
                   child: const Icon(Icons.my_location, color: Colors.white),
                 ),
@@ -470,6 +640,9 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   }
 
   Widget _buildMicStatusPill() {
+    final icon = _isAudioListening
+        ? Icons.hearing
+        : (_isMotionListening ? Icons.sensors : Icons.mic_off);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
@@ -480,7 +653,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
       child: Row(
         children: [
           Icon(
-            _isSafetyModeActive ? Icons.hearing : Icons.mic_off,
+            icon,
             size: 14,
             color: _micStatusColor,
           ),
@@ -489,6 +662,166 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
             _micStatusText,
             style: TextStyle(color: _micStatusColor, fontSize: 12),
           ),
+        ],
+      ),
+    );
+  }
+
+  Color _scoreZoneColor(SafetyZone zone) {
+    switch (zone) {
+      case SafetyZone.safe:
+        return AppColors.successGreen;
+      case SafetyZone.caution:
+        return Colors.orange;
+      case SafetyZone.danger:
+        return AppColors.alertRed;
+    }
+  }
+
+  Widget _buildLiveSafetyScoreCard() {
+    final result = _liveScoreResult;
+    if (result == null && !_scoreLoading) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E1E1E).withOpacity(0.9),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54)),
+            SizedBox(width: 12),
+            Text('Calculating…', style: TextStyle(color: Colors.white70, fontSize: 14)),
+          ],
+        ),
+      );
+    }
+    if (result == null) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E1E1E).withOpacity(0.9),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54)),
+            SizedBox(width: 12),
+            Text('Fetching live data…', style: TextStyle(color: Colors.white70, fontSize: 14)),
+          ],
+        ),
+      );
+    }
+    final zoneColor = _scoreZoneColor(result.zone);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => setState(() => _scoreExpanded = !_scoreExpanded),
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E1E1E).withOpacity(0.95),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: zoneColor.withOpacity(0.6), width: 1.5),
+            boxShadow: [BoxShadow(color: zoneColor.withOpacity(0.2), blurRadius: 8, offset: const Offset(0, 2))],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.shield, color: zoneColor, size: 22),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Live Safety Score',
+                    style: TextStyle(color: Colors.grey[300], fontSize: 12, fontWeight: FontWeight.w500),
+                  ),
+                  if (_scoreLoading) ...[
+                    const SizedBox(width: 6),
+                    const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white54)),
+                  ],
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: zoneColor.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '${result.score}/92',
+                      style: TextStyle(color: zoneColor, fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    result.label,
+                    style: TextStyle(color: zoneColor, fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                  const Spacer(),
+                  Icon(_scoreExpanded ? Icons.expand_less : Icons.expand_more, color: Colors.white70, size: 20),
+                ],
+              ),
+              if (_scoreError != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    _scoreError!,
+                    style: TextStyle(color: Colors.orange[300], fontSize: 10),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              if (_scoreExpanded) ...[
+                const SizedBox(height: 12),
+                const Divider(color: Colors.white12, height: 1),
+                const SizedBox(height: 8),
+                _buildPillarRow('Time of day', result.breakdown.timeLight),
+                _buildPillarRow('Isolation (low density)', result.breakdown.environment),
+                _buildPillarRow('Distance to help', result.breakdown.proximity),
+                _buildPillarRow('Past incidents (Sri Lanka)', result.breakdown.history),
+                if (_scoreDataSource != null && _scoreDataSource!.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Data: $_scoreDataSource',
+                    style: TextStyle(color: Colors.grey[500], fontSize: 10),
+                  ),
+                ],
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPillarRow(String label, double risk) {
+    final value = (risk * 100).round();
+    final color = value > 66 ? AppColors.alertRed : (value > 33 ? Colors.orange : AppColors.successGreen);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          SizedBox(width: 100, child: Text(label, style: TextStyle(color: Colors.grey[400], fontSize: 11))),
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: risk,
+                backgroundColor: Colors.white12,
+                valueColor: AlwaysStoppedAnimation<Color>(color),
+                minHeight: 6,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text('$value%', style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w500)),
         ],
       ),
     );

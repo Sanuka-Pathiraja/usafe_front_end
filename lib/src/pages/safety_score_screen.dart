@@ -1,16 +1,119 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
+import 'package:usafe_front_end/src/services/live_safety_score_service.dart';
 import 'safety_map_screen.dart';
 
-class SafetyScoreScreen extends StatelessWidget {
-  final int safetyScore;
+class SafetyScoreScreen extends StatefulWidget {
+  final int initialScore;
   final bool showBottomNav;
 
   const SafetyScoreScreen({
     super.key,
-    this.safetyScore = 85,
+    this.initialScore = 85,
     this.showBottomNav = true,
   });
+
+  @override
+  State<SafetyScoreScreen> createState() => _SafetyScoreScreenState();
+}
+
+class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
+  final SafetyScoreInputsProvider _scoreProvider = SafetyScoreInputsProvider();
+  LiveSafetyScoreResult? _liveScoreResult;
+  bool _scoreLoading = false;
+  String? _scoreError;
+  SafetyPosition? _currentPosition;
+  Timer? _scoreTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _initLiveScore();
+  }
+
+  void _initLiveScore() {
+    _updateLiveScore();
+    _scoreTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) _updateLiveScore();
+    });
+  }
+
+  Future<void> _updateLiveScore() async {
+    if (_scoreLoading) return;
+    setState(() {
+      _scoreLoading = true;
+      _scoreError = null;
+    });
+    final position = await _getScorePosition();
+    if (!mounted) return;
+    final fetchResult = await _scoreProvider.getScoreAt(position: position);
+    if (!mounted) return;
+    setState(() {
+      _scoreLoading = false;
+      if (fetchResult.result != null) {
+        _liveScoreResult = fetchResult.result;
+        _scoreError = null;
+      } else {
+        _scoreError = fetchResult.error ?? 'Unable to update score';
+      }
+    });
+  }
+
+  Future<SafetyPosition> _getScorePosition() async {
+    try {
+      final permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        final requested = await Geolocator.requestPermission();
+        if (requested == LocationPermission.denied ||
+            requested == LocationPermission.deniedForever) {
+          return _currentPosition ?? const SafetyPosition(6.9271, 79.8612);
+        }
+      }
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
+      );
+      final safetyPosition = SafetyPosition(pos.latitude, pos.longitude);
+      _currentPosition = safetyPosition;
+      return safetyPosition;
+    } catch (_) {
+      return _currentPosition ?? const SafetyPosition(6.9271, 79.8612);
+    }
+  }
+
+  @override
+  void dispose() {
+    _scoreTimer?.cancel();
+    super.dispose();
+  }
+
+  Color _zoneColor(SafetyZone? zone, Color fallback) {
+    switch (zone) {
+      case SafetyZone.safe:
+        return AppColors.successGreen;
+      case SafetyZone.caution:
+        return Colors.orange;
+      case SafetyZone.danger:
+        return AppColors.alertRed;
+      default:
+        return fallback;
+    }
+  }
+
+  String _statusLine(SafetyZone? zone) {
+    switch (zone) {
+      case SafetyZone.safe:
+        return 'You are in a safe area';
+      case SafetyZone.caution:
+        return 'Proceed with caution';
+      case SafetyZone.danger:
+        return 'High risk area';
+      default:
+        return 'Calculating live safety score...';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -20,6 +123,10 @@ class SafetyScoreScreen extends StatelessWidget {
     final Color cardYellowBg = const Color(0xFF2C2514);
     final Color cardRedBg = const Color(0xFF2C1515);
     final Color textWhite = Colors.white;
+
+    final int displayScore = _liveScoreResult?.score ?? widget.initialScore;
+    final zone = _liveScoreResult?.zone;
+    final cardColor = _zoneColor(zone, cardBlue);
 
     return Scaffold(
       backgroundColor: bgDark,
@@ -53,7 +160,7 @@ class SafetyScoreScreen extends StatelessWidget {
               height: 360,
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: cardBlue,
+                color: cardColor,
                 borderRadius: BorderRadius.circular(30),
               ),
               child: Column(
@@ -73,7 +180,7 @@ class SafetyScoreScreen extends StatelessWidget {
                     text: TextSpan(
                       children: [
                         TextSpan(
-                          text: '$safetyScore',
+                          text: '$displayScore',
                           style: const TextStyle(
                             fontSize: 64,
                             fontWeight: FontWeight.bold,
@@ -81,17 +188,36 @@ class SafetyScoreScreen extends StatelessWidget {
                           ),
                         ),
                         const TextSpan(
-                          text: '/100',
+                          text: '/92',
                           style: TextStyle(fontSize: 24, color: Colors.white70),
                         ),
                       ],
                     ),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'You are in a safe area',
-                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  Text(
+                    _statusLine(zone),
+                    style: const TextStyle(color: Colors.white, fontSize: 16),
                   ),
+                  if (_scoreLoading) ...[
+                    const SizedBox(height: 8),
+                    const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white70,
+                      ),
+                    ),
+                  ],
+                  if (_scoreError != null) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      _scoreError!,
+                      style: const TextStyle(color: Colors.white70, fontSize: 11),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
                   const SizedBox(height: 30),
                   ElevatedButton(
                     onPressed: () {
@@ -139,7 +265,7 @@ class SafetyScoreScreen extends StatelessWidget {
             ),
             const SizedBox(height: 15),
             _buildStateCard(
-              score: '62/100',
+              score: '62/92',
               status: 'Proceed with Caution',
               icon: Icons.warning_amber_rounded,
               iconColor: Colors.white,
@@ -148,7 +274,7 @@ class SafetyScoreScreen extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             _buildStateCard(
-              score: '28/100',
+              score: '28/92',
               status: 'High Risk Area',
               icon: Icons.cancel_outlined,
               iconColor: Colors.white,
@@ -158,8 +284,8 @@ class SafetyScoreScreen extends StatelessWidget {
           ],
         ),
       ),
-      bottomNavigationBar:
-          showBottomNav ? _buildBottomNavBar(bgDark, cardBlue) : null,
+        bottomNavigationBar:
+          widget.showBottomNav ? _buildBottomNavBar(bgDark, cardBlue) : null,
     );
   }
 

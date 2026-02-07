@@ -29,6 +29,7 @@ dependencies:
   tflite_flutter: ^0.12.1
   record: ^6.2.0
   audio_session: ^0.2.2
+  sensors_plus: ^6.1.0
 
 dev_dependencies:
   flutter_test:
