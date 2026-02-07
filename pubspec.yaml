@@ -22,7 +22,8 @@ dependencies:
 
   # Maps & Payment
   flutter_stripe: ^9.0.0
-  http: ^1.0.0
+  http: ^1.2.0
+  google_sign_in: ^6.1.2
   google_maps_flutter: ^2.10.0
 
 dev_dependencies:

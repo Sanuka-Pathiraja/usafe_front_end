@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'core/constants/app_colors.dart';
-import 'features/auth/screens/login_screen.dart';
+import 'src/pages/splash_screen.dart'; // make sure path is correct
 
 class USafeApp extends StatelessWidget {
   const USafeApp({super.key});
@@ -15,7 +15,7 @@ class USafeApp extends StatelessWidget {
         scaffoldBackgroundColor: AppColors.background,
         useMaterial3: true,
       ),
-      home: const SplashScreen(),
+      home: SplashScreen(), // ❌ removed const
     );
   }
 }

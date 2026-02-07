@@ -55,7 +55,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: FloatingActionButton(
                     backgroundColor: AppColors.primarySky,
                     onPressed: () =>
-                        _contactsKey.currentState?.openAddContact(),
+                        _contactsKey.currentState?.addContactFromPhone(),
                     child: const Icon(Icons.add, color: Colors.white),
                   ),
                 ),
@@ -136,8 +136,7 @@ class _SOSDashboardState extends State<SOSDashboard>
           if (isSOSActive) _buildSOSHeader(),
           const Spacer(),
           Center(
-            child:
-                isSOSActive ? _buildSOSActiveView() : _buildHoldButton(),
+            child: isSOSActive ? _buildSOSActiveView() : _buildHoldButton(),
           ),
           const Spacer(),
           const SizedBox(height: 100),
@@ -257,7 +256,8 @@ class _SOSDashboardState extends State<SOSDashboard>
         onPressed: onTap,
         style: ElevatedButton.styleFrom(
           backgroundColor: bg,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         ),
         child: Text(
           label,
@@ -405,4 +405,3 @@ class _SOSHoldInteractionState extends State<SOSHoldInteraction>
     );
   }
 }
-
