@@ -14,7 +14,8 @@ class SafetyScoreScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color bgDark = AppColors.background;
+    // Define your local colors or fetch them from your theme/constants
+    final Color bgDark = AppColors.background; // Ensure this is defined in your AppColors
     final Color cardBlue = const Color(0xFF2962FF);
     final Color cardYellowBg = const Color(0xFF2C2514);
     final Color cardRedBg = const Color(0xFF2C1515);
@@ -46,6 +47,7 @@ class SafetyScoreScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Main Score Card
             Container(
               width: double.infinity,
               height: 360,
@@ -93,6 +95,7 @@ class SafetyScoreScreen extends StatelessWidget {
                   const SizedBox(height: 30),
                   ElevatedButton(
                     onPressed: () {
+                      // Navigate to the Map Screen
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -218,7 +221,7 @@ class SafetyScoreScreen extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
           _navIcon(Icons.home_filled, false),
-          _navIcon(Icons.map, true, activeColor: activeColor),
+          _navIcon(Icons.map, true, activeColor: activeColor), // Active tab
           _navIcon(Icons.people, false),
           _navIcon(Icons.person, false),
         ],
@@ -227,25 +230,30 @@ class SafetyScoreScreen extends StatelessWidget {
   }
 
   Widget _navIcon(IconData icon, bool isActive, {Color? activeColor}) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(
-          icon,
-          color: isActive ? (activeColor ?? Colors.white) : Colors.grey[600],
-          size: 26,
-        ),
-        if (isActive) const SizedBox(height: 4),
-        if (isActive)
-          Text(
-            'Map',
-            style: TextStyle(
-              color: activeColor,
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-            ),
-          )
-      ],
+    return InkWell(
+      onTap: () {
+        // Add navigation logic here if needed for bottom bar taps
+      },
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            icon,
+            color: isActive ? (activeColor ?? Colors.white) : Colors.grey[600],
+            size: 26,
+          ),
+          if (isActive) const SizedBox(height: 4),
+          if (isActive)
+            Text(
+              'Map',
+              style: TextStyle(
+                color: activeColor,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+              ),
+            )
+        ],
+      ),
     );
   }
 }

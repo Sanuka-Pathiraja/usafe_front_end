@@ -25,6 +25,11 @@ dependencies:
   http: ^1.0.0
   google_maps_flutter: ^2.10.0
 
+  # Machine Learning & Audio
+  tflite_flutter: ^0.12.1
+  record: ^6.2.0
+  audio_session: ^0.2.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -37,3 +42,5 @@ flutter:
   assets:
     - assets/usafe_logo.png
     - assets/google.jpg
+    - assets/models/yamnet.tflite
+    - assets/models/yamnet_class_map.csv
