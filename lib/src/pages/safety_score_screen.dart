@@ -46,6 +46,7 @@ class SafetyScoreScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Primary score card.
             Container(
               width: double.infinity,
               height: 360,
@@ -93,6 +94,7 @@ class SafetyScoreScreen extends StatelessWidget {
                   const SizedBox(height: 30),
                   ElevatedButton(
                     onPressed: () {
+                      // Drill down into the map detail screen.
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -125,6 +127,7 @@ class SafetyScoreScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 30),
+            // Example alternate states for context.
             Text(
               'Other States',
               style: TextStyle(

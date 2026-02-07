@@ -38,6 +38,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     Timer(const Duration(seconds: 3), () async {
       final prefs = await SharedPreferences.getInstance();
       final bool authorized = prefs.getBool('authorization_seen') ?? false;
+      // First-time users must accept the contacts authorization screen.
       if (!authorized) {
         if (mounted) {
           Navigator.pushReplacement(
@@ -108,6 +109,7 @@ class AuthorizationScreen extends StatelessWidget {
   const AuthorizationScreen({super.key});
 
   Future<void> _handleContinue(BuildContext context) async {
+    // Request contacts permission and mark the step as completed.
     await FlutterContacts.requestPermission();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('authorization_seen', true);
@@ -207,6 +209,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _handleLogin() async {
     setState(() => _isLoading = true);
+    // Validate credentials against the local mock store.
     bool success = await MockDatabase.validateLogin(_emailController.text.trim(), _passwordController.text.trim());
     
     if (!mounted) return;

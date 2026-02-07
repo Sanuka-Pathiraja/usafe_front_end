@@ -13,7 +13,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   late GoogleMapController _mapController;
   String _darkMapStyle = '';
 
-  // Animation for pulsing Red Zones
+  // Animation for pulsing danger zones.
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
 
@@ -27,9 +27,10 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   @override
   void initState() {
     super.initState();
+    // Prepare the dark map styling.
     _loadMapStyle();
     
-    // Setup Pulse Animation for Danger Zones
+    // Setup pulse animation for the high-risk circle.
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
@@ -93,6 +94,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   }
 
   Set<Circle> _buildCircles(double pulseRadius) {
+    // Static + animated overlays representing risk zones.
     return {
       // 🔴 HIGH RISK (Pulsing Animation)
       Circle(
@@ -192,7 +194,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                   heroTag: "recenter",
                   backgroundColor: const Color(0xFF1E1E1E),
                   onPressed: () {
-                    // Logic to re-center on user
+                    // TODO: implement re-center to current location.
                   },
                   child: const Icon(Icons.my_location, color: Colors.white),
                 ),
@@ -201,7 +203,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                   heroTag: "report",
                   backgroundColor: const Color(0xFFE53935),
                   onPressed: () {
-                    // Navigate to Report Screen
+                    // TODO: navigate to a report flow.
                   },
                   icon: const Icon(Icons.warning_amber_rounded, color: Colors.white),
                   label: const Text("Report Incident", style: TextStyle(color: Colors.white)),

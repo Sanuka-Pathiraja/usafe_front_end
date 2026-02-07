@@ -21,6 +21,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Main tab pages rendered via the bottom navigation.
     final pages = [
       const SOSDashboard(),
       const SafetyScoreScreen(safetyScore: 85, showBottomNav: false),
@@ -37,12 +38,14 @@ class _HomeScreenState extends State<HomeScreen> {
               index: _currentIndex,
               children: pages,
             ),
+            // Custom bottom navigation overlay.
             Positioned(
               bottom: 30,
               left: 20,
               right: 20,
               child: _buildBottomNavBar(),
             ),
+            // Show the add-contact FAB only on the Contacts tab.
             if (_currentIndex == 2)
               Positioned(
                 left: 0,
@@ -106,6 +109,7 @@ class _SOSDashboardState extends State<SOSDashboard>
     with TickerProviderStateMixin {
   bool isSOSActive = false;
 
+  // 3-minute countdown before auto alert.
   static const Duration _sosDuration = Duration(minutes: 3);
   Timer? _sosTimer;
   Duration _remaining = _sosDuration;
@@ -189,6 +193,7 @@ class _SOSDashboardState extends State<SOSDashboard>
         setState(() {
           isSOSActive = true;
         });
+        // Start the visible countdown once SOS is activated.
         _startSosCountdown();
       },
     );
