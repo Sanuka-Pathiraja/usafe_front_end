@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:usafe_front_end/src/services/audio_analysis_service.dart';
 
 class SafetyMapScreen extends StatefulWidget {
   const SafetyMapScreen({Key? key}) : super(key: key);
@@ -17,12 +19,17 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
 
+  bool _isSafetyModeActive = false;
+  bool _isDangerCountdownActive = false;
+  Timer? _dangerTimer;
+  int _dangerSeconds = 10;
+  final AudioAnalysisService _audioService = AudioAnalysisService();
+
   // Initial Camera Position (San Francisco placeholder)
   static final CameraPosition _kInitialPosition = const CameraPosition(
     target: LatLng(37.7749, -122.4194),
     zoom: 14.0,
   );
-
 
   @override
   void initState() {
@@ -40,6 +47,134 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
+    _initAudioService();
+  }
+
+  Future<void> _initAudioService() async {
+    await _audioService.initialize();
+    _audioService.onDistressDetected = (event, confidence) {
+      if (!mounted) return;
+      _startDangerCountdown(reason: event);
+    };
+  }
+
+  void _toggleSafetyMode() {
+    setState(() {
+      _isSafetyModeActive = !_isSafetyModeActive;
+    });
+
+    if (_isSafetyModeActive) {
+      _audioService.startListening();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content:
+              Text('Safety Mode Activated: Listening for distress signals...'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    } else {
+      _audioService.stopListening();
+      _cancelDangerCountdown();
+    }
+  }
+
+  void _startDangerCountdown({required String reason}) {
+    if (_isDangerCountdownActive) return;
+
+    setState(() {
+      _isDangerCountdownActive = true;
+      _dangerSeconds = 10;
+    });
+
+    _dangerTimer?.cancel();
+    _dangerTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      if (_dangerSeconds <= 1) {
+        timer.cancel();
+        setState(() {
+          _isDangerCountdownActive = false;
+          _dangerSeconds = 10;
+        });
+        _triggerAlarm(reason: reason);
+        return;
+      }
+      setState(() {
+        _dangerSeconds -= 1;
+      });
+    });
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1E1E1E),
+              title: const Text(
+                'Suspicious Noise Detected',
+                style: TextStyle(color: Colors.white),
+              ),
+              content: Text(
+                'SOS will trigger in $_dangerSeconds seconds.\nAre you safe?',
+                style: const TextStyle(color: Colors.white70),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _cancelDangerCountdown();
+                  },
+                  child: const Text("I'M SAFE",
+                      style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _cancelDangerCountdown() {
+    _dangerTimer?.cancel();
+    if (!mounted) return;
+    setState(() {
+      _isDangerCountdownActive = false;
+      _dangerSeconds = 10;
+    });
+  }
+
+  void _triggerAlarm({required String reason}) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.red.shade900,
+        title: const Text('DISTRESS DETECTED!',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: Text(
+          'Detected signal: $reason\n\nTriggering Emergency Protocol...',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+            },
+            child: const Text('CANCEL ALARM',
+                style: TextStyle(color: Colors.white)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.white),
+            onPressed: () {
+              Navigator.pop(context);
+            },
+            child: const Text('CALL SOS', style: TextStyle(color: Colors.red)),
+          )
+        ],
+      ),
+    );
   }
 
   // Load custom JSON for Dark Mode map
@@ -129,6 +264,10 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   @override
   void dispose() {
     _pulseController.dispose();
+    _dangerTimer?.cancel();
+    if (_isSafetyModeActive) {
+      _audioService.stopListening();
+    }
     super.dispose();
   }
 
@@ -136,6 +275,14 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
       body: Stack(
         children: [
           // --- The Map ---
@@ -197,6 +344,18 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                     // TODO: implement re-center to current location.
                   },
                   child: const Icon(Icons.my_location, color: Colors.white),
+                ),
+                const SizedBox(height: 16),
+                FloatingActionButton(
+                  heroTag: "safety_mode",
+                  backgroundColor: _isSafetyModeActive
+                      ? Colors.redAccent
+                      : const Color(0xFF1E1E1E),
+                  onPressed: _toggleSafetyMode,
+                  child: Icon(
+                    _isSafetyModeActive ? Icons.mic : Icons.mic_none,
+                    color: Colors.white,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 FloatingActionButton.extended(

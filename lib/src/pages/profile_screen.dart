@@ -88,8 +88,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: const CircleAvatar(
                       radius: 50,
                       backgroundColor: AppColors.surfaceCard,
-                      backgroundImage: AssetImage('assets/avatar_placeholder.png'), 
-                      child: Icon(Icons.person, size: 50, color: Colors.white38),
+                      backgroundImage: AssetImage('assets/usafe_logo.png'),
                     ),
                   ),
                   GestureDetector(
