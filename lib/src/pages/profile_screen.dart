@@ -7,6 +7,7 @@ import 'notifications_screen.dart';
 import 'privacy_screen.dart';
 import 'help_support_screen.dart';
 import 'contacts_screen.dart'; // NEW: Import the contacts screen
+import 'payment_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -20,7 +21,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late TextEditingController _emailController;
   late TextEditingController _bloodController;
   late TextEditingController _ageController;
-  late TextEditingController _weightController;
+  late TextEditingController _phoneController;
 
   @override
   void initState() {
@@ -30,13 +31,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       'email': 'No Email',
       'blood': '--',
       'age': '--',
-      'weight': '--'
+      'phone': '--'
     };
     _nameController = TextEditingController(text: user['name']);
     _emailController = TextEditingController(text: user['email']);
     _bloodController = TextEditingController(text: user['blood']);
     _ageController = TextEditingController(text: user['age']);
-    _weightController = TextEditingController(text: user['weight']);
+    _phoneController = TextEditingController(text: user['phone']);
   }
 
   void _toggleEdit() async {
@@ -47,7 +48,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _emailController.text,
         _bloodController.text,
         _ageController.text,
-        _weightController.text,
+        _phoneController.text,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -65,7 +66,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _emailController.dispose();
     _bloodController.dispose();
     _ageController.dispose();
-    _weightController.dispose();
+    _phoneController.dispose();
     super.dispose();
   }
 
@@ -116,7 +117,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     _buildDivider(),
                     _buildVitalInput("Age", _ageController),
                     _buildDivider(),
-                    _buildVitalInput("Weight", _weightController),
+                    _buildVitalInput("Phone", _phoneController),
                   ],
                 ),
               ),
@@ -140,6 +141,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 icon: Icons.notifications_outlined, 
                 title: "Notifications", 
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen()))
+              ),
+              _buildMenuTile(
+                icon: Icons.payment_outlined,
+                title: "Payments",
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PaymentScreen()))
               ),
               _buildMenuTile(
                 icon: Icons.lock_outline, 

@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:usafe_front_end/src/services/audio_analysis_service.dart';
+import 'package:usafe_front_end/core/services/api_service.dart';
+import 'package:usafe_front_end/features/auth/auth_service.dart';
+import 'package:geolocator/geolocator.dart';
 
 class SafetyMapScreen extends StatefulWidget {
   const SafetyMapScreen({Key? key}) : super(key: key);
@@ -23,7 +26,13 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   bool _isDangerCountdownActive = false;
   Timer? _dangerTimer;
   int _dangerSeconds = 10;
+  bool _audioReady = false;
+  bool _isDangerDialogOpen = false;
+  StateSetter? _dangerDialogSetState;
+  String _micStatusText = 'Safety Mode Off';
+  Color _micStatusColor = Colors.white70;
   final AudioAnalysisService _audioService = AudioAnalysisService();
+  bool _alarmSending = false;
 
   // Initial Camera Position (San Francisco placeholder)
   static final CameraPosition _kInitialPosition = const CameraPosition(
@@ -51,39 +60,71 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   }
 
   Future<void> _initAudioService() async {
-    await _audioService.initialize();
+    final ok = await _audioService.initialize();
+    if (!mounted) return;
+    setState(() {
+      _audioReady = ok;
+      if (!ok) {
+        _micStatusText = _audioService.lastError ?? 'Audio model unavailable.';
+        _micStatusColor = Colors.orangeAccent;
+      }
+    });
     _audioService.onDistressDetected = (event, confidence) {
       if (!mounted) return;
+      if (!_isSafetyModeActive) return;
       _startDangerCountdown(reason: event);
     };
   }
 
-  void _toggleSafetyMode() {
+  Future<void> _toggleSafetyMode() async {
+    if (_isSafetyModeActive) {
+      setState(() {
+        _isSafetyModeActive = false;
+        _micStatusText = 'Safety Mode Off';
+        _micStatusColor = Colors.white70;
+      });
+      await _audioService.stopListening();
+      _cancelDangerCountdown();
+      return;
+    }
+
+    if (!_audioReady) {
+      _showStatusSnack('Audio model is not ready.');
+      setState(() {
+        _micStatusText = _audioService.lastError ?? 'Audio model unavailable.';
+        _micStatusColor = Colors.orangeAccent;
+      });
+      return;
+    }
+
+    final started = await _audioService.startListening();
+    if (!started) {
+      final message = _audioService.lastError ?? 'Microphone permission required.';
+      _showStatusSnack(message);
+      setState(() {
+        _micStatusText = message;
+        _micStatusColor = Colors.orangeAccent;
+      });
+      return;
+    }
+
     setState(() {
-      _isSafetyModeActive = !_isSafetyModeActive;
+      _isSafetyModeActive = true;
+      _micStatusText = 'Listening for distress signals';
+      _micStatusColor = Colors.redAccent;
     });
 
-    if (_isSafetyModeActive) {
-      _audioService.startListening();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content:
-              Text('Safety Mode Activated: Listening for distress signals...'),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
-    } else {
-      _audioService.stopListening();
-      _cancelDangerCountdown();
-    }
+    _showStatusSnack('Safety Mode Activated: Listening for distress signals...');
   }
 
   void _startDangerCountdown({required String reason}) {
-    if (_isDangerCountdownActive) return;
+    if (_isDangerCountdownActive || !_isSafetyModeActive) return;
 
     setState(() {
       _isDangerCountdownActive = true;
       _dangerSeconds = 10;
+      _micStatusText = 'Potential distress: $_dangerSeconds s';
+      _micStatusColor = Colors.orangeAccent;
     });
 
     _dangerTimer?.cancel();
@@ -94,21 +135,30 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
         setState(() {
           _isDangerCountdownActive = false;
           _dangerSeconds = 10;
+          if (_isSafetyModeActive) {
+            _micStatusText = 'Listening for distress signals';
+            _micStatusColor = Colors.redAccent;
+          }
         });
+        _closeDangerDialog();
         _triggerAlarm(reason: reason);
         return;
       }
       setState(() {
         _dangerSeconds -= 1;
+        _micStatusText = 'Potential distress: $_dangerSeconds s';
       });
+      _dangerDialogSetState?.call(() {});
     });
 
+    _isDangerDialogOpen = true;
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            _dangerDialogSetState = setDialogState;
             return AlertDialog(
               backgroundColor: const Color(0xFF1E1E1E),
               title: const Text(
@@ -116,13 +166,12 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                 style: TextStyle(color: Colors.white),
               ),
               content: Text(
-                'SOS will trigger in $_dangerSeconds seconds.\nAre you safe?',
+                'Detected: $reason\n\nSOS will trigger in $_dangerSeconds seconds.\nAre you safe?',
                 style: const TextStyle(color: Colors.white70),
               ),
               actions: [
                 TextButton(
                   onPressed: () {
-                    Navigator.pop(context);
                     _cancelDangerCountdown();
                   },
                   child: const Text("I'M SAFE",
@@ -133,7 +182,10 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
           },
         );
       },
-    );
+    ).then((_) {
+      _isDangerDialogOpen = false;
+      _dangerDialogSetState = null;
+    });
   }
 
   void _cancelDangerCountdown() {
@@ -142,10 +194,23 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
     setState(() {
       _isDangerCountdownActive = false;
       _dangerSeconds = 10;
+      if (_isSafetyModeActive) {
+        _micStatusText = 'Listening for distress signals';
+        _micStatusColor = Colors.redAccent;
+      } else {
+        _micStatusText = 'Safety Mode Off';
+        _micStatusColor = Colors.white70;
+      }
     });
+    _closeDangerDialog();
   }
 
   void _triggerAlarm({required String reason}) {
+    setState(() {
+      _micStatusText = 'Distress detected';
+      _micStatusColor = Colors.redAccent;
+    });
+    _sendAlarmAlert();
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -169,12 +234,90 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
             style: ElevatedButton.styleFrom(backgroundColor: Colors.white),
             onPressed: () {
               Navigator.pop(context);
+              _sendAlarmAlert();
             },
             child: const Text('CALL SOS', style: TextStyle(color: Colors.red)),
           )
         ],
       ),
     );
+  }
+
+  Future<void> _sendAlarmAlert() async {
+    if (_alarmSending) return;
+    setState(() => _alarmSending = true);
+
+    try {
+      final token = await MockDatabase.loadToken();
+      if (token == null) {
+        _showStatusSnack('Please sign in to send alerts.');
+        return;
+      }
+
+      final contacts = await ApiService.getContacts(token);
+      final numbers = contacts
+          .map((c) => c['phone']?.toString() ?? '')
+          .where((n) => n.isNotEmpty)
+          .toList();
+
+      if (numbers.isEmpty) {
+        _showStatusSnack('Add emergency contacts first.');
+        return;
+      }
+
+      await ApiService.sendSosSms(jwt: token, numbers: numbers);
+      _showStatusSnack('SOS alerts sent.');
+    } catch (error) {
+      _showStatusSnack(error.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() => _alarmSending = false);
+      }
+    }
+  }
+
+  void _closeDangerDialog() {
+    if (!_isDangerDialogOpen || !mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+    _isDangerDialogOpen = false;
+    _dangerDialogSetState = null;
+  }
+
+  void _showStatusSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
+    );
+  }
+
+  Future<void> _recenterToCurrentLocation() async {
+    try {
+      final enabled = await Geolocator.isLocationServiceEnabled();
+      if (!enabled) {
+        _showStatusSnack('Location services are disabled.');
+        return;
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        _showStatusSnack('Location permission denied.');
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      await _mapController.animateCamera(
+        CameraUpdate.newLatLng(LatLng(position.latitude, position.longitude)),
+      );
+    } catch (error) {
+      _showStatusSnack('Unable to access location.');
+    }
   }
 
   // Load custom JSON for Dark Mode map
@@ -331,6 +474,12 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
             ),
           ),
 
+          Positioned(
+            top: 120,
+            left: 20,
+            child: _buildMicStatusPill(),
+          ),
+
           // --- Bottom Floating Action Buttons ---
           Positioned(
             bottom: 30,
@@ -341,7 +490,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                   heroTag: "recenter",
                   backgroundColor: const Color(0xFF1E1E1E),
                   onPressed: () {
-                    // TODO: implement re-center to current location.
+                    _recenterToCurrentLocation();
                   },
                   child: const Icon(Icons.my_location, color: Colors.white),
                 ),
@@ -362,7 +511,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                   heroTag: "report",
                   backgroundColor: const Color(0xFFE53935),
                   onPressed: () {
-                    // TODO: navigate to a report flow.
+                    _openReportDialog();
                   },
                   icon: const Icon(Icons.warning_amber_rounded, color: Colors.white),
                   label: const Text("Report Incident", style: TextStyle(color: Colors.white)),
@@ -387,5 +536,85 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
         Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
       ],
     );
+  }
+
+  Widget _buildMicStatusPill() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E).withOpacity(0.9),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _micStatusColor.withOpacity(0.5)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            _isSafetyModeActive ? Icons.hearing : Icons.mic_off,
+            size: 14,
+            color: _micStatusColor,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            _micStatusText,
+            style: TextStyle(color: _micStatusColor, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openReportDialog() async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1B2026),
+          title: const Text('Report Incident', style: TextStyle(color: Colors.white)),
+          content: TextField(
+            controller: controller,
+            maxLines: 4,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              hintText: 'Describe what happened...',
+              hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+              enabledBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: Colors.white.withOpacity(0.2)),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: Colors.white.withOpacity(0.5)),
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, controller.text.trim()),
+              child: const Text('Submit', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+    controller.dispose();
+
+    if (result == null || result.isEmpty) return;
+
+    try {
+      final token = await MockDatabase.loadToken();
+      if (token == null) {
+        _showStatusSnack('Please sign in to report incidents.');
+        return;
+      }
+      await ApiService.createCommunityReport(jwt: token, reportContent: result);
+      _showStatusSnack('Report submitted. Thank you for helping your community.');
+    } catch (error) {
+      _showStatusSnack(error.toString().replaceFirst('Exception: ', ''));
+    }
   }
 }

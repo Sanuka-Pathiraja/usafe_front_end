@@ -28,7 +28,7 @@ dependencies:
   # Machine Learning & Audio
   tflite_flutter: ^0.12.1
   record: ^6.2.0
-  audio_session: ^0.2.2
+  audio_session: ^0.1.25
 
 dev_dependencies:
   flutter_test:

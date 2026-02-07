@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
+import 'package:usafe_front_end/core/services/api_service.dart';
 
 class ContactsScreen extends StatefulWidget {
   const ContactsScreen({super.key});
@@ -18,7 +19,7 @@ class ContactsScreenState extends State<ContactsScreen> {
   static const double _footerBottom = 30;
   static const double _fabSize = 56;
 
-  final List<Map<String, String>> _contacts = [];
+  final List<Map<String, dynamic>> _contacts = [];
   bool _loading = true;
 
   @override
@@ -29,13 +30,44 @@ class ContactsScreenState extends State<ContactsScreen> {
   }
 
   Future<void> _loadContacts() async {
-    await MockDatabase.loadTrustedContacts();
-    setState(() {
-      _contacts
-        ..clear()
-        ..addAll(MockDatabase.trustedContacts);
-      _loading = false;
-    });
+    final token = await MockDatabase.loadToken();
+    if (token == null) {
+      await MockDatabase.loadTrustedContacts();
+      setState(() {
+        _contacts
+          ..clear()
+          ..addAll(MockDatabase.trustedContacts.map((e) => {
+            'name': e['name'] ?? '',
+            'relationship': e['relation'] ?? 'Contact',
+            'phone': e['phone'] ?? '',
+          }));
+        _loading = false;
+      });
+      return;
+    }
+
+    try {
+      final contacts = await ApiService.getContacts(token);
+      setState(() {
+        _contacts
+          ..clear()
+          ..addAll(contacts);
+        _loading = false;
+      });
+    } catch (error) {
+      await MockDatabase.loadTrustedContacts();
+      setState(() {
+        _contacts
+          ..clear()
+          ..addAll(MockDatabase.trustedContacts.map((e) => {
+            'name': e['name'] ?? '',
+            'relationship': e['relation'] ?? 'Contact',
+            'phone': e['phone'] ?? '',
+          }));
+        _loading = false;
+      });
+      _showSnack(error.toString().replaceFirst('Exception: ', ''));
+    }
   }
 
   Future<void> _addContactFromPhone() async {
@@ -72,15 +104,30 @@ class ContactsScreenState extends State<ContactsScreen> {
         ? fullContact.displayName
         : 'Unknown';
 
-    setState(() {
-      _contacts.add({
-        'name': name,
-        'relation': relation,
-        'phone': phone,
-      });
-    });
+    final token = await MockDatabase.loadToken();
+    if (token == null) {
+      _showSnack('Please log in to save contacts.');
+      return;
+    }
 
-    await MockDatabase.saveTrustedContacts(_contacts);
+    try {
+      final created = await ApiService.addContact(
+        jwt: token,
+        name: name,
+        relationship: relation,
+        phone: phone,
+      );
+      setState(() {
+        _contacts.add(created);
+      });
+      await MockDatabase.saveTrustedContacts(_contacts.map((e) => {
+        'name': e['name']?.toString() ?? '',
+        'relation': e['relationship']?.toString() ?? 'Contact',
+        'phone': e['phone']?.toString() ?? '',
+      }).toList());
+    } catch (error) {
+      _showSnack(error.toString().replaceFirst('Exception: ', ''));
+    }
   }
 
   Future<void> openAddContact() async {
@@ -168,11 +215,26 @@ class ContactsScreenState extends State<ContactsScreen> {
   }
 
   Future<void> _removeContact(int index) async {
-    // Persist removals immediately.
-    setState(() {
-      _contacts.removeAt(index);
-    });
-    await MockDatabase.saveTrustedContacts(_contacts);
+    final token = await MockDatabase.loadToken();
+    final contactId = _contacts[index]['contactId'];
+    if (token == null || contactId == null) {
+      _showSnack('Unable to remove contact. Please sign in again.');
+      return;
+    }
+
+    try {
+      await ApiService.deleteContact(jwt: token, contactId: contactId);
+      setState(() {
+        _contacts.removeAt(index);
+      });
+      await MockDatabase.saveTrustedContacts(_contacts.map((e) => {
+        'name': e['name']?.toString() ?? '',
+        'relation': e['relationship']?.toString() ?? 'Contact',
+        'phone': e['phone']?.toString() ?? '',
+      }).toList());
+    } catch (error) {
+      _showSnack(error.toString().replaceFirst('Exception: ', ''));
+    }
   }
 
   void _showSnack(String message) {
@@ -258,9 +320,10 @@ class ContactsScreenState extends State<ContactsScreen> {
     );
   }
 
-  Widget _buildContactCard(Map<String, String> contact, int index) {
-    final String name = contact['name'] ?? 'Unknown';
-    final String relation = contact['relation'] ?? 'Contact';
+  Widget _buildContactCard(Map<String, dynamic> contact, int index) {
+    final String name = contact['name']?.toString() ?? 'Unknown';
+    final String relation = contact['relationship']?.toString() ?? 'Contact';
+    final String phone = contact['phone']?.toString() ?? '';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -320,7 +383,21 @@ class ContactsScreenState extends State<ContactsScreen> {
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () {},
+                  onPressed: phone.isEmpty
+                      ? null
+                      : () async {
+                          final token = await MockDatabase.loadToken();
+                          if (token == null) {
+                            _showSnack('Unable to place call. Please sign in again.');
+                            return;
+                          }
+                          try {
+                            await ApiService.makeSosCall(jwt: token, to: phone);
+                            _showSnack('Calling $name...');
+                          } catch (error) {
+                            _showSnack(error.toString().replaceFirst('Exception: ', ''));
+                          }
+                        },
                   icon: const Icon(Icons.call, size: 18),
                   label: const Text('Call'),
                   style: OutlinedButton.styleFrom(
@@ -336,7 +413,19 @@ class ContactsScreenState extends State<ContactsScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: () {},
+                  onPressed: () async {
+                    final token = await MockDatabase.loadToken();
+                    if (token == null || phone.isEmpty) {
+                      _showSnack('Unable to send alert. Please sign in again.');
+                      return;
+                    }
+                    try {
+                      await ApiService.sendSosSms(jwt: token, numbers: [phone]);
+                      _showSnack('Alert sent to $name');
+                    } catch (error) {
+                      _showSnack(error.toString().replaceFirst('Exception: ', ''));
+                    }
+                  },
                   icon: const Icon(Icons.warning_amber_rounded,
                       size: 18, color: Colors.white),
                   label: const Text('Alert'),

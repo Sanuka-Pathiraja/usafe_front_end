@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
@@ -17,21 +16,36 @@ class AudioAnalysisService {
 
   static const int sampleRate = 16000;
   static const int requiredSamples = 15600;
+  static const Duration _triggerCooldown = Duration(seconds: 8);
 
   final List<double> _audioBuffer = [];
   bool _isRecording = false;
   List<String> _labels = [];
+  bool _initialized = false;
+  String? _lastError;
+  DateTime? _lastTriggerAt;
 
   Function(String event, double confidence)? onDistressDetected;
 
-  Future<void> initialize() async {
+  bool get isReady =>
+      _initialized && _interpreter != null && _labels.isNotEmpty;
+
+  String? get lastError => _lastError;
+
+  Future<bool> initialize() async {
     try {
       _interpreter = await Interpreter.fromAsset('assets/models/yamnet.tflite');
       final csvData =
           await rootBundle.loadString('assets/models/yamnet_class_map.csv');
       _parseLabels(csvData);
+      _initialized = true;
+      _lastError = null;
+      return isReady;
     } catch (e) {
       // Keep silent to avoid crashing; feature will stay inactive.
+      _initialized = false;
+      _lastError = 'Audio model failed to load.';
+      return false;
     }
   }
 
@@ -52,15 +66,22 @@ class AudioAnalysisService {
     }
   }
 
-  Future<void> startListening() async {
-    if (_isRecording) return;
+  Future<bool> startListening() async {
+    if (_isRecording) return true;
+    if (!isReady) {
+      _lastError = 'Audio model not ready.';
+      return false;
+    }
 
     final session = await AudioSession.instance;
     await session.configure(AudioSessionConfiguration.speech());
 
     _audioRecorder = AudioRecorder();
     if (!await _audioRecorder!.hasPermission()) {
-      return;
+      _lastError = 'Microphone permission denied.';
+      await _audioRecorder?.dispose();
+      _audioRecorder = null;
+      return false;
     }
 
     final stream = await _audioRecorder!.startStream(
@@ -74,6 +95,8 @@ class AudioAnalysisService {
     _isRecording = true;
     _audioBuffer.clear();
     _audioSubscription = stream.listen(_processAudioData);
+    _lastError = null;
+    return true;
   }
 
   void _processAudioData(Uint8List data) {
@@ -103,6 +126,12 @@ class AudioAnalysisService {
   void _analyzeResults(List<double> scores) {
     if (_labels.isEmpty) return;
 
+    final now = DateTime.now();
+    if (_lastTriggerAt != null &&
+        now.difference(_lastTriggerAt!) < _triggerCooldown) {
+      return;
+    }
+
     final Map<String, double> results = {};
     for (int i = 0; i < scores.length && i < _labels.length; i++) {
       results[_labels[i]] = scores[i];
@@ -129,12 +158,14 @@ class AudioAnalysisService {
     }
 
     if (detectedEvent != null) {
+      _lastTriggerAt = now;
       onDistressDetected?.call(detectedEvent!, maxConfidence);
     }
   }
 
   Future<void> stopListening() async {
     _isRecording = false;
+    _audioBuffer.clear();
     await _audioSubscription?.cancel();
     await _audioRecorder?.stop();
     await _audioRecorder?.dispose();

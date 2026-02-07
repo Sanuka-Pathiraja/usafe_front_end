@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
+import 'package:usafe_front_end/core/services/api_service.dart';
+import 'package:usafe_front_end/features/auth/auth_service.dart';
 import 'contacts_screen.dart';
 import 'profile_screen.dart';
 import 'safety_score_screen.dart';
@@ -118,6 +120,7 @@ class _SOSDashboardState extends State<SOSDashboard>
   final Color accentBlue = AppColors.primarySky;
   final Color accentRed = const Color(0xFFFF3D00);
   final Color tealBtn = const Color(0xFF1DE9B6);
+  bool _sendingAlert = false;
 
   @override
   void dispose() {
@@ -239,7 +242,7 @@ class _SOSDashboardState extends State<SOSDashboard>
           });
         }),
         const SizedBox(height: 15),
-        _buildActionButton('SEND HELP NOW', accentRed, Colors.white, () {}),
+        _buildActionButton('SEND HELP NOW', accentRed, Colors.white, _sendSosAlert, isLoading: _sendingAlert),
       ],
     );
   }
@@ -248,25 +251,35 @@ class _SOSDashboardState extends State<SOSDashboard>
     String label,
     Color bg,
     Color text,
-    VoidCallback onTap,
-  ) {
+    VoidCallback onTap, {
+    bool isLoading = false,
+  }) {
     return SizedBox(
       width: 280,
       height: 55,
       child: ElevatedButton(
-        onPressed: onTap,
+        onPressed: isLoading ? null : onTap,
         style: ElevatedButton.styleFrom(
           backgroundColor: bg,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: text,
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-          ),
-        ),
+        child: isLoading
+            ? const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+            : Text(
+                label,
+                style: TextStyle(
+                  color: text,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
       ),
     );
   }
@@ -281,6 +294,7 @@ class _SOSDashboardState extends State<SOSDashboard>
         setState(() {
           _remaining = Duration.zero;
         });
+        _sendSosAlert();
         return;
       }
       setState(() {
@@ -298,6 +312,46 @@ class _SOSDashboardState extends State<SOSDashboard>
     final int minutes = duration.inMinutes;
     final int seconds = duration.inSeconds % 60;
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _sendSosAlert() async {
+    if (_sendingAlert) return;
+    setState(() => _sendingAlert = true);
+
+    try {
+      final token = await MockDatabase.loadToken();
+      if (token == null) {
+        _showSnack('Please sign in to send alerts.');
+        return;
+      }
+
+      final contacts = await ApiService.getContacts(token);
+      final numbers = contacts
+          .map((c) => c['phone']?.toString() ?? '')
+          .where((n) => n.isNotEmpty)
+          .toList();
+
+      if (numbers.isEmpty) {
+        _showSnack('Add emergency contacts first.');
+        return;
+      }
+
+      await ApiService.sendSosSms(jwt: token, numbers: numbers);
+      _showSnack('SOS alerts sent.');
+    } catch (error) {
+      _showSnack(error.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() => _sendingAlert = false);
+      }
+    }
+  }
+
+  void _showSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 }
 

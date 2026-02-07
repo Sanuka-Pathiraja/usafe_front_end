@@ -209,28 +209,38 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _handleLogin() async {
     setState(() => _isLoading = true);
-    // Validate credentials against the local mock store.
-    bool success = await MockDatabase.validateLogin(_emailController.text.trim(), _passwordController.text.trim());
-    
-    if (!mounted) return;
-    setState(() => _isLoading = false);
+    try {
+      bool success = await MockDatabase.validateLogin(
+        _emailController.text.trim(),
+        _passwordController.text.trim(),
+      );
 
-    if (success) {
-      final prefs = await SharedPreferences.getInstance();
-      final bool authorized = prefs.getBool('authorization_seen') ?? false;
       if (!mounted) return;
-      if (!authorized) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const AuthorizationScreen()),
-        );
+      setState(() => _isLoading = false);
+
+      if (success) {
+        final prefs = await SharedPreferences.getInstance();
+        final bool authorized = prefs.getBool('authorization_seen') ?? false;
+        if (!mounted) return;
+        if (!authorized) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const AuthorizationScreen()),
+          );
+        } else {
+          Navigator.pushReplacement(
+              context, MaterialPageRoute(builder: (_) => const HomeScreen()));
+        }
       } else {
-        Navigator.pushReplacement(
-            context, MaterialPageRoute(builder: (_) => const HomeScreen()));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Invalid email or password."), backgroundColor: AppColors.alertRed, behavior: SnackBarBehavior.floating),
+        );
       }
-    } else {
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Invalid email or password."), backgroundColor: AppColors.alertRed, behavior: SnackBarBehavior.floating),
+        SnackBar(content: Text(error.toString().replaceFirst('Exception: ', '')), backgroundColor: AppColors.alertRed, behavior: SnackBarBehavior.floating),
       );
     }
   }
@@ -372,11 +382,19 @@ class _SignupScreenState extends State<SignupScreen> {
                       onPressed: _isLoading ? null : () async {
                         if (_nameCtrl.text.isNotEmpty && _emailCtrl.text.isNotEmpty && _passCtrl.text.isNotEmpty) {
                           setState(() => _isLoading = true);
-                          await MockDatabase.registerUser(_nameCtrl.text, _emailCtrl.text, _passCtrl.text);
-                          if (!mounted) return;
-                          setState(() => _isLoading = false);
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Account Created! You can Login now."), behavior: SnackBarBehavior.floating, backgroundColor: AppColors.safetyTeal));
-                          Navigator.pop(context);
+                          try {
+                            await MockDatabase.registerUser(_nameCtrl.text, _emailCtrl.text, _passCtrl.text);
+                            if (!mounted) return;
+                            setState(() => _isLoading = false);
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Account Created! You can Login now."), behavior: SnackBarBehavior.floating, backgroundColor: AppColors.safetyTeal));
+                            Navigator.pop(context);
+                          } catch (error) {
+                            if (!mounted) return;
+                            setState(() => _isLoading = false);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(error.toString().replaceFirst('Exception: ', '')), backgroundColor: AppColors.alertRed, behavior: SnackBarBehavior.floating),
+                            );
+                          }
                         } else {
                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please fill in all fields."), backgroundColor: AppColors.alertRed));
                         }
