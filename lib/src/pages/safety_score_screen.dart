@@ -98,7 +98,9 @@ class SafetyScoreScreen extends StatelessWidget {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => const SafetyMapScreen(),
+                          builder: (context) => const SafetyMapScreen(
+                            showToneDetailsOnLoad: true,
+                          ),
                         ),
                       );
                     },
