@@ -9,6 +9,7 @@ import 'notifications_screen.dart';
 import 'privacy_screen.dart';
 import 'help_support_screen.dart';
 import 'contacts_screen.dart';
+import 'payment_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -233,6 +234,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       context,
                       MaterialPageRoute(
                           builder: (_) => const HelpSupportScreen()))),
+              _buildMenuTile(
+                  icon: Icons.help_outline,
+                  title: "Premium Features",
+                  onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const PaymentScreen()))),
+
               const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
