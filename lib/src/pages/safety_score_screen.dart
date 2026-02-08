@@ -188,7 +188,7 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
                           ),
                         ),
                         const TextSpan(
-                          text: '/92',
+                          text: '/100',
                           style: TextStyle(fontSize: 24, color: Colors.white70),
                         ),
                       ],
@@ -265,7 +265,7 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
             ),
             const SizedBox(height: 15),
             _buildStateCard(
-              score: '62/92',
+              score: '62/100',
               status: 'Proceed with Caution',
               icon: Icons.warning_amber_rounded,
               iconColor: Colors.white,
@@ -274,7 +274,7 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
             ),
             const SizedBox(height: 12),
             _buildStateCard(
-              score: '28/92',
+              score: '28/100',
               status: 'High Risk Area',
               icon: Icons.cancel_outlined,
               iconColor: Colors.white,

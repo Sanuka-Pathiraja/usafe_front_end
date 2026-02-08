@@ -56,6 +56,12 @@ class SafetyScoreInputs {
   final SafetyPosition position;
   /// 0 = isolated/low density, 1 = high population density (safety factor). Sri Lanka: district + POI.
   final double crowdDensity;
+  /// Optional: nearby venue count used as a proxy for open shops/cafes.
+  final int nearbyVenueCount;
+  /// Optional: indicates whether the nearest road is a side lane.
+  final bool? isSideLane;
+  /// Optional: indicates if the nearest road is well lit (OSM lit=yes/no).
+  final bool? isWellLit;
   /// Past incidents: count (foreign APIs) or use [incidentRiskOverride] for Sri Lanka.
   final int incidentCount;
   /// Distance in meters to nearest help (police or hospital). Smaller = safer.
@@ -69,6 +75,9 @@ class SafetyScoreInputs {
     required this.dateTime,
     required this.position,
     this.crowdDensity = 0.5,
+    this.nearbyVenueCount = 0,
+    this.isSideLane,
+    this.isWellLit,
     this.incidentCount = 0,
     this.distanceToHelpMeters = 1000,
     this.timeLightRiskOverride,
@@ -221,73 +230,18 @@ class LiveSafetyScoreService {
   /// Returns a score 12-92 and zone. Uses penalties + mitigation model.
   LiveSafetyScoreResult calculate(SafetyScoreInputs inputs) {
     final b = _computePillarBreakdown(inputs);
-    final inSriLanka = SriLankaConfig.isInSriLanka(
-      inputs.position.latitude,
-      inputs.position.longitude,
-    );
-    final area = inSriLanka ? _findSriLankaTuning(inputs.position) : null;
-    final isNight = b.timeLight >= 0.6;
-    // Baseline and penalties.
     final double base = maxScore.toDouble();
-    final timeWeight = inSriLanka ? 28.0 : 30.0;
-    final historyWeight = inSriLanka ? 24.0 : 20.0;
-    final environmentWeight = inSriLanka ? 26.0 : 25.0;
-    final proximityWeight = inSriLanka ? 16.0 : 15.0;
-    final timePenalty = timeWeight * b.timeLight;
-    final historyPenalty = historyWeight * b.history;
-    final environmentPenalty = environmentWeight * b.environment;
-    final proximityPenalty = proximityWeight * b.proximity;
 
-    double score = base - (timePenalty + historyPenalty + environmentPenalty + proximityPenalty);
+    final timePenalty = _timePenalty(inputs.dateTime);
+    final lightingPenalty = _lightingPenalty(inputs.isSideLane, inputs.isWellLit);
+    final historyPenalty = _historyPenalty(b.history);
 
-    // Smart mitigation: police/hospital proximity reduces time penalty.
-    final distance = inputs.distanceToHelpMeters;
-    double timeRefundFactor = 0.0;
-    if (distance <= 150) {
-      timeRefundFactor = 0.85;
-    } else if (distance <= 300) {
-      timeRefundFactor = 0.7;
-    } else if (distance <= 600) {
-      timeRefundFactor = 0.45;
-    } else if (distance <= 1000) {
-      timeRefundFactor = 0.25;
-    }
-    if (area != null) {
-      timeRefundFactor = min(0.9, timeRefundFactor + area.timeRefundBoost);
-    }
-    score += timePenalty * timeRefundFactor;
+    final distanceBonus = _policeBonus(inputs.distanceToHelpMeters);
+    final crowdBonus = _crowdBonus(inputs.crowdDensity);
+    final venueBonus = _venueBonus(inputs.nearbyVenueCount);
 
-    // Crowd mitigation: high density restores safety because of "eyes on the street".
-    double crowd = inputs.crowdDensity.clamp(0.0, 1.0);
-    if (area != null && crowd < area.crowdFloor) {
-      crowd = area.crowdFloor;
-    }
-    final maxCrowdBonus = inSriLanka ? 18.0 : 15.0;
-    final crowdBonusBoost = area?.crowdBonusBoost ?? 0.0;
-    final crowdBonus = (maxCrowdBonus + crowdBonusBoost) * pow(crowd, 1.2).toDouble();
-    score += crowdBonus;
-
-    // Additional mitigation: low incident history + high crowd reduces history penalty impact.
-    if (b.history < 0.2 && crowd >= 0.6) {
-      score += historyPenalty * 0.3;
-    }
-
-    // Extra safety buffer when both help is close and area is busy.
-    if (distance <= 500 && crowd >= 0.6) {
-      score += 6.0;
-    }
-
-    // Sri Lanka urban buffer: dense Colombo cores stay safer even late night.
-    if (inSriLanka && crowd >= 0.7 && distance <= 1200) {
-      score += 8.0;
-    }
-
-    if (area != null) {
-      score += isNight ? area.baseBonusNight : area.baseBonusDay;
-      if (isNight && area.nightIsolationPenalty > 0 && crowd < 0.4) {
-        score -= area.nightIsolationPenalty;
-      }
-    }
+    double score = base - (timePenalty + lightingPenalty + historyPenalty) +
+        (distanceBonus + crowdBonus + venueBonus);
 
     score = score.clamp(minScore.toDouble(), maxScore.toDouble());
     final intScore = score.round().clamp(minScore, maxScore);
@@ -311,6 +265,42 @@ class LiveSafetyScoreService {
       label: label,
       breakdown: b,
     );
+  }
+
+  int _timePenalty(DateTime dateTime) {
+    final hour = dateTime.hour + dateTime.minute / 60.0;
+    if (hour >= 22 || hour < 4) return 30;
+    if (hour >= 18 || hour < 22) return 15;
+    if (hour >= 4 && hour < 6) return 20;
+    return 0;
+  }
+
+  int _lightingPenalty(bool? isSideLane, bool? isWellLit) {
+    if (isSideLane == true && isWellLit == false) return 15;
+    return 0;
+  }
+
+  int _historyPenalty(double historyRisk) {
+    if (historyRisk >= 0.66) return 20;
+    if (historyRisk >= 0.33) return 10;
+    return 0;
+  }
+
+  int _policeBonus(double distanceMeters) {
+    if (distanceMeters <= 200) return 25;
+    if (distanceMeters <= 500) return 15;
+    return 0;
+  }
+
+  int _crowdBonus(double crowdDensity) {
+    if (crowdDensity >= 0.7) return 20;
+    if (crowdDensity >= 0.4) return 10;
+    return 0;
+  }
+
+  int _venueBonus(int venueCount) {
+    if (venueCount >= 3) return 10;
+    return 0;
   }
 
   PillarBreakdown _computePillarBreakdown(SafetyScoreInputs i) {
@@ -396,11 +386,15 @@ class SafetyScoreInputsProvider {
       SunriseSunsetApi.getSunriseSunset(lat: lat, lng: lng, date: now),
       OverpassApi.getNearestPoliceOrHospital(lat: lat, lng: lng, radiusMeters: 10000),
       OverpassApi.getPoiDensity(lat: lat, lng: lng, radiusMeters: 500),
+      GooglePlacesApi.getPlaceDensity(lat: lat, lng: lng, radiusMeters: 500),
+      OverpassApi.getRoadContext(lat: lat, lng: lng, radiusMeters: 250),
     ]);
 
     final sunriseResult = results[0] as SunriseSunsetResult;
     final helpResult = results[1] as NearestHelpResult;
     final poiResult = results[2] as PoiDensityResult;
+    final placesResult = results[3] as PlacesDensityResult;
+    final roadContext = results[4] as RoadContextResult;
 
     // 1) Time of day: sunrise-sunset API.
     double? timeLightOverride;
@@ -408,12 +402,21 @@ class SafetyScoreInputsProvider {
       timeLightOverride = sunriseResult.darknessRisk(now.toUtc());
     }
 
-    // 2) Population density: Sri Lanka district density + POI count (combined).
+    // 2) Population density: Sri Lanka district density + activity density (Places/POI).
     double populationDensity = 0.5;
+    final double? placesDensity = placesResult.isOk
+        ? (placesResult.count / placesResult.areaKm2)
+        : null;
+    final double? placesScore = placesDensity != null
+        ? (placesDensity / 40.0).clamp(0.0, 1.0)
+        : null;
     if (inSriLanka) {
       final districtDensity = SriLankaSafetyData.getPopulationDensityAt(lat, lng);
       final poiDensity = poiResult.isOk ? (poiResult.count / 25.0).clamp(0.0, 1.0) : 0.5;
-      populationDensity = (districtDensity * 0.55 + poiDensity * 0.45).clamp(0.0, 1.0);
+      final activityScore = placesScore ?? poiDensity;
+      populationDensity = (districtDensity * 0.55 + activityScore * 0.45).clamp(0.0, 1.0);
+    } else if (placesScore != null) {
+      populationDensity = placesScore.clamp(0.0, 1.0);
     } else if (poiResult.isOk) {
       populationDensity = (poiResult.count / 25.0).clamp(0.0, 1.0);
     }
@@ -430,18 +433,31 @@ class SafetyScoreInputsProvider {
       incidentRiskOverride = SriLankaSafetyData.getIncidentRiskAt(lat, lng);
     }
 
+    // 5) Venue activity proxy: nearby Places count (fallback to POIs).
+    final venueCount = placesResult.isOk
+        ? placesResult.count
+        : (poiResult.isOk ? poiResult.count : 0);
+
     final sources = <String>[];
     if (sunriseResult.isOk) sources.add('time of day');
     if (helpResult.isOk) {
       sources.add('help (${helpResult.type})');
     }
-    if (poiResult.isOk) sources.add('POI density');
+    if (placesResult.isOk) {
+      sources.add('Places density');
+    } else if (poiResult.isOk) {
+      sources.add('POI density');
+    }
+    if (roadContext.isOk) sources.add('road context');
     if (inSriLanka) sources.add('Sri Lanka incidents');
 
     final inputs = SafetyScoreInputs(
       dateTime: now,
       position: position,
       crowdDensity: populationDensity,
+      nearbyVenueCount: venueCount,
+      isSideLane: roadContext.isSideLane,
+      isWellLit: roadContext.isWellLit,
       incidentCount: 0,
       distanceToHelpMeters: distanceToHelp,
       timeLightRiskOverride: timeLightOverride,

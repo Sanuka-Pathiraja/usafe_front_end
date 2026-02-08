@@ -755,7 +755,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      '${result.score}/92',
+                      '${result.score}/100',
                       style: TextStyle(color: zoneColor, fontSize: 18, fontWeight: FontWeight.bold),
                     ),
                   ),

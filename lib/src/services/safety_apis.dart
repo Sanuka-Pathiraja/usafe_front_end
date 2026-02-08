@@ -113,6 +113,104 @@ class PoiDensityResult {
   const PoiDensityResult({required this.count, required this.isOk});
 }
 
+/// Road context from OpenStreetMap (nearest way).
+class RoadContextResult {
+  final bool? isSideLane;
+  final bool? isWellLit;
+  final bool isOk;
+
+  const RoadContextResult({
+    required this.isSideLane,
+    required this.isWellLit,
+    required this.isOk,
+  });
+}
+
+/// Places density result (nearby Places count + area).
+class PlacesDensityResult {
+  final int count;
+  final double areaKm2;
+  final bool isOk;
+
+  const PlacesDensityResult({
+    required this.count,
+    required this.areaKm2,
+    required this.isOk,
+  });
+}
+
+/// Google Places API (New) - optional, requires API key.
+/// https://developers.google.com/maps/documentation/places/web-service/search-nearby
+class GooglePlacesApi {
+  static const _endpoint = 'https://places.googleapis.com/v1/places:searchNearby';
+
+  // A small, broad set of types that correlate with activity/crowd.
+  static const List<String> _defaultTypes = [
+    'restaurant',
+    'cafe',
+    'bar',
+    'fast_food',
+    'shopping_mall',
+    'supermarket',
+    'park',
+    'school',
+    'hospital',
+    'transit_station',
+    'tourist_attraction',
+  ];
+
+  static Future<PlacesDensityResult> getPlaceDensity({
+    required double lat,
+    required double lng,
+    int radiusMeters = 500,
+  }) async {
+    final apiKey = SafetyApiConfig.googlePlacesApiKey;
+    final radius = radiusMeters.clamp(100, 1000);
+    final areaKm2 = _circleAreaKm2(radius.toDouble());
+    if (apiKey == null) {
+      return PlacesDensityResult(count: 0, areaKm2: areaKm2, isOk: false);
+    }
+
+    final body = {
+      'includedTypes': _defaultTypes,
+      'maxResultCount': 50,
+      'locationRestriction': {
+        'circle': {
+          'center': {'latitude': lat, 'longitude': lng},
+          'radius': radius.toDouble(),
+        },
+      },
+    };
+
+    try {
+      final resp = await http.post(
+        Uri.parse(_endpoint),
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': apiKey,
+          'X-Goog-FieldMask': 'places.id',
+        },
+        body: jsonEncode(body),
+      ).timeout(Duration(seconds: SafetyApiConfig.apiTimeoutSeconds));
+
+      if (resp.statusCode != 200) {
+        return PlacesDensityResult(count: 0, areaKm2: areaKm2, isOk: false);
+      }
+
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      final places = data['places'] as List<dynamic>? ?? [];
+      return PlacesDensityResult(count: places.length, areaKm2: areaKm2, isOk: true);
+    } catch (_) {
+      return PlacesDensityResult(count: 0, areaKm2: areaKm2, isOk: false);
+    }
+  }
+
+  static double _circleAreaKm2(double radiusMeters) {
+    final radiusKm = radiusMeters / 1000.0;
+    return pi * radiusKm * radiusKm;
+  }
+}
+
 /// Overpass API (OpenStreetMap) - free, no key.
 /// https://wiki.openstreetmap.org/wiki/Overpass_API
 class OverpassApi {
@@ -262,6 +360,78 @@ out;
     } catch (_) {
       return const PoiDensityResult(count: 0, isOk: false);
     }
+  }
+
+  /// Nearest road context (highway type + lighting). Useful for side-lane/lighting penalty.
+  static Future<RoadContextResult> getRoadContext({
+    required double lat,
+    required double lng,
+    int radiusMeters = 250,
+  }) async {
+    final radius = radiusMeters.clamp(100, 800);
+    final query = '''
+[out:json][timeout:12];
+way(around:$radius,$lat,$lng)[highway];
+out tags center;
+''';
+    try {
+      final resp = await http.post(
+        Uri.parse(_endpoint),
+        body: query,
+        headers: {'Content-Type': 'text/plain'},
+      ).timeout(Duration(seconds: SafetyApiConfig.apiTimeoutSeconds));
+      if (resp.statusCode != 200) {
+        return const RoadContextResult(isSideLane: null, isWellLit: null, isOk: false);
+      }
+
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      final elements = data['elements'] as List<dynamic>? ?? [];
+      double minDist = double.infinity;
+      Map<String, dynamic>? bestTags;
+      for (final el in elements) {
+        final e = el as Map<String, dynamic>;
+        final center = e['center'] as Map<String, dynamic>?;
+        final elat = (center?['lat'] as num?)?.toDouble();
+        final elon = (center?['lon'] as num?)?.toDouble();
+        if (elat == null || elon == null) continue;
+        final d = _haversineMeters(lat, lng, elat, elon);
+        if (d < minDist) {
+          minDist = d;
+          bestTags = e['tags'] as Map<String, dynamic>?;
+        }
+      }
+
+      if (bestTags == null) {
+        return const RoadContextResult(isSideLane: null, isWellLit: null, isOk: false);
+      }
+
+      final highway = (bestTags['highway'] as String?)?.toLowerCase();
+      final lit = (bestTags['lit'] as String?)?.toLowerCase();
+
+      final isMainRoad = _isMainRoadType(highway);
+      final isSideLane = highway == null ? null : !isMainRoad;
+      final isWellLit = lit == null ? null : _isTruthy(lit);
+
+      return RoadContextResult(isSideLane: isSideLane, isWellLit: isWellLit, isOk: true);
+    } catch (_) {
+      return const RoadContextResult(isSideLane: null, isWellLit: null, isOk: false);
+    }
+  }
+
+  static bool _isMainRoadType(String? highway) {
+    if (highway == null) return false;
+    const main = {
+      'motorway',
+      'trunk',
+      'primary',
+      'secondary',
+      'tertiary',
+    };
+    return main.contains(highway);
+  }
+
+  static bool _isTruthy(String value) {
+    return value == 'yes' || value == 'true' || value == '1';
   }
 
   static double _haversineMeters(double lat1, double lon1, double lat2, double lon2) {

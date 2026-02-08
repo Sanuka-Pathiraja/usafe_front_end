@@ -5,9 +5,22 @@
 /// - [Overpass / OpenStreetMap](https://overpass-api.de) (police, hospital, POI density)
 /// - [data.police.uk](https://data.police.uk) (crime in UK only)
 ///
+/// **Optional:** Set [googlePlacesApiKey] for Places-based activity density.
+///
 /// **Optional:** Set [crimeometerApiKey] for US/worldwide crime data (see [setCrimeometerApiKey]).
 class SafetyApiConfig {
   SafetyApiConfig._();
+
+  /// Google Places API key (optional). When set, enables Places density.
+  /// Get a key at https://console.cloud.google.com/ (Places API / Places API (New)).
+  static String? get googlePlacesApiKey => _googlePlacesApiKey;
+  static String? _googlePlacesApiKey;
+
+  /// Set the Google Places API key (e.g. at app startup from env or user settings).
+  /// Example: `SafetyApiConfig.setGooglePlacesApiKey(Platform.environment['GOOGLE_PLACES_API_KEY']);`
+  static void setGooglePlacesApiKey(String? key) {
+    _googlePlacesApiKey = key?.trim().isEmpty == true ? null : key;
+  }
 
   /// Crimeometer API key (optional). When set, enables US/worldwide crime data.
   /// Get a key at https://www.crimeometer.com/ (Crime Data API).
