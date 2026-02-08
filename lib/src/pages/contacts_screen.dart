@@ -176,29 +176,107 @@ class ContactsScreenState extends State<ContactsScreen> {
         backgroundColor: AppColors.background,
         title: const Text("Emergency Contacts"),
         centerTitle: true,
-      ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.redAccent,
-        onPressed: addContactFromPhone,
-        child: const Icon(Icons.add),
+        elevation: 0,
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Text(
-                    "${_contacts.length}/$_maxContacts contacts added",
-                    style: const TextStyle(color: Colors.white70),
+                // Header section with counter and add button
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "${_contacts.length} of $_maxContacts contacts",
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                "Add ${_minContacts - _contacts.length > 0 ? _minContacts - _contacts.length : 0} more required",
+                                style: TextStyle(
+                                  color: _contacts.length >= _minContacts
+                                      ? Colors.green.shade400
+                                      : Colors.orange.shade400,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                          ElevatedButton.icon(
+                            onPressed: _contacts.length >= _maxContacts
+                                ? null
+                                : addContactFromPhone,
+                            icon: const Icon(Icons.person_add, size: 20),
+                            label: const Text("Add Contact"),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF2D3748),
+                              foregroundColor: Colors.white,
+                              disabledBackgroundColor: Colors.grey.shade800,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      const Divider(color: Colors.white12),
+                    ],
                   ),
                 ),
+
+                // Contacts list
                 Expanded(
-                  child: ListView.builder(
-                    itemCount: _contacts.length,
-                    itemBuilder: (_, index) =>
-                        _buildContactCard(_contacts[index]),
-                  ),
+                  child: _contacts.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.contacts_outlined,
+                                size: 80,
+                                color: Colors.grey.shade700,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                "No emergency contacts yet",
+                                style: TextStyle(
+                                  color: Colors.grey.shade500,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                "Add at least $_minContacts contacts",
+                                style: TextStyle(
+                                  color: Colors.grey.shade600,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: _contacts.length,
+                          itemBuilder: (_, index) =>
+                              _buildContactCard(_contacts[index]),
+                        ),
                 ),
               ],
             ),
@@ -206,25 +284,49 @@ class ContactsScreenState extends State<ContactsScreen> {
   }
 
   Widget _buildContactCard(Map<String, dynamic> contact) {
-    return Card(
-      color: const Color(0xFF1A2128),
-      margin: const EdgeInsets.all(10),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E2530),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white10),
+      ),
       child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: CircleAvatar(
-          backgroundColor: Colors.grey.shade800,
-          child: Text(contact["name"][0]),
+          backgroundColor: const Color(0xFF2D3748),
+          radius: 24,
+          child: Text(
+            contact["name"][0].toUpperCase(),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ),
         title: Text(
           contact["name"],
-          style: const TextStyle(color: Colors.white),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+          ),
         ),
-        subtitle: Text(
-          contact["relationship"],
-          style: const TextStyle(color: Colors.white60),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            contact["relationship"],
+            style: const TextStyle(
+              color: Colors.white60,
+              fontSize: 14,
+            ),
+          ),
         ),
         trailing: IconButton(
-          icon: const Icon(Icons.delete, color: Colors.redAccent),
+          icon: const Icon(Icons.delete_outline, color: Colors.white54),
           onPressed: () => _deleteContact(contact["contactId"]),
+          tooltip: "Remove contact",
         ),
       ),
     );

@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
 import 'package:usafe_front_end/features/auth/screens/login_screen.dart';
+import 'package:usafe_front_end/src/pages/settings_screen.dart';
 import 'medical_id_screen.dart';
 import 'notifications_screen.dart';
 import 'privacy_screen.dart';
@@ -235,12 +236,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       MaterialPageRoute(
                           builder: (_) => const HelpSupportScreen()))),
               _buildMenuTile(
-                  icon: Icons.help_outline,
-                  title: "Premium Features",
-                  onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const PaymentScreen()))),
+                  icon: Icons.settings_outlined,
+                  title: "Settings",
+                  onTap: () => Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => const SettingsPage()))),
 
               const SizedBox(height: 20),
               SizedBox(
