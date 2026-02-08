@@ -450,127 +450,185 @@ class _MyHomePageState extends State<MyHomePage> {
 
                       /// PHOTOS SECTION
                       const Text(
-                        "Add Photos (Optional)",
+                        "Add Evidence",
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
+                      const SizedBox(height: 4),
+                      Text(
+                        "Capture or upload photos to support your report",
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.6),
+                          fontSize: 13,
+                        ),
+                      ),
                       const SizedBox(height: 12),
 
+                      /// PHOTO BUTTONS - REDESIGNED
                       Row(
                         children: [
                           Expanded(
-                            child: _ActionButton(
+                            child: _ModernPhotoButton(
                               icon: Icons.camera_alt_rounded,
-                              label: "Take Photo",
-                              color: Colors.blue.shade600,
+                              label: "Camera",
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
                               onPressed: _takePhoto,
                             ),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
-                            child: _ActionButton(
+                            child: _ModernPhotoButton(
                               icon: Icons.photo_library_rounded,
                               label: "Gallery",
-                              color: Colors.purple.shade600,
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFFFA709A), Color(0xFFFEE140)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
                               onPressed: _pickFromGallery,
                             ),
                           ),
                         ],
                       ),
 
-                      /// SELECTED IMAGES PREVIEW
+                      /// SELECTED IMAGES PREVIEW - ENHANCED
                       if (_selectedImages.isNotEmpty) ...[
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          height: 100,
-                          child: ListView.builder(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: _selectedImages.length,
-                            itemBuilder: (context, index) {
-                              return Container(
-                                margin: const EdgeInsets.only(right: 12),
-                                child: Stack(
-                                  children: [
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(12),
-                                      child: Image.file(
-                                        _selectedImages[index],
-                                        width: 100,
-                                        height: 100,
-                                        fit: BoxFit.cover,
-                                      ),
+                        const SizedBox(height: 20),
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.1),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.green.withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(8),
                                     ),
-                                    Positioned(
-                                      top: 4,
-                                      right: 4,
-                                      child: GestureDetector(
-                                        onTap: () => _removeImage(index),
-                                        child: Container(
-                                          padding: const EdgeInsets.all(4),
-                                          decoration: BoxDecoration(
-                                            color: Colors.red.shade600,
-                                            shape: BoxShape.circle,
-                                          ),
-                                          child: const Icon(
-                                            Icons.close,
-                                            color: Colors.white,
-                                            size: 16,
-                                          ),
-                                        ),
-                                      ),
+                                    child: const Icon(
+                                      Icons.check_circle_rounded,
+                                      color: Colors.green,
+                                      size: 20,
                                     ),
-                                  ],
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    "${_selectedImages.length} Photo${_selectedImages.length > 1 ? 's' : ''} Attached",
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                              SizedBox(
+                                height: 120,
+                                child: ListView.builder(
+                                  scrollDirection: Axis.horizontal,
+                                  itemCount: _selectedImages.length,
+                                  itemBuilder: (context, index) {
+                                    return Container(
+                                      margin: const EdgeInsets.only(right: 12),
+                                      child: Stack(
+                                        children: [
+                                          Container(
+                                            decoration: BoxDecoration(
+                                              borderRadius:
+                                                  BorderRadius.circular(16),
+                                              border: Border.all(
+                                                color: Colors.white
+                                                    .withOpacity(0.2),
+                                                width: 2,
+                                              ),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: Colors.black
+                                                      .withOpacity(0.3),
+                                                  blurRadius: 8,
+                                                  spreadRadius: 0,
+                                                ),
+                                              ],
+                                            ),
+                                            child: ClipRRect(
+                                              borderRadius:
+                                                  BorderRadius.circular(14),
+                                              child: Image.file(
+                                                _selectedImages[index],
+                                                width: 120,
+                                                height: 120,
+                                                fit: BoxFit.cover,
+                                              ),
+                                            ),
+                                          ),
+                                          Positioned(
+                                            top: 6,
+                                            right: 6,
+                                            child: GestureDetector(
+                                              onTap: () => _removeImage(index),
+                                              child: Container(
+                                                padding:
+                                                    const EdgeInsets.all(6),
+                                                decoration: BoxDecoration(
+                                                  gradient:
+                                                      const LinearGradient(
+                                                    colors: [
+                                                      Color(0xFFEB3349),
+                                                      Color(0xFFF45C43)
+                                                    ],
+                                                  ),
+                                                  shape: BoxShape.circle,
+                                                  boxShadow: [
+                                                    BoxShadow(
+                                                      color: Colors.red
+                                                          .withOpacity(0.5),
+                                                      blurRadius: 8,
+                                                      spreadRadius: 0,
+                                                    ),
+                                                  ],
+                                                ),
+                                                child: const Icon(
+                                                  Icons.close_rounded,
+                                                  color: Colors.white,
+                                                  size: 18,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
                                 ),
-                              );
-                            },
+                              ),
+                            ],
                           ),
                         ),
                       ],
 
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 32),
 
-                      /// SUBMIT BUTTON
-                      SizedBox(
-                        width: double.infinity,
-                        height: 56,
-                        child: ElevatedButton(
-                          onPressed: _isSubmitting ? null : _submitReport,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green.shade600,
-                            foregroundColor: Colors.white,
-                            disabledBackgroundColor: Colors.grey.shade700,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            elevation: 0,
-                          ),
-                          child: _isSubmitting
-                              ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: CircularProgressIndicator(
-                                    color: Colors.white,
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(Icons.send_rounded, size: 20),
-                                    SizedBox(width: 8),
-                                    Text(
-                                      "Submit Community Report",
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                        ),
+                      /// SUBMIT BUTTON - REDESIGNED
+                      _ModernSubmitButton(
+                        isSubmitting: _isSubmitting,
+                        onPressed: _submitReport,
                       ),
 
                       const SizedBox(height: 16),
@@ -581,6 +639,171 @@ class _MyHomePageState extends State<MyHomePage> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/* ================= MODERN PHOTO BUTTON WIDGET ================= */
+class _ModernPhotoButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Gradient gradient;
+  final VoidCallback onPressed;
+
+  const _ModernPhotoButton({
+    required this.icon,
+    required this.label,
+    required this.gradient,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        height: 120,
+        decoration: BoxDecoration(
+          gradient: gradient,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: gradient.colors.first.withOpacity(0.4),
+              blurRadius: 20,
+              spreadRadius: 0,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                icon,
+                color: Colors.white,
+                size: 32,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/* ================= MODERN SUBMIT BUTTON WIDGET ================= */
+class _ModernSubmitButton extends StatelessWidget {
+  final bool isSubmitting;
+  final VoidCallback onPressed;
+
+  const _ModernSubmitButton({
+    required this.isSubmitting,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: isSubmitting ? null : onPressed,
+      borderRadius: BorderRadius.circular(20),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        height: 64,
+        decoration: BoxDecoration(
+          gradient: isSubmitting
+              ? const LinearGradient(
+                  colors: [Color(0xFF525252), Color(0xFF3d3d3d)],
+                )
+              : const LinearGradient(
+                  colors: [Color(0xFF11998e), Color(0xFF38ef7d)],
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                ),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: isSubmitting
+              ? []
+              : [
+                  BoxShadow(
+                    color: const Color(0xFF11998e).withOpacity(0.5),
+                    blurRadius: 24,
+                    spreadRadius: 0,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+        ),
+        child: isSubmitting
+            ? const Center(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      height: 24,
+                      width: 24,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2.5,
+                      ),
+                    ),
+                    SizedBox(width: 16),
+                    Text(
+                      "Submitting Report...",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : Center(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.send_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Text(
+                      "Submit Community Report",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
       ),
     );
   }
@@ -694,51 +917,6 @@ class IssueCard extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-/* ================= ACTION BUTTON WIDGET ================= */
-class _ActionButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-  final VoidCallback onPressed;
-
-  const _ActionButton({
-    required this.icon,
-    required this.label,
-    required this.color,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ElevatedButton(
-      onPressed: onPressed,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: color,
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        elevation: 0,
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 20),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
       ),
     );
   }
