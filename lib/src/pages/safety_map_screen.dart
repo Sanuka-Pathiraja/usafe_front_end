@@ -786,6 +786,27 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                 _buildPillarRow('Isolation (low density)', result.breakdown.environment),
                 _buildPillarRow('Distance to help', result.breakdown.proximity),
                 _buildPillarRow('Past incidents (Sri Lanka)', result.breakdown.history),
+                if (result.debugInfo != null) ...[
+                  const SizedBox(height: 8),
+                  const Divider(color: Colors.white12, height: 1),
+                  const SizedBox(height: 8),
+                  _buildDebugRow('Time penalty', '-${result.debugInfo!.timePenalty}'),
+                  _buildDebugRow('Infra penalty', '-${result.debugInfo!.infraPenalty}'),
+                  _buildDebugRow('Isolation penalty', '-${result.debugInfo!.isolationPenalty}'),
+                  _buildDebugRow('Weather penalty', '-${result.debugInfo!.weatherPenalty}'),
+                  _buildDebugRow('History penalty', '-${result.debugInfo!.historyPenalty}'),
+                  _buildDebugRow('Police bonus', '+${result.debugInfo!.distanceBonus}'),
+                  _buildDebugRow('Crowd bonus', '+${result.debugInfo!.crowdBonus}'),
+                  _buildDebugRow('Embassy bonus', '+${result.debugInfo!.embassyBonus}'),
+                  _buildDebugRow('Total penalties', '-${result.debugInfo!.totalPenalties}'),
+                  _buildDebugRow('Total mitigations', '+${result.debugInfo!.totalMitigations}'),
+                  _buildDebugRow('Crowd density', result.debugInfo!.crowdDensity.toStringAsFixed(2)),
+                  _buildDebugRow('Venue count', '${result.debugInfo!.nearbyVenueCount}'),
+                  _buildDebugRow('Help distance (m)', result.debugInfo!.distanceToHelpMeters.toStringAsFixed(0)),
+                  _buildDebugRow('Side lane', '${result.debugInfo!.isSideLane ?? 'unknown'}'),
+                  _buildDebugRow('Well lit', '${result.debugInfo!.isWellLit ?? 'unknown'}'),
+                  _buildDebugRow('Near embassy', '${result.debugInfo!.isNearEmbassy ?? 'unknown'}'),
+                ],
                 if (_scoreDataSource != null && _scoreDataSource!.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   Text(
@@ -822,6 +843,27 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
           ),
           const SizedBox(width: 8),
           Text('$value%', style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w500)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDebugRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 130,
+            child: Text(label, style: TextStyle(color: Colors.grey[500], fontSize: 10)),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: const TextStyle(color: Colors.white70, fontSize: 10),
+            ),
+          ),
         ],
       ),
     );

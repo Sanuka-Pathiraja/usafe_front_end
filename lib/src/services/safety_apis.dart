@@ -105,6 +105,14 @@ class NearestPoliceResult {
   const NearestPoliceResult({required this.distanceMeters, required this.isOk});
 }
 
+/// Result for nearest embassy (high-value security proxy).
+class NearestEmbassyResult {
+  final double distanceMeters;
+  final bool isOk;
+
+  const NearestEmbassyResult({required this.distanceMeters, required this.isOk});
+}
+
 /// POI density: count of amenities in radius (proxy for "busy" area).
 class PoiDensityResult {
   final int count;
@@ -324,6 +332,57 @@ out center;
       return NearestHelpResult(distanceMeters: minDist, type: type, isOk: true);
     } catch (_) {
       return const NearestHelpResult(distanceMeters: 5000, type: 'none', isOk: false);
+    }
+  }
+
+  /// Find nearest embassy within [radiusMeters].
+  static Future<NearestEmbassyResult> getNearestEmbassy({
+    required double lat,
+    required double lng,
+    int radiusMeters = 5000,
+  }) async {
+    final radius = radiusMeters.clamp(500, 20000);
+    final query = '''
+[out:json][timeout:15];
+(
+  node(around:$radius,$lat,$lng)[amenity=embassy];
+  way(around:$radius,$lat,$lng)[amenity=embassy]);
+out center;
+''';
+    try {
+      final resp = await http.post(
+        Uri.parse(_endpoint),
+        body: query,
+        headers: {'Content-Type': 'text/plain'},
+      ).timeout(Duration(seconds: SafetyApiConfig.apiTimeoutSeconds));
+      if (resp.statusCode != 200) {
+        return const NearestEmbassyResult(distanceMeters: 5000, isOk: false);
+      }
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      final elements = data['elements'] as List<dynamic>? ?? [];
+      double minDist = double.infinity;
+      for (final el in elements) {
+        final e = el as Map<String, dynamic>;
+        double? elat, elon;
+        if (e['lat'] != null && e['lon'] != null) {
+          elat = (e['lat'] as num).toDouble();
+          elon = (e['lon'] as num).toDouble();
+        } else if (e['center'] != null) {
+          final c = e['center'] as Map<String, dynamic>;
+          elat = (c['lat'] as num).toDouble();
+          elon = (c['lon'] as num).toDouble();
+        }
+        if (elat != null && elon != null) {
+          final d = _haversineMeters(lat, lng, elat, elon);
+          if (d < minDist) minDist = d;
+        }
+      }
+      if (minDist == double.infinity) {
+        return const NearestEmbassyResult(distanceMeters: 5000, isOk: false);
+      }
+      return NearestEmbassyResult(distanceMeters: minDist, isOk: true);
+    } catch (_) {
+      return const NearestEmbassyResult(distanceMeters: 5000, isOk: false);
     }
   }
 

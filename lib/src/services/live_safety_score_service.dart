@@ -19,12 +19,14 @@ class LiveSafetyScoreResult {
   final SafetyZone zone;
   final String label;
   final PillarBreakdown breakdown;
+  final SafetyScoreDebugInfo? debugInfo;
 
   const LiveSafetyScoreResult({
     required this.score,
     required this.zone,
     required this.label,
     required this.breakdown,
+    this.debugInfo,
   });
 
   bool get isDanger => zone == SafetyZone.danger;
@@ -33,6 +35,45 @@ class LiveSafetyScoreResult {
 }
 
 enum SafetyZone { safe, caution, danger }
+
+/// Detailed calculation values for UI/debug.
+class SafetyScoreDebugInfo {
+  final int timePenalty;
+  final int infraPenalty;
+  final int isolationPenalty;
+  final int weatherPenalty;
+  final int historyPenalty;
+  final int distanceBonus;
+  final int crowdBonus;
+  final int embassyBonus;
+  final int totalPenalties;
+  final int totalMitigations;
+  final double crowdDensity;
+  final int nearbyVenueCount;
+  final double distanceToHelpMeters;
+  final bool? isSideLane;
+  final bool? isWellLit;
+  final bool? isNearEmbassy;
+
+  const SafetyScoreDebugInfo({
+    required this.timePenalty,
+    required this.infraPenalty,
+    required this.isolationPenalty,
+    required this.weatherPenalty,
+    required this.historyPenalty,
+    required this.distanceBonus,
+    required this.crowdBonus,
+    required this.embassyBonus,
+    required this.totalPenalties,
+    required this.totalMitigations,
+    required this.crowdDensity,
+    required this.nearbyVenueCount,
+    required this.distanceToHelpMeters,
+    required this.isSideLane,
+    required this.isWellLit,
+    required this.isNearEmbassy,
+  });
+}
 
 /// Per-pillar contribution for transparency in UI.
 /// Sri Lanka: time of day, population density, distance to police, past incidents (Sri Lanka data only).
@@ -62,6 +103,8 @@ class SafetyScoreInputs {
   final bool? isSideLane;
   /// Optional: indicates if the nearest road is well lit (OSM lit=yes/no).
   final bool? isWellLit;
+  /// Optional: indicates if an embassy is nearby (high-value security).
+  final bool? isNearEmbassy;
   /// Past incidents: count (foreign APIs) or use [incidentRiskOverride] for Sri Lanka.
   final int incidentCount;
   /// Distance in meters to nearest help (police or hospital). Smaller = safer.
@@ -78,6 +121,7 @@ class SafetyScoreInputs {
     this.nearbyVenueCount = 0,
     this.isSideLane,
     this.isWellLit,
+    this.isNearEmbassy,
     this.incidentCount = 0,
     this.distanceToHelpMeters = 1000,
     this.timeLightRiskOverride,
@@ -233,15 +277,19 @@ class LiveSafetyScoreService {
     final double base = maxScore.toDouble();
 
     final timePenalty = _timePenalty(inputs.dateTime);
-    final lightingPenalty = _lightingPenalty(inputs.isSideLane, inputs.isWellLit);
+    final infraPenalty = _lightingPenalty(inputs.isSideLane, inputs.isWellLit);
+    final isolationPenalty = _isolationPenalty(inputs.crowdDensity, inputs.nearbyVenueCount);
+    final weatherPenalty = 0;
     final historyPenalty = _historyPenalty(b.history);
 
     final distanceBonus = _policeBonus(inputs.distanceToHelpMeters);
-    final crowdBonus = _crowdBonus(inputs.crowdDensity);
-    final venueBonus = _venueBonus(inputs.nearbyVenueCount);
+    final crowdBonus = _crowdBonus(inputs.nearbyVenueCount);
+    final embassyBonus = inputs.isNearEmbassy == true ? 15 : 0;
 
-    double score = base - (timePenalty + lightingPenalty + historyPenalty) +
-        (distanceBonus + crowdBonus + venueBonus);
+    final penalties = timePenalty + infraPenalty + isolationPenalty + weatherPenalty + historyPenalty;
+    final mitigations = distanceBonus + crowdBonus + embassyBonus;
+
+    double score = base - penalties + mitigations;
 
     score = score.clamp(minScore.toDouble(), maxScore.toDouble());
     final intScore = score.round().clamp(minScore, maxScore);
@@ -264,19 +312,38 @@ class LiveSafetyScoreService {
       zone: zone,
       label: label,
       breakdown: b,
+      debugInfo: SafetyScoreDebugInfo(
+        timePenalty: timePenalty,
+        infraPenalty: infraPenalty,
+        isolationPenalty: isolationPenalty,
+        weatherPenalty: weatherPenalty,
+        historyPenalty: historyPenalty,
+        distanceBonus: distanceBonus,
+        crowdBonus: crowdBonus,
+        embassyBonus: embassyBonus,
+        totalPenalties: penalties,
+        totalMitigations: mitigations,
+        crowdDensity: inputs.crowdDensity,
+        nearbyVenueCount: inputs.nearbyVenueCount,
+        distanceToHelpMeters: inputs.distanceToHelpMeters,
+        isSideLane: inputs.isSideLane,
+        isWellLit: inputs.isWellLit,
+        isNearEmbassy: inputs.isNearEmbassy,
+      ),
     );
   }
 
   int _timePenalty(DateTime dateTime) {
     final hour = dateTime.hour + dateTime.minute / 60.0;
     if (hour >= 22 || hour < 4) return 30;
-    if (hour >= 18 || hour < 22) return 15;
-    if (hour >= 4 && hour < 6) return 20;
+    if (hour >= 18 || hour < 22) return 10;
+    if (hour >= 4 && hour < 6) return 15;
     return 0;
   }
 
   int _lightingPenalty(bool? isSideLane, bool? isWellLit) {
     if (isSideLane == true && isWellLit == false) return 15;
+    if (isSideLane == true && isWellLit == true) return 5;
     return 0;
   }
 
@@ -289,17 +356,19 @@ class LiveSafetyScoreService {
   int _policeBonus(double distanceMeters) {
     if (distanceMeters <= 200) return 25;
     if (distanceMeters <= 500) return 15;
+    if (distanceMeters <= 1000) return 5;
     return 0;
   }
 
-  int _crowdBonus(double crowdDensity) {
-    if (crowdDensity >= 0.7) return 20;
-    if (crowdDensity >= 0.4) return 10;
+  int _crowdBonus(int venueCount) {
+    if (venueCount > 5) return 15;
+    if (venueCount >= 1) return 5;
     return 0;
   }
 
-  int _venueBonus(int venueCount) {
-    if (venueCount >= 3) return 10;
+  int _isolationPenalty(double crowdDensity, int venueCount) {
+    if (crowdDensity < 0.1 && venueCount == 0) return 25;
+    if (crowdDensity < 0.25) return 15;
     return 0;
   }
 
@@ -388,6 +457,7 @@ class SafetyScoreInputsProvider {
       OverpassApi.getPoiDensity(lat: lat, lng: lng, radiusMeters: 500),
       GooglePlacesApi.getPlaceDensity(lat: lat, lng: lng, radiusMeters: 500),
       OverpassApi.getRoadContext(lat: lat, lng: lng, radiusMeters: 250),
+      OverpassApi.getNearestEmbassy(lat: lat, lng: lng, radiusMeters: 5000),
     ]);
 
     final sunriseResult = results[0] as SunriseSunsetResult;
@@ -395,6 +465,7 @@ class SafetyScoreInputsProvider {
     final poiResult = results[2] as PoiDensityResult;
     final placesResult = results[3] as PlacesDensityResult;
     final roadContext = results[4] as RoadContextResult;
+    final embassyResult = results[5] as NearestEmbassyResult;
 
     // 1) Time of day: sunrise-sunset API.
     double? timeLightOverride;
@@ -449,6 +520,7 @@ class SafetyScoreInputsProvider {
       sources.add('POI density');
     }
     if (roadContext.isOk) sources.add('road context');
+    if (embassyResult.isOk) sources.add('embassy proximity');
     if (inSriLanka) sources.add('Sri Lanka incidents');
 
     final inputs = SafetyScoreInputs(
@@ -458,6 +530,7 @@ class SafetyScoreInputsProvider {
       nearbyVenueCount: venueCount,
       isSideLane: roadContext.isSideLane,
       isWellLit: roadContext.isWellLit,
+      isNearEmbassy: embassyResult.isOk && embassyResult.distanceMeters <= 1000,
       incidentCount: 0,
       distanceToHelpMeters: distanceToHelp,
       timeLightRiskOverride: timeLightOverride,
