@@ -38,6 +38,9 @@ enum SafetyZone { safe, caution, danger }
 
 /// Detailed calculation values for UI/debug.
 class SafetyScoreDebugInfo {
+  final double latitude;
+  final double longitude;
+  final String? districtName;
   final int timePenalty;
   final int infraPenalty;
   final int isolationPenalty;
@@ -56,6 +59,9 @@ class SafetyScoreDebugInfo {
   final bool? isNearEmbassy;
 
   const SafetyScoreDebugInfo({
+    required this.latitude,
+    required this.longitude,
+    required this.districtName,
     required this.timePenalty,
     required this.infraPenalty,
     required this.isolationPenalty,
@@ -313,6 +319,11 @@ class LiveSafetyScoreService {
       label: label,
       breakdown: b,
       debugInfo: SafetyScoreDebugInfo(
+        latitude: inputs.position.latitude,
+        longitude: inputs.position.longitude,
+        districtName: SriLankaSafetyData
+            .getDistrictFor(inputs.position.latitude, inputs.position.longitude)
+            ?.name,
         timePenalty: timePenalty,
         infraPenalty: infraPenalty,
         isolationPenalty: isolationPenalty,

@@ -14,6 +14,14 @@ class SafetyMapScreen extends StatefulWidget {
   _SafetyMapScreenState createState() => _SafetyMapScreenState();
 }
 
+class _LocationFetchResult {
+  final LatLng position;
+  final String source;
+  final String? warning;
+
+  const _LocationFetchResult(this.position, this.source, this.warning);
+}
+
 class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProviderStateMixin {
   late GoogleMapController _mapController;
   String _darkMapStyle = '';
@@ -41,10 +49,12 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   LiveSafetyScoreResult? _liveScoreResult;
   String? _scoreDataSource; // e.g. "sunrise-sunset, openstreetmap"
   String? _scoreError; // null when last fetch succeeded
+  String? _scoreWarning; // non-fatal warnings (e.g. fallback location)
   bool _scoreLoading = false;
   Timer? _scoreUpdateTimer;
   LatLng? _currentPosition;
   bool _scoreExpanded = false;
+  String _locationSource = 'unknown';
   /// True when Safety Mode was auto-enabled by Red zone (Active Trigger). Used to return to passive in Green.
   bool _safetyModeAutoEnabled = false;
 
@@ -87,16 +97,34 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
     setState(() {
       _scoreLoading = true;
       _scoreError = null;
+      _scoreWarning = null;
     });
-    final position = await _getScorePosition();
+    final locationResult = await _getScorePosition();
     if (!mounted) return;
+    final position = locationResult.position;
     final safetyPosition = SafetyPosition(position.latitude, position.longitude);
     final previousZone = _liveScoreResult?.zone;
+    if (locationResult.source == 'error' ||
+        locationResult.source == 'fallback' ||
+        locationResult.source == 'permission_denied' ||
+        locationResult.source == 'permission_denied_forever' ||
+        locationResult.source == 'gps_off') {
+      setState(() {
+        _scoreLoading = false;
+        _currentPosition = position;
+        _locationSource = locationResult.source;
+        _scoreWarning = locationResult.warning ?? 'Location unavailable.';
+        _scoreError = 'Cannot calculate without live location.';
+      });
+      return;
+    }
     final fetchResult = await _scoreProvider.getScoreAt(position: safetyPosition);
     if (!mounted) return;
     setState(() {
       _scoreLoading = false;
       _currentPosition = position;
+      _locationSource = locationResult.source;
+      _scoreWarning = locationResult.warning;
       if (fetchResult.result != null) {
         _liveScoreResult = fetchResult.result;
         _scoreDataSource = fetchResult.dataSource;
@@ -118,22 +146,52 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
     }
   }
 
-  Future<LatLng> _getScorePosition() async {
+  Future<_LocationFetchResult> _getScorePosition() async {
     try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        return _fallbackLocation('gps_off', 'Location services are off.');
+      }
+
       final permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         final requested = await Geolocator.requestPermission();
         if (requested == LocationPermission.denied || requested == LocationPermission.deniedForever) {
-          return _currentPosition ?? _kInitialPosition.target;
+          return _fallbackLocation('permission_denied', 'Location permission denied.');
         }
       }
-      final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
-      );
-      return LatLng(pos.latitude, pos.longitude);
+      if (permission == LocationPermission.deniedForever) {
+        return _fallbackLocation('permission_denied_forever', 'Location permission permanently denied.');
+      }
+
+      final lastKnown = await Geolocator.getLastKnownPosition();
+      final lastKnownLatLng = lastKnown == null
+          ? null
+          : LatLng(lastKnown.latitude, lastKnown.longitude);
+
+      try {
+        final pos = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 10),
+          ),
+        );
+        final current = LatLng(pos.latitude, pos.longitude);
+        return _LocationFetchResult(current, 'gps', null);
+      } catch (_) {
+        if (lastKnownLatLng != null) {
+          return _LocationFetchResult(lastKnownLatLng, 'last_known', 'Using last known location.');
+        }
+        return _fallbackLocation('fallback', 'Using fallback location.');
+      }
     } catch (_) {
-      return _currentPosition ?? _kInitialPosition.target;
+      return _fallbackLocation('error', 'Location unavailable.');
     }
+  }
+
+  _LocationFetchResult _fallbackLocation(String source, String warning) {
+    final position = _currentPosition ?? _kInitialPosition.target;
+    return _LocationFetchResult(position, source, warning);
   }
 
   /// Active Trigger: when score drops to Red, silently warm start monitoring
@@ -586,10 +644,10 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                   heroTag: "recenter",
                   backgroundColor: const Color(0xFF1E1E1E),
                   onPressed: () async {
-                    final position = await _getScorePosition();
+                    final locationResult = await _getScorePosition();
                     if (!mounted) return;
                     _mapController.animateCamera(
-                      CameraUpdate.newLatLng(position),
+                      CameraUpdate.newLatLng(locationResult.position),
                     );
                     _updateLiveScore();
                   },
@@ -778,6 +836,16 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
+              if (_scoreWarning != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    _scoreWarning!,
+                    style: TextStyle(color: Colors.orange[200], fontSize: 10),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               if (_scoreExpanded) ...[
                 const SizedBox(height: 12),
                 const Divider(color: Colors.white12, height: 1),
@@ -790,6 +858,10 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                   const SizedBox(height: 8),
                   const Divider(color: Colors.white12, height: 1),
                   const SizedBox(height: 8),
+                  _buildDebugRow('Location source', _locationSource),
+                  _buildDebugRow('Lat', result.debugInfo!.latitude.toStringAsFixed(5)),
+                  _buildDebugRow('Lng', result.debugInfo!.longitude.toStringAsFixed(5)),
+                  _buildDebugRow('District', result.debugInfo!.districtName ?? 'unknown'),
                   _buildDebugRow('Time penalty', '-${result.debugInfo!.timePenalty}'),
                   _buildDebugRow('Infra penalty', '-${result.debugInfo!.infraPenalty}'),
                   _buildDebugRow('Isolation penalty', '-${result.debugInfo!.isolationPenalty}'),
