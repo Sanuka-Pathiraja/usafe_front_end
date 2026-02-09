@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace "com.example.usafe_fresh"
+    namespace "com.example.usafe_front_end"
     compileSdkVersion flutter.compileSdkVersion
     ndkVersion flutter.ndkVersion
 
