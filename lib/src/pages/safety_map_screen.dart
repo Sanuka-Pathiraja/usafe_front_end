@@ -875,9 +875,11 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                   _buildDebugRow('Time penalty', '-${result.debugInfo!.timePenalty}'),
                   _buildDebugRow('Infra penalty', '-${result.debugInfo!.infraPenalty}'),
                   _buildDebugRow('Isolation penalty', '-${result.debugInfo!.isolationPenalty}'),
+                  _buildDebugRow('Proximity penalty', '-${result.debugInfo!.proximityPenalty}'),
                   _buildDebugRow('Weather penalty', '-${result.debugInfo!.weatherPenalty}'),
                   _buildDebugRow('History penalty', '-${result.debugInfo!.historyPenalty}'),
                   _buildDebugRow('Police bonus', '+${result.debugInfo!.distanceBonus}'),
+                  _buildDebugRow('Hospital bonus', '+${result.debugInfo!.hospitalBonus}'),
                   _buildDebugRow('Crowd bonus', '+${result.debugInfo!.crowdBonus}'),
                   _buildDebugRow('Traffic bonus', '+${result.debugInfo!.trafficBonus}'),
                   _buildDebugRow('Open venues bonus', '+${result.debugInfo!.openVenueBonus}'),
@@ -889,6 +891,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                   _buildDebugRow('Venue count', '${result.debugInfo!.nearbyVenueCount}'),
                   _buildDebugRow('Open venues', '${result.debugInfo!.openVenueCount}'),
                   _buildDebugRow('Help distance', _formatDistance(result.debugInfo!.distanceToHelpMeters)),
+                  _buildDebugRow('Embassy distance', _formatDistance(result.debugInfo!.embassyDistanceMeters ?? double.infinity)),
                   _buildDebugRow('Side lane', '${result.debugInfo!.isSideLane ?? 'unknown'}'),
                   _buildDebugRow('Well lit', '${result.debugInfo!.isWellLit ?? 'unknown'}'),
                   _buildDebugRow('Near embassy', '${result.debugInfo!.isNearEmbassy ?? 'unknown'}'),
@@ -981,6 +984,9 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
 
 
   String _formatDistance(double distanceMeters) {
+    if (distanceMeters.isInfinite || distanceMeters.isNaN) {
+      return 'unavailable';
+    }
     if (distanceMeters >= 1000) {
       final km = distanceMeters / 1000.0;
       return '${km.toStringAsFixed(2)}km';

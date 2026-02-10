@@ -50,9 +50,11 @@ class SafetyScoreDebugInfo {
   final int timePenalty;
   final int infraPenalty;
   final int isolationPenalty;
+  final int proximityPenalty;
   final int weatherPenalty;
   final int historyPenalty;
   final int distanceBonus;
+  final int hospitalBonus;
   final int crowdBonus;
   final int trafficBonus;
   final int openVenueBonus;
@@ -64,6 +66,7 @@ class SafetyScoreDebugInfo {
   final int nearbyVenueCount;
   final int openVenueCount;
   final double distanceToHelpMeters;
+  final double? embassyDistanceMeters;
   final bool? isSideLane;
   final bool? isWellLit;
   final bool? isNearEmbassy;
@@ -81,9 +84,11 @@ class SafetyScoreDebugInfo {
     required this.timePenalty,
     required this.infraPenalty,
     required this.isolationPenalty,
+    required this.proximityPenalty,
     required this.weatherPenalty,
     required this.historyPenalty,
     required this.distanceBonus,
+    required this.hospitalBonus,
     required this.crowdBonus,
     required this.trafficBonus,
     required this.openVenueBonus,
@@ -95,6 +100,7 @@ class SafetyScoreDebugInfo {
     required this.nearbyVenueCount,
     required this.openVenueCount,
     required this.distanceToHelpMeters,
+    required this.embassyDistanceMeters,
     required this.isSideLane,
     required this.isWellLit,
     required this.isNearEmbassy,
@@ -139,6 +145,8 @@ class SafetyScoreInputs {
   final int incidentCount;
   /// Distance in meters to nearest help (police or hospital). Smaller = safer.
   final double distanceToHelpMeters;
+  /// Optional: distance to nearest embassy (meters).
+  final double? embassyDistanceMeters;
   /// When set, overrides time/light (0 = day, 1 = night). From sunrise-sunset API.
   final double? timeLightRiskOverride;
   /// When set (Sri Lanka), overrides history pillar (0 = safe, 1 = risky). From Sri Lanka records only.
@@ -162,6 +170,7 @@ class SafetyScoreInputs {
     this.isNearEmbassy,
     this.incidentCount = 0,
     this.distanceToHelpMeters = 1000,
+    this.embassyDistanceMeters,
     this.timeLightRiskOverride,
     this.incidentRiskOverride,
     this.nearestPoliceDistanceMeters,
@@ -175,10 +184,10 @@ class SafetyScoreInputs {
 /// When score drops below threshold (danger zone), the app should
 /// "automatically sharpen monitoring" (warm start audio/motion).
 class LiveSafetyScoreService {
-  static const int thresholdSafe = 65;   // >= 65: Green
-  static const int thresholdCaution = 35; // 35-64: Orange
-  static const int minScore = 12; // Never show 0 to avoid false certainty.
-  static const int maxScore = 92; // Never show 100 to avoid false assurance.
+  static const int thresholdSafe = 75;   // >= 75: Green
+  static const int thresholdCaution = 45; // 45-74: Orange
+  static const int minScore = 5;
+  static const int maxScore = 95;
 
   static const List<_SriLankaAreaTuning> _slTunings = [
     _SriLankaAreaTuning(
@@ -316,26 +325,34 @@ class LiveSafetyScoreService {
   /// Returns a score 12-92 and zone. Uses penalties + mitigation model.
   LiveSafetyScoreResult calculate(SafetyScoreInputs inputs) {
     final b = _computePillarBreakdown(inputs);
-    final double base = maxScore.toDouble();
+    final double base = 70.0;
 
     final timePenalty = _timePenalty(inputs.dateTime);
     final infraPenalty = _lightingPenalty(inputs.isSideLane, inputs.isWellLit);
-    final isolationPenalty = _isolationPenalty(
-      inputs.crowdDensity,
-      inputs.nearbyVenueCount,
-      inputs.openVenueCount,
-    );
+    final isolationPenalty = _isolationPenalty(inputs.crowdDensity);
+    final proximityPenalty = _proximityPenalty(inputs.distanceToHelpMeters);
     final weatherPenalty = 0;
     final historyPenalty = _historyPenalty(b.history);
 
-    final distanceBonus = _policeBonus(inputs.distanceToHelpMeters);
-    final crowdBonus = _crowdBonus(inputs.nearbyVenueCount);
-    final trafficBonus = _trafficBonus(inputs.trafficCongestion);
+    final policeBonus = _policeBonus(inputs.nearestPoliceDistanceMeters ?? inputs.distanceToHelpMeters);
+    final hospitalBonus = _hospitalBonus(inputs.nearestHospitalDistanceMeters ?? inputs.distanceToHelpMeters);
+    final crowdBonus = _crowdSweetBonus(inputs.crowdDensity);
+    final trafficBonus = _trafficBonus(inputs.trafficCongestion, inputs.openVenueCount);
     final openVenueBonus = _openVenueBonus(inputs.openVenueCount);
-    final embassyBonus = inputs.isNearEmbassy == true ? 15 : 0;
+    final embassyBonus = _embassyBonus(inputs.embassyDistanceMeters);
 
-    final penalties = timePenalty + infraPenalty + isolationPenalty + weatherPenalty + historyPenalty;
-    final mitigations = distanceBonus + crowdBonus + trafficBonus + openVenueBonus + embassyBonus;
+    final penalties = timePenalty +
+      infraPenalty +
+      isolationPenalty +
+      proximityPenalty +
+      weatherPenalty +
+      historyPenalty;
+    final mitigations = policeBonus +
+      hospitalBonus +
+      crowdBonus +
+      trafficBonus +
+      openVenueBonus +
+      embassyBonus;
 
     double score = base - penalties + mitigations;
 
@@ -375,9 +392,11 @@ class LiveSafetyScoreService {
         timePenalty: timePenalty,
         infraPenalty: infraPenalty,
         isolationPenalty: isolationPenalty,
+        proximityPenalty: proximityPenalty,
         weatherPenalty: weatherPenalty,
         historyPenalty: historyPenalty,
-        distanceBonus: distanceBonus,
+        distanceBonus: policeBonus,
+        hospitalBonus: hospitalBonus,
         crowdBonus: crowdBonus,
         trafficBonus: trafficBonus,
         openVenueBonus: openVenueBonus,
@@ -389,6 +408,7 @@ class LiveSafetyScoreService {
         nearbyVenueCount: inputs.nearbyVenueCount,
         openVenueCount: inputs.openVenueCount,
         distanceToHelpMeters: inputs.distanceToHelpMeters,
+        embassyDistanceMeters: inputs.embassyDistanceMeters,
         isSideLane: inputs.isSideLane,
         isWellLit: inputs.isWellLit,
         isNearEmbassy: inputs.isNearEmbassy,
@@ -398,9 +418,11 @@ class LiveSafetyScoreService {
 
   int _timePenalty(DateTime dateTime) {
     final hour = dateTime.hour + dateTime.minute / 60.0;
-    if (hour >= 22 || hour < 4) return 30;
-    if (hour >= 18 || hour < 22) return 10;
-    if (hour >= 4 && hour < 6) return 15;
+    if (hour >= 22 || hour <= 4) return 30;
+    if (hour >= 18 && hour < 22) {
+      final progress = (hour - 18) / 4.0;
+      return (12 * progress).round();
+    }
     return 0;
   }
 
@@ -411,42 +433,59 @@ class LiveSafetyScoreService {
   }
 
   int _historyPenalty(double historyRisk) {
-    if (historyRisk >= 0.66) return 20;
-    if (historyRisk >= 0.33) return 10;
-    return 0;
+    final penalty = (historyRisk.clamp(0.0, 1.0) * 35).round();
+    return penalty.clamp(0, 30);
   }
 
   int _policeBonus(double distanceMeters) {
-    if (distanceMeters <= 200) return 25;
-    if (distanceMeters <= 500) return 15;
-    if (distanceMeters <= 1000) return 5;
-    return 0;
+    return _linearBonus(distanceMeters, 900.0, 14.0);
   }
 
-  int _crowdBonus(int venueCount) {
-    if (venueCount > 5) return 15;
-    if (venueCount >= 1) return 5;
-    return 0;
+  int _hospitalBonus(double distanceMeters) {
+    return _linearBonus(distanceMeters, 1200.0, 8.0);
   }
 
-  int _trafficBonus(double congestion) {
-    if (congestion >= 0.75) return 12;
-    if (congestion >= 0.5) return 8;
-    if (congestion >= 0.25) return 4;
+  int _embassyBonus(double? distanceMeters) {
+    if (distanceMeters == null) return 0;
+    return _linearBonus(distanceMeters, 500.0, 10.0);
+  }
+
+  int _crowdSweetBonus(double crowdDensity) {
+    if (crowdDensity < 0.2 || crowdDensity > 0.9) return 0;
+    final distanceFromMid = (crowdDensity - 0.55).abs();
+    final score = (10 * (1 - (distanceFromMid / 0.35))).clamp(0.0, 10.0);
+    return score.round();
+  }
+
+  int _trafficBonus(double congestion, int openVenueCount) {
+    if (congestion >= 0.7) return 6;
+    if (openVenueCount > 2) return 6;
     return 0;
   }
 
   int _openVenueBonus(int openVenueCount) {
-    if (openVenueCount >= 10) return 15;
-    if (openVenueCount >= 4) return 8;
-    if (openVenueCount >= 1) return 4;
+    return min(8, openVenueCount);
+  }
+
+  int _isolationPenalty(double crowdDensity) {
+    if (crowdDensity < 0.1) return 18;
+    if (crowdDensity < 0.3) return 8;
     return 0;
   }
 
-  int _isolationPenalty(double crowdDensity, int venueCount, int openVenueCount) {
-    if (crowdDensity < 0.1 && venueCount == 0 && openVenueCount == 0) return 25;
-    if (crowdDensity < 0.25 && openVenueCount == 0) return 15;
-    return 0;
+  int _linearBonus(double distanceMeters, double maxRangeMeters, double maxBonus) {
+    if (distanceMeters <= 0) return maxBonus.round();
+    if (distanceMeters >= maxRangeMeters) return 0;
+    final ratio = 1 - (distanceMeters / maxRangeMeters);
+    return (maxBonus * ratio).round();
+  }
+
+  int _proximityPenalty(double distanceMeters) {
+    const maxMeters = 5000.0;
+    if (distanceMeters <= 0) return 0;
+    final clamped = min(distanceMeters, maxMeters);
+    final risk = clamped / maxMeters;
+    return (risk * 18).round();
   }
 
   PillarBreakdown _computePillarBreakdown(SafetyScoreInputs i) {
@@ -705,6 +744,7 @@ class SafetyScoreInputsProvider {
       isSideLane: roadContext.isSideLane,
       isWellLit: roadContext.isWellLit,
       isNearEmbassy: embassyResult.isOk && embassyResult.distanceMeters <= 1000,
+      embassyDistanceMeters: embassyResult.isOk ? embassyResult.distanceMeters : null,
       incidentCount: 0,
       distanceToHelpMeters: distanceToHelp,
       timeLightRiskOverride: timeLightOverride,
