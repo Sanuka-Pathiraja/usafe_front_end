@@ -324,7 +324,7 @@ class _SOSHoldInteractionState extends State<SOSHoldInteraction>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 3),
+      duration: const Duration(seconds: 1),
     );
     _controller.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
