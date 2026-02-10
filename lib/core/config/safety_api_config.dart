@@ -22,6 +22,17 @@ class SafetyApiConfig {
     _googlePlacesApiKey = key?.trim().isEmpty == true ? null : key;
   }
 
+  /// Google Maps API key (optional). When set, enables traffic checks via Directions API.
+  /// Get a key at https://console.cloud.google.com/ (Directions API).
+  static String? get googleMapsApiKey => _googleMapsApiKey;
+  static String? _googleMapsApiKey;
+
+  /// Set the Google Maps API key (e.g. at app startup from env or user settings).
+  /// Example: `SafetyApiConfig.setGoogleMapsApiKey(Platform.environment['GOOGLE_MAPS_API_KEY']);`
+  static void setGoogleMapsApiKey(String? key) {
+    _googleMapsApiKey = key?.trim().isEmpty == true ? null : key;
+  }
+
   /// Crimeometer API key (optional). When set, enables US/worldwide crime data.
   /// Get a key at https://www.crimeometer.com/ (Crime Data API).
   static String? get crimeometerApiKey => _crimeometerApiKey;

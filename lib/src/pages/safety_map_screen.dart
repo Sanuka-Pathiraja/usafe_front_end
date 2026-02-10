@@ -862,6 +862,16 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                   _buildDebugRow('Lat', result.debugInfo!.latitude.toStringAsFixed(5)),
                   _buildDebugRow('Lng', result.debugInfo!.longitude.toStringAsFixed(5)),
                   _buildDebugRow('District', result.debugInfo!.districtName ?? 'unknown'),
+                  _buildDebugRow('Current time', _formatLocalTime(result.debugInfo!.localTime)),
+                  _buildDebugRow('Population density', result.debugInfo!.populationDensity.toStringAsFixed(2)),
+                  _buildDebugRow('Nearest police', _formatAmenity(
+                    result.debugInfo!.nearestPoliceName,
+                    result.debugInfo!.nearestPoliceDistanceMeters,
+                  )),
+                  _buildDebugRow('Nearest hospital', _formatAmenity(
+                    result.debugInfo!.nearestHospitalName,
+                    result.debugInfo!.nearestHospitalDistanceMeters,
+                  )),
                   _buildDebugRow('Time penalty', '-${result.debugInfo!.timePenalty}'),
                   _buildDebugRow('Infra penalty', '-${result.debugInfo!.infraPenalty}'),
                   _buildDebugRow('Isolation penalty', '-${result.debugInfo!.isolationPenalty}'),
@@ -869,12 +879,16 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                   _buildDebugRow('History penalty', '-${result.debugInfo!.historyPenalty}'),
                   _buildDebugRow('Police bonus', '+${result.debugInfo!.distanceBonus}'),
                   _buildDebugRow('Crowd bonus', '+${result.debugInfo!.crowdBonus}'),
+                  _buildDebugRow('Traffic bonus', '+${result.debugInfo!.trafficBonus}'),
+                  _buildDebugRow('Open venues bonus', '+${result.debugInfo!.openVenueBonus}'),
                   _buildDebugRow('Embassy bonus', '+${result.debugInfo!.embassyBonus}'),
                   _buildDebugRow('Total penalties', '-${result.debugInfo!.totalPenalties}'),
                   _buildDebugRow('Total mitigations', '+${result.debugInfo!.totalMitigations}'),
                   _buildDebugRow('Crowd density', result.debugInfo!.crowdDensity.toStringAsFixed(2)),
+                  _buildDebugRow('Traffic congestion', result.debugInfo!.trafficCongestion.toStringAsFixed(2)),
                   _buildDebugRow('Venue count', '${result.debugInfo!.nearbyVenueCount}'),
-                  _buildDebugRow('Help distance (m)', result.debugInfo!.distanceToHelpMeters.toStringAsFixed(0)),
+                  _buildDebugRow('Open venues', '${result.debugInfo!.openVenueCount}'),
+                  _buildDebugRow('Help distance', _formatDistance(result.debugInfo!.distanceToHelpMeters)),
                   _buildDebugRow('Side lane', '${result.debugInfo!.isSideLane ?? 'unknown'}'),
                   _buildDebugRow('Well lit', '${result.debugInfo!.isWellLit ?? 'unknown'}'),
                   _buildDebugRow('Near embassy', '${result.debugInfo!.isNearEmbassy ?? 'unknown'}'),
@@ -939,5 +953,38 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
         ],
       ),
     );
+  }
+
+  String _formatLocalTime(DateTime time) {
+    final t = time.toLocal();
+    final y = t.year.toString().padLeft(4, '0');
+    final m = t.month.toString().padLeft(2, '0');
+    final d = t.day.toString().padLeft(2, '0');
+    final hh = t.hour.toString().padLeft(2, '0');
+    final mm = t.minute.toString().padLeft(2, '0');
+    final offset = t.timeZoneOffset;
+    final sign = offset.isNegative ? '-' : '+';
+    final offsetHours = offset.inHours.abs().toString().padLeft(2, '0');
+    final offsetMinutes = (offset.inMinutes.abs() % 60).toString().padLeft(2, '0');
+    return '$y-$m-$d $hh:$mm $sign$offsetHours:$offsetMinutes';
+  }
+
+  String _formatAmenity(String? name, double? distanceMeters) {
+    if (distanceMeters == null) return 'unavailable';
+    final label = (name == null || name.trim().isEmpty) ? 'unknown' : name.trim();
+    if (distanceMeters >= 1000) {
+      final km = distanceMeters / 1000.0;
+      return '$label (${km.toStringAsFixed(2)}km)';
+    }
+    return '$label (${distanceMeters.toStringAsFixed(1)}m)';
+  }
+
+
+  String _formatDistance(double distanceMeters) {
+    if (distanceMeters >= 1000) {
+      final km = distanceMeters / 1000.0;
+      return '${km.toStringAsFixed(2)}km';
+    }
+    return '${distanceMeters.toStringAsFixed(1)}m';
   }
 }

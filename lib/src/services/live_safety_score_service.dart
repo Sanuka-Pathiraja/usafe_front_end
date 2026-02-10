@@ -41,6 +41,12 @@ class SafetyScoreDebugInfo {
   final double latitude;
   final double longitude;
   final String? districtName;
+  final DateTime localTime;
+  final double populationDensity;
+  final String? nearestPoliceName;
+  final double? nearestPoliceDistanceMeters;
+  final String? nearestHospitalName;
+  final double? nearestHospitalDistanceMeters;
   final int timePenalty;
   final int infraPenalty;
   final int isolationPenalty;
@@ -48,11 +54,15 @@ class SafetyScoreDebugInfo {
   final int historyPenalty;
   final int distanceBonus;
   final int crowdBonus;
+  final int trafficBonus;
+  final int openVenueBonus;
   final int embassyBonus;
   final int totalPenalties;
   final int totalMitigations;
   final double crowdDensity;
+  final double trafficCongestion;
   final int nearbyVenueCount;
+  final int openVenueCount;
   final double distanceToHelpMeters;
   final bool? isSideLane;
   final bool? isWellLit;
@@ -62,6 +72,12 @@ class SafetyScoreDebugInfo {
     required this.latitude,
     required this.longitude,
     required this.districtName,
+    required this.localTime,
+    required this.populationDensity,
+    required this.nearestPoliceName,
+    required this.nearestPoliceDistanceMeters,
+    required this.nearestHospitalName,
+    required this.nearestHospitalDistanceMeters,
     required this.timePenalty,
     required this.infraPenalty,
     required this.isolationPenalty,
@@ -69,11 +85,15 @@ class SafetyScoreDebugInfo {
     required this.historyPenalty,
     required this.distanceBonus,
     required this.crowdBonus,
+    required this.trafficBonus,
+    required this.openVenueBonus,
     required this.embassyBonus,
     required this.totalPenalties,
     required this.totalMitigations,
     required this.crowdDensity,
+    required this.trafficCongestion,
     required this.nearbyVenueCount,
+    required this.openVenueCount,
     required this.distanceToHelpMeters,
     required this.isSideLane,
     required this.isWellLit,
@@ -103,8 +123,12 @@ class SafetyScoreInputs {
   final SafetyPosition position;
   /// 0 = isolated/low density, 1 = high population density (safety factor). Sri Lanka: district + POI.
   final double crowdDensity;
-  /// Optional: nearby venue count used as a proxy for open shops/cafes.
+  /// Optional: nearby venue count (all venues).
   final int nearbyVenueCount;
+  /// Optional: open venues nearby (open now).
+  final int openVenueCount;
+  /// Optional: traffic congestion proxy (0 = free flow, 1 = heavy traffic).
+  final double trafficCongestion;
   /// Optional: indicates whether the nearest road is a side lane.
   final bool? isSideLane;
   /// Optional: indicates if the nearest road is well lit (OSM lit=yes/no).
@@ -119,12 +143,20 @@ class SafetyScoreInputs {
   final double? timeLightRiskOverride;
   /// When set (Sri Lanka), overrides history pillar (0 = safe, 1 = risky). From Sri Lanka records only.
   final double? incidentRiskOverride;
+  /// Optional: nearest police station for debug.
+  final double? nearestPoliceDistanceMeters;
+  final String? nearestPoliceName;
+  /// Optional: nearest hospital for debug.
+  final double? nearestHospitalDistanceMeters;
+  final String? nearestHospitalName;
 
   const SafetyScoreInputs({
     required this.dateTime,
     required this.position,
     this.crowdDensity = 0.5,
     this.nearbyVenueCount = 0,
+    this.openVenueCount = 0,
+    this.trafficCongestion = 0.0,
     this.isSideLane,
     this.isWellLit,
     this.isNearEmbassy,
@@ -132,6 +164,10 @@ class SafetyScoreInputs {
     this.distanceToHelpMeters = 1000,
     this.timeLightRiskOverride,
     this.incidentRiskOverride,
+    this.nearestPoliceDistanceMeters,
+    this.nearestPoliceName,
+    this.nearestHospitalDistanceMeters,
+    this.nearestHospitalName,
   });
 }
 
@@ -284,16 +320,22 @@ class LiveSafetyScoreService {
 
     final timePenalty = _timePenalty(inputs.dateTime);
     final infraPenalty = _lightingPenalty(inputs.isSideLane, inputs.isWellLit);
-    final isolationPenalty = _isolationPenalty(inputs.crowdDensity, inputs.nearbyVenueCount);
+    final isolationPenalty = _isolationPenalty(
+      inputs.crowdDensity,
+      inputs.nearbyVenueCount,
+      inputs.openVenueCount,
+    );
     final weatherPenalty = 0;
     final historyPenalty = _historyPenalty(b.history);
 
     final distanceBonus = _policeBonus(inputs.distanceToHelpMeters);
     final crowdBonus = _crowdBonus(inputs.nearbyVenueCount);
+    final trafficBonus = _trafficBonus(inputs.trafficCongestion);
+    final openVenueBonus = _openVenueBonus(inputs.openVenueCount);
     final embassyBonus = inputs.isNearEmbassy == true ? 15 : 0;
 
     final penalties = timePenalty + infraPenalty + isolationPenalty + weatherPenalty + historyPenalty;
-    final mitigations = distanceBonus + crowdBonus + embassyBonus;
+    final mitigations = distanceBonus + crowdBonus + trafficBonus + openVenueBonus + embassyBonus;
 
     double score = base - penalties + mitigations;
 
@@ -324,6 +366,12 @@ class LiveSafetyScoreService {
         districtName: SriLankaSafetyData
             .getDistrictFor(inputs.position.latitude, inputs.position.longitude)
             ?.name,
+        localTime: inputs.dateTime.toLocal(),
+        populationDensity: inputs.crowdDensity,
+        nearestPoliceName: inputs.nearestPoliceName,
+        nearestPoliceDistanceMeters: inputs.nearestPoliceDistanceMeters,
+        nearestHospitalName: inputs.nearestHospitalName,
+        nearestHospitalDistanceMeters: inputs.nearestHospitalDistanceMeters,
         timePenalty: timePenalty,
         infraPenalty: infraPenalty,
         isolationPenalty: isolationPenalty,
@@ -331,11 +379,15 @@ class LiveSafetyScoreService {
         historyPenalty: historyPenalty,
         distanceBonus: distanceBonus,
         crowdBonus: crowdBonus,
+        trafficBonus: trafficBonus,
+        openVenueBonus: openVenueBonus,
         embassyBonus: embassyBonus,
         totalPenalties: penalties,
         totalMitigations: mitigations,
         crowdDensity: inputs.crowdDensity,
+        trafficCongestion: inputs.trafficCongestion,
         nearbyVenueCount: inputs.nearbyVenueCount,
+        openVenueCount: inputs.openVenueCount,
         distanceToHelpMeters: inputs.distanceToHelpMeters,
         isSideLane: inputs.isSideLane,
         isWellLit: inputs.isWellLit,
@@ -377,9 +429,23 @@ class LiveSafetyScoreService {
     return 0;
   }
 
-  int _isolationPenalty(double crowdDensity, int venueCount) {
-    if (crowdDensity < 0.1 && venueCount == 0) return 25;
-    if (crowdDensity < 0.25) return 15;
+  int _trafficBonus(double congestion) {
+    if (congestion >= 0.75) return 12;
+    if (congestion >= 0.5) return 8;
+    if (congestion >= 0.25) return 4;
+    return 0;
+  }
+
+  int _openVenueBonus(int openVenueCount) {
+    if (openVenueCount >= 10) return 15;
+    if (openVenueCount >= 4) return 8;
+    if (openVenueCount >= 1) return 4;
+    return 0;
+  }
+
+  int _isolationPenalty(double crowdDensity, int venueCount, int openVenueCount) {
+    if (crowdDensity < 0.1 && venueCount == 0 && openVenueCount == 0) return 25;
+    if (crowdDensity < 0.25 && openVenueCount == 0) return 15;
     return 0;
   }
 
@@ -457,6 +523,8 @@ class SafetyScoreInputsProvider {
     final now = dateTime ?? DateTime.now();
     final lat = position.latitude;
     final lng = position.longitude;
+    final usePlaces = SafetyApiConfig.googlePlacesApiKey != null;
+    final useTraffic = SafetyApiConfig.googleMapsApiKey != null;
 
     // Outside Sri Lanka: use defaults (e.g. for testing) or still compute with Sri Lanka logic.
     final inSriLanka = SriLankaConfig.isInSriLanka(lat, lng);
@@ -467,16 +535,86 @@ class SafetyScoreInputsProvider {
       OverpassApi.getNearestPoliceOrHospital(lat: lat, lng: lng, radiusMeters: 10000),
       OverpassApi.getPoiDensity(lat: lat, lng: lng, radiusMeters: 500),
       GooglePlacesApi.getPlaceDensity(lat: lat, lng: lng, radiusMeters: 500),
+      usePlaces
+        ? GooglePlacesApi.getOpenPlaceCount(lat: lat, lng: lng, radiusMeters: 800)
+          : Future<OpenPlaceCountResult>.value(
+              const OpenPlaceCountResult(count: 0, isOk: false),
+            ),
+      useTraffic
+        ? GoogleTrafficApi.getTrafficCongestion(lat: lat, lng: lng)
+          : Future<TrafficCongestionResult>.value(
+              const TrafficCongestionResult(congestion: 0.0, isOk: false),
+            ),
       OverpassApi.getRoadContext(lat: lat, lng: lng, radiusMeters: 250),
       OverpassApi.getNearestEmbassy(lat: lat, lng: lng, radiusMeters: 5000),
+      usePlaces
+          ? GooglePlacesApi.getNearestPolice(lat: lat, lng: lng, radiusMeters: 10000)
+          : OverpassApi.getNearestPoliceStation(lat: lat, lng: lng, radiusMeters: 10000),
+      usePlaces
+          ? GooglePlacesApi.getNearestHospital(lat: lat, lng: lng, radiusMeters: 10000)
+          : OverpassApi.getNearestHospital(lat: lat, lng: lng, radiusMeters: 10000),
+      OverpassApi.getNearestPoliceStation(lat: lat, lng: lng, radiusMeters: 10000),
+      OverpassApi.getNearestHospital(lat: lat, lng: lng, radiusMeters: 10000),
     ]);
 
     final sunriseResult = results[0] as SunriseSunsetResult;
-    final helpResult = results[1] as NearestHelpResult;
+    final fallbackHelpResult = results[1] as NearestHelpResult;
     final poiResult = results[2] as PoiDensityResult;
     final placesResult = results[3] as PlacesDensityResult;
-    final roadContext = results[4] as RoadContextResult;
-    final embassyResult = results[5] as NearestEmbassyResult;
+    final openPlaceResult = results[4] as OpenPlaceCountResult;
+    final trafficResult = results[5] as TrafficCongestionResult;
+    final roadContext = results[6] as RoadContextResult;
+    final embassyResult = results[7] as NearestEmbassyResult;
+    final NearestPoliceResult policeResult = results[8] as NearestPoliceResult;
+    final NearestHospitalResult hospitalResult = results[9] as NearestHospitalResult;
+    final NearestPoliceResult overpassPoliceResult = results[10] as NearestPoliceResult;
+    final NearestHospitalResult overpassHospitalResult = results[11] as NearestHospitalResult;
+
+    NearestHelpResult helpResult = fallbackHelpResult;
+    if (usePlaces) {
+      double minDist = double.infinity;
+      String type = 'none';
+      bool ok = false;
+      if (policeResult.isOk) {
+        minDist = policeResult.distanceMeters;
+        type = 'police';
+        ok = true;
+      }
+      if (hospitalResult.isOk && hospitalResult.distanceMeters < minDist) {
+        minDist = hospitalResult.distanceMeters;
+        type = 'hospital';
+        ok = true;
+      }
+      if (ok) {
+        helpResult = NearestHelpResult(distanceMeters: minDist, type: type, isOk: true);
+      }
+    }
+
+    final NearestPoliceResult policeDebug = policeResult.isOk
+        ? policeResult
+        : overpassPoliceResult;
+    final NearestHospitalResult hospitalDebug = hospitalResult.isOk
+        ? hospitalResult
+        : overpassHospitalResult;
+
+    if (!helpResult.isOk) {
+      double minDist = double.infinity;
+      String type = 'none';
+      bool ok = false;
+      if (policeDebug.isOk) {
+        minDist = policeDebug.distanceMeters;
+        type = 'police';
+        ok = true;
+      }
+      if (hospitalDebug.isOk && hospitalDebug.distanceMeters < minDist) {
+        minDist = hospitalDebug.distanceMeters;
+        type = 'hospital';
+        ok = true;
+      }
+      if (ok) {
+        helpResult = NearestHelpResult(distanceMeters: minDist, type: type, isOk: true);
+      }
+    }
 
     // 1) Time of day: sunrise-sunset API.
     double? timeLightOverride;
@@ -484,7 +622,7 @@ class SafetyScoreInputsProvider {
       timeLightOverride = sunriseResult.darknessRisk(now.toUtc());
     }
 
-    // 2) Population density: Sri Lanka district density + activity density (Places/POI).
+    // 2) Population density: Sri Lanka district density + activity + traffic + open venues.
     double populationDensity = 0.5;
     final double? placesDensity = placesResult.isOk
         ? (placesResult.count / placesResult.areaKm2)
@@ -492,15 +630,25 @@ class SafetyScoreInputsProvider {
     final double? placesScore = placesDensity != null
         ? (placesDensity / 40.0).clamp(0.0, 1.0)
         : null;
+    final trafficScore = trafficResult.isOk ? trafficResult.congestion : 0.0;
+    final openScore = openPlaceResult.isOk
+        ? (openPlaceResult.count / 12.0).clamp(0.0, 1.0)
+        : 0.0;
     if (inSriLanka) {
       final districtDensity = SriLankaSafetyData.getPopulationDensityAt(lat, lng);
       final poiDensity = poiResult.isOk ? (poiResult.count / 25.0).clamp(0.0, 1.0) : 0.5;
       final activityScore = placesScore ?? poiDensity;
-      populationDensity = (districtDensity * 0.55 + activityScore * 0.45).clamp(0.0, 1.0);
+      final crowdSignals = (activityScore * 0.6 + trafficScore * 0.25 + openScore * 0.15)
+          .clamp(0.0, 1.0);
+      populationDensity = (districtDensity * 0.5 + crowdSignals * 0.5).clamp(0.0, 1.0);
     } else if (placesScore != null) {
-      populationDensity = placesScore.clamp(0.0, 1.0);
+      final crowdSignals = (placesScore * 0.65 + trafficScore * 0.2 + openScore * 0.15)
+          .clamp(0.0, 1.0);
+      populationDensity = crowdSignals;
     } else if (poiResult.isOk) {
-      populationDensity = (poiResult.count / 25.0).clamp(0.0, 1.0);
+      final poiScore = (poiResult.count / 25.0).clamp(0.0, 1.0);
+      populationDensity = (poiScore * 0.7 + trafficScore * 0.2 + openScore * 0.1)
+          .clamp(0.0, 1.0);
     }
 
     // 3) Closest distance to police or hospital (Overpass).
@@ -517,8 +665,9 @@ class SafetyScoreInputsProvider {
 
     // 5) Venue activity proxy: nearby Places count (fallback to POIs).
     final venueCount = placesResult.isOk
-        ? placesResult.count
-        : (poiResult.isOk ? poiResult.count : 0);
+      ? placesResult.count
+      : (poiResult.isOk ? poiResult.count : 0);
+    final openVenueCount = openPlaceResult.isOk ? openPlaceResult.count : 0;
 
     final sources = <String>[];
     if (sunriseResult.isOk) sources.add('time of day');
@@ -530,8 +679,20 @@ class SafetyScoreInputsProvider {
     } else if (poiResult.isOk) {
       sources.add('POI density');
     }
+    if (openPlaceResult.isOk) sources.add('open places');
+    if (trafficResult.isOk) sources.add('traffic');
     if (roadContext.isOk) sources.add('road context');
     if (embassyResult.isOk) sources.add('embassy proximity');
+    if (policeResult.isOk) {
+      sources.add(usePlaces ? 'places police' : 'police station');
+    } else if (overpassPoliceResult.isOk) {
+      sources.add('police station');
+    }
+    if (hospitalResult.isOk) {
+      sources.add(usePlaces ? 'places hospital' : 'hospital');
+    } else if (overpassHospitalResult.isOk) {
+      sources.add('hospital');
+    }
     if (inSriLanka) sources.add('Sri Lanka incidents');
 
     final inputs = SafetyScoreInputs(
@@ -539,6 +700,8 @@ class SafetyScoreInputsProvider {
       position: position,
       crowdDensity: populationDensity,
       nearbyVenueCount: venueCount,
+      openVenueCount: openVenueCount,
+      trafficCongestion: trafficResult.isOk ? trafficResult.congestion : 0.0,
       isSideLane: roadContext.isSideLane,
       isWellLit: roadContext.isWellLit,
       isNearEmbassy: embassyResult.isOk && embassyResult.distanceMeters <= 1000,
@@ -546,6 +709,10 @@ class SafetyScoreInputsProvider {
       distanceToHelpMeters: distanceToHelp,
       timeLightRiskOverride: timeLightOverride,
       incidentRiskOverride: incidentRiskOverride,
+      nearestPoliceDistanceMeters: policeDebug.isOk ? policeDebug.distanceMeters : null,
+      nearestPoliceName: policeDebug.isOk ? policeDebug.name : null,
+      nearestHospitalDistanceMeters: hospitalDebug.isOk ? hospitalDebug.distanceMeters : null,
+      nearestHospitalName: hospitalDebug.isOk ? hospitalDebug.name : null,
     );
 
     final result = _calculator.calculate(inputs);
