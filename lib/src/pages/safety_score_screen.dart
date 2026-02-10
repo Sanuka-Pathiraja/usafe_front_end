@@ -157,7 +157,6 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
             // Primary score card.
             Container(
               width: double.infinity,
-              height: 360,
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
                 color: cardColor,

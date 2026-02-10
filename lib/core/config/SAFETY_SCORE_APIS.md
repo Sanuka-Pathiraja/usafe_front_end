@@ -2,7 +2,7 @@
 
 The app is **optimized for Sri Lanka only**. The safety score is generated from:
 
-1. **Population density** – District-based density (census) + activity density (Google Places if configured, otherwise OpenStreetMap POIs).
+1. **Population density** – District-based density (census) + activity density (OpenStreetMap POIs).
 2. **Closest distance to police station** – From OpenStreetMap (Overpass API). Closer = safer.
 3. **Time of day** – Sunrise–sunset API for your location. Night = higher risk.
 4. **Past incidents** – **Sri Lanka data only** (district-level risk from Sri Lankan records). No foreign crime APIs (no UK, no Crimeometer).
@@ -13,7 +13,7 @@ The app is **optimized for Sri Lanka only**. The safety score is generated from:
 | ------------------ | --------------------------------------------------------- | ----------------------------------------------------------- |
 | Time of day        | [Sunrise-Sunset.org](https://api.sunrise-sunset.org/json) | Sunrise/sunset for your coordinates                         |
 | Distance to police | [Overpass / OpenStreetMap](https://overpass-api.de)       | Nearest `amenity=police` in Sri Lanka                       |
-| Population density | Sri Lanka districts + Places/Overpass                     | District density + nearby places count (Places optional)    |
+| Population density | Sri Lanka districts + Overpass                            | District density + nearby POI count                         |
 | Past incidents     | Sri Lanka only (embedded)                                 | District-level risk from Sri Lanka data; no foreign records |
 
 ## Sri Lanka configuration
@@ -22,12 +22,9 @@ The app is **optimized for Sri Lanka only**. The safety score is generated from:
 - **Default map center:** Colombo (6.9271, 79.8612).
 - **25 districts** with centroid, population density, and incident risk from Sri Lankan records.
 
-## Optional: Google Places API
+## Note
 
-If you provide a Google Places API key, the app uses Places nearby search to estimate
-activity density for the population-density pillar. Otherwise it falls back to Overpass POIs.
-
-Set the key at startup using `SafetyApiConfig.setGooglePlacesApiKey(...)`.
+The live safety score uses Overpass/OSM for nearby POIs and emergency services.
 
 ## Attribution
 
