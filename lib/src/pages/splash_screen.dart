@@ -1,17 +1,15 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
 import 'package:usafe_front_end/features/auth/screens/login_screen.dart';
 import 'package:usafe_front_end/src/pages/home_screen.dart';
 import 'package:usafe_front_end/widgets/sos_screen.dart';
 
-const platform = MethodChannel('com.usafe_frontend/sos');
-
 class SplashScreen extends StatefulWidget {
   final bool launchedFromSOSWidget;
-
   const SplashScreen({super.key, this.launchedFromSOSWidget = false});
 
   @override
@@ -27,56 +25,43 @@ class _SplashScreenState extends State<SplashScreen>
   void initState() {
     super.initState();
 
-    // Setup the fade controller
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     );
 
-    // Using easeInOut for a more premium "Pro" feel
     _fadeAnimation =
         CurvedAnimation(parent: _controller, curve: Curves.easeInOut);
 
     _controller.forward();
 
-    // Start the navigation logic
+    // 🔔 Ask notification permission ONCE at app start
+    _requestNotificationPermissionOnce();
+
     _handleNavigation();
   }
 
-  Future<void> _handleNavigation() async {
-    // 1. Minimum time to show the logo during NORMAL conditions (2.5 seconds)
-    final minDisplayTime = Future.delayed(const Duration(milliseconds: 2500));
-
-    bool launchedFromWidget = widget.launchedFromSOSWidget;
-
-    // 2. Check the native side for the SOS flag
-    try {
-      final bool? nativeTrigger =
-          await platform.invokeMethod<bool>('checkSOSTrigger');
-      if (nativeTrigger != null) {
-        launchedFromWidget = nativeTrigger;
-      }
-    } on PlatformException catch (e) {
-      debugPrint("Failed to get SOS trigger: '${e.message}'.");
+  Future<void> _requestNotificationPermissionOnce() async {
+    final status = await Permission.notification.status;
+    if (status.isDenied) {
+      await Permission.notification.request();
     }
+  }
 
-    // 🚨 3. EMERGENCY BYPASS
-    // If it's an emergency, we don't wait for animations or tokens.
-    // We navigate IMMEDIATELY.
-    if (launchedFromWidget) {
+  Future<void> _handleNavigation() async {
+    bool isEmergency = widget.launchedFromSOSWidget;
+
+    if (isEmergency) {
+      await Future.delayed(const Duration(milliseconds: 500));
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(
-          builder: (_) => const SOSScreen(autoStart: true),
-        ),
+        MaterialPageRoute(builder: (_) => const SOSScreen(autoStart: true)),
       );
-      return; // Stop execution here
+      return;
     }
 
-    // 🔐 4. NORMAL FLOW
-    // Wait for the minimum display time to finish so the UI doesn't flicker
-    await minDisplayTime;
+    await Future.delayed(const Duration(milliseconds: 2500));
 
     final token = await AuthService.getToken();
     if (!mounted) return;
@@ -119,7 +104,6 @@ class _SplashScreenState extends State<SplashScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Glowing Logo Container
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
@@ -136,11 +120,8 @@ class _SplashScreenState extends State<SplashScreen>
                   child: Image.asset(
                     'assets/usafe_logo.png',
                     height: 120,
-                    errorBuilder: (_, __, ___) => const Icon(
-                      Icons.shield,
-                      size: 100,
-                      color: AppColors.primarySky,
-                    ),
+                    errorBuilder: (_, __, ___) => const Icon(Icons.shield,
+                        size: 100, color: AppColors.primarySky),
                   ),
                 ),
                 const SizedBox(height: 30),

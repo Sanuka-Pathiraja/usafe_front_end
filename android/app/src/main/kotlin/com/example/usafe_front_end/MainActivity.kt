@@ -24,7 +24,9 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // 1. Screen/Lock Settings
+        // Check for SOS trigger on a cold launch
+        handleSOSIntent(intent)
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
@@ -35,9 +37,21 @@ class MainActivity : FlutterActivity() {
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
             )
         }
-
-        // 2. Start the Persistent Notification
         showPersistentSOSNotification()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        // Check for SOS trigger if app was already in the background
+        handleSOSIntent(intent)
+    }
+
+    private fun handleSOSIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra("SOS_TRIGGERED", false) == true) {
+            val prefs = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+            prefs.edit().putBoolean("flutter.SOS_TRIGGERED", true).apply()
+        }
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -45,10 +59,7 @@ class MainActivity : FlutterActivity() {
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
-                // FIXED: Added these two methods to prevent MissingPluginException
-                "checkOverlayPermission" -> {
-                    result.success(hasOverlayPermission())
-                }
+                "checkOverlayPermission" -> result.success(hasOverlayPermission())
                 "requestOverlayPermission" -> {
                     openOverlaySettings()
                     result.success(null)
@@ -56,8 +67,7 @@ class MainActivity : FlutterActivity() {
                 "checkSOSTrigger" -> {
                     val prefs = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
                     val triggered = prefs.getBoolean("flutter.SOS_TRIGGERED", false)
-                    
-                    // Reset after reading
+                    // Reset the flag immediately so it doesn't trigger on next normal launch
                     prefs.edit().putBoolean("flutter.SOS_TRIGGERED", false).apply()
                     result.success(triggered)
                 }
@@ -66,31 +76,20 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun hasOverlayPermission(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            Settings.canDrawOverlays(this)
-        } else true
-    }
+    private fun hasOverlayPermission(): Boolean = 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.canDrawOverlays(this) else true
 
     private fun openOverlaySettings() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val intent = Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:$packageName")
-            )
+            val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
             startActivity(intent)
         }
     }
 
     private fun showPersistentSOSNotification() {
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                NOTIFICATION_CHANNEL_ID,
-                "SOS Protection Service",
-                NotificationManager.IMPORTANCE_HIGH
-            )
+            val channel = NotificationChannel(NOTIFICATION_CHANNEL_ID, "SOS Protection", NotificationManager.IMPORTANCE_HIGH)
             manager.createNotificationChannel(channel)
         }
 
@@ -105,24 +104,14 @@ class MainActivity : FlutterActivity() {
         )
 
         val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_alert) // Generic icon to avoid missing resource crash
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle("USafe Protection Active")
-            .setContentText("TAP HERE TO TRIGGER EMERGENCY SOS")
+            .setContentText("TAP HERE TO TRIGGER SOS")
             .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setOngoing(true) 
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setOngoing(true)
             .setContentIntent(pendingIntent)
             .build()
 
         manager.notify(NOTIFICATION_ID, notification)
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        if (intent.getBooleanExtra("SOS_TRIGGERED", false)) {
-            val prefs = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
-            prefs.edit().putBoolean("flutter.SOS_TRIGGERED", true).apply()
-        }
     }
 }

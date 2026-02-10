@@ -1,11 +1,17 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import 'package:usafe_front_end/core/constants/app_colors.dart';
 
 import './payment_screen.dart';
-import 'package:usafe_front_end/core/constants/app_colors.dart';
 import './communityReport_screen.dart';
+import './notifications_screen.dart';
+import './privacy_screen.dart';
+import './help_support_screen.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -15,28 +21,39 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   bool shareLocation = true;
-  bool pushNotifications = true;
+  bool notificationsEnabled = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadSettings();
   }
 
-  // ================= LOAD / SAVE =================
-  Future<void> _loadSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      shareLocation = prefs.getBool("share_location") ?? true;
-      pushNotifications = prefs.getBool("push_notifications") ?? true;
-    });
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
-  Future<void> _saveSetting(String key, bool value) async {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadSettings();
+    }
+  }
+
+  // ================= LOAD SETTINGS =================
+  Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(key, value);
+    final notificationStatus = await Permission.notification.status;
+
+    setState(() {
+      shareLocation = prefs.getBool("share_location") ?? true;
+      notificationsEnabled = notificationStatus.isGranted;
+    });
   }
 
   // ================= LOCATION =================
@@ -59,12 +76,38 @@ class _SettingsPageState extends State<SettingsPage>
       }
     }
 
-    await _saveSetting("share_location", value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool("share_location", value);
+
     setState(() => shareLocation = value);
 
     _showSnack(
       value ? "📍 Location sharing enabled" : "📍 Location sharing disabled",
     );
+  }
+
+  // ================= NOTIFICATIONS =================
+  Future<void> _openNotificationSettings() async {
+    if (Platform.isAndroid) {
+      // Android: direct app notification page
+      final packageName =
+          "com.yourcompany.yourapp"; // <-- REPLACE with your app id
+      final uri = Uri.parse("android-app://$packageName/settings");
+      try {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (e) {
+        // fallback
+        await openAppSettings();
+      }
+    } else if (Platform.isIOS) {
+      // iOS: open app settings (cannot go directly to notification page)
+      final url = Uri.parse("app-settings:");
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      } else {
+        _showSnack("Cannot open app settings");
+      }
+    }
   }
 
   void _showSnack(String text) {
@@ -106,6 +149,24 @@ class _SettingsPageState extends State<SettingsPage>
                 value: shareLocation,
                 onChanged: _toggleLocation,
               ),
+              _premiumToggleTile(
+                icon: Icons.notifications_outlined,
+                title: "Push Notifications",
+                subtitle: notificationsEnabled
+                    ? "Enabled in device settings"
+                    : "Disabled in device settings",
+                value: notificationsEnabled,
+                onChanged: (_) => _openNotificationSettings(),
+              ),
+              _actionTile(
+                icon: Icons.lock_outline,
+                title: "Privacy & Security",
+                subtitle: "Manage data and permissions",
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const PrivacyScreen()),
+                ),
+              ),
               const SizedBox(height: 30),
               _sectionTitle("Safety"),
               _actionTile(
@@ -115,10 +176,20 @@ class _SettingsPageState extends State<SettingsPage>
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => const MyHomePage(
-                      title: "Community Reports",
-                    ),
+                    builder: (_) =>
+                        const MyHomePage(title: "Community Reports"),
                   ),
+                ),
+              ),
+              const SizedBox(height: 30),
+              _sectionTitle("Support"),
+              _actionTile(
+                icon: Icons.help_outline,
+                title: "Help & Support",
+                subtitle: "FAQs and contact support",
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const HelpSupportScreen()),
                 ),
               ),
               const SizedBox(height: 30),
@@ -160,20 +231,10 @@ class _SettingsPageState extends State<SettingsPage>
       decoration: BoxDecoration(
         color: AppColors.surfaceCard,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: value
-            ? [
-                BoxShadow(
-                  color: AppColors.safetyTeal.withOpacity(0.25),
-                  blurRadius: 12,
-                  offset: const Offset(0, 6),
-                )
-              ]
-            : [],
       ),
       child: Row(
         children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 250),
+          Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
@@ -249,36 +310,21 @@ class _SettingsPageState extends State<SettingsPage>
             colors: [Color(0xFFFFD54F), Color(0xFFFFA000)],
           ),
           borderRadius: BorderRadius.circular(22),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.amber.withOpacity(0.4),
-              blurRadius: 18,
-              offset: const Offset(0, 10),
-            ),
-          ],
         ),
         child: Row(
           children: const [
             Icon(Icons.workspace_premium, color: Colors.black, size: 30),
             SizedBox(width: 16),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text("Upgrade to Pro",
-                      style: TextStyle(
-                          color: Colors.black,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold)),
-                  SizedBox(height: 6),
-                  Text(
-                    "Unlock advanced safety & offline features",
-                    style: TextStyle(color: Colors.black87, fontSize: 12),
-                  ),
-                ],
+              child: Text(
+                "Upgrade to Pro",
+                style: TextStyle(
+                  color: Colors.black,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
-            Icon(Icons.arrow_forward_ios, color: Colors.black54, size: 16),
           ],
         ),
       ),
