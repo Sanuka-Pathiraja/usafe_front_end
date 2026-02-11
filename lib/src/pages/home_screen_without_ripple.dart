@@ -5,7 +5,6 @@ import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'contacts_screen.dart';
 import 'profile_screen.dart';
 import 'safety_score_screen.dart';
-
 import 'emergency_process_screen.dart';
 import 'emergency_result_screen.dart';
 
@@ -20,13 +19,34 @@ class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
   final Color bgDark = AppColors.background;
   final Color accentBlue = AppColors.primarySky;
+
   final GlobalKey<ContactsScreenState> _contactsKey =
       GlobalKey<ContactsScreenState>();
+
+  // ✅ Banner state in HomeScreen (shows across all tabs)
+  HomeEmergencyBannerPayload? _banner;
+  Timer? _bannerTimer;
+
+  @override
+  void dispose() {
+    _bannerTimer?.cancel();
+    super.dispose();
+  }
+
+  void _showBanner(HomeEmergencyBannerPayload payload) {
+    _bannerTimer?.cancel();
+    setState(() => _banner = payload);
+
+    _bannerTimer = Timer(const Duration(minutes: 2), () {
+      if (!mounted) return;
+      setState(() => _banner = null);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final pages = [
-      const SOSDashboard(),
+      SOSDashboard(onBanner: _showBanner),
       const SafetyScoreScreen(safetyScore: 85, showBottomNav: false),
       ContactsScreen(key: _contactsKey),
       const ProfileScreen(),
@@ -39,6 +59,70 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             IndexedStack(index: _currentIndex, children: pages),
 
+            // ✅ Floating banner overlay
+            if (_banner != null)
+              Positioned(
+                top: 12,
+                left: 16,
+                right: 16,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF15171B),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: AppColors.primarySky.withOpacity(0.35),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.3),
+                        blurRadius: 14,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.notifications_active,
+                          color: Colors.white),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _banner!.title,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              _banner!.subtitle,
+                              style: TextStyle(
+                                color: Colors.grey[300],
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () {
+                          _bannerTimer?.cancel();
+                          setState(() => _banner = null);
+                        },
+                        icon: const Icon(Icons.close, color: Colors.white70),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            // Bottom nav
             Positioned(
               bottom: 30,
               left: 20,
@@ -46,6 +130,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: _buildBottomNavBar(),
             ),
 
+            // FAB on contacts tab only
             if (_currentIndex == 2)
               Positioned(
                 left: 0,
@@ -98,12 +183,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-/* ====================================================================== */
-/* ============================ SOS DASHBOARD =========================== */
-/* ====================================================================== */
-
 class SOSDashboard extends StatefulWidget {
-  const SOSDashboard({super.key});
+  final void Function(HomeEmergencyBannerPayload payload) onBanner;
+  const SOSDashboard({super.key, required this.onBanner});
 
   @override
   State<SOSDashboard> createState() => _SOSDashboardState();
@@ -113,21 +195,6 @@ class _SOSDashboardState extends State<SOSDashboard>
     with TickerProviderStateMixin {
   bool isSOSActive = false;
 
-  // Floating banner payload shown after emergency flow returns
-  HomeEmergencyBannerPayload? _banner;
-  Timer? _bannerTimer;
-
-  void _showHomeBanner(HomeEmergencyBannerPayload payload) {
-    _bannerTimer?.cancel();
-    setState(() => _banner = payload);
-
-    _bannerTimer = Timer(const Duration(minutes: 2), () {
-      if (!mounted) return;
-      setState(() => _banner = null);
-    });
-  }
-
-  // 3-minute countdown before auto alert.
   static const Duration _sosDuration = Duration(minutes: 3);
   Timer? _sosTimer;
   Duration _remaining = _sosDuration;
@@ -140,116 +207,43 @@ class _SOSDashboardState extends State<SOSDashboard>
   @override
   void dispose() {
     _sosTimer?.cancel();
-    _bannerTimer?.cancel();
     super.dispose();
   }
-
-  bool get _recentEmergencyActive => _banner != null;
 
   Future<void> _openEmergencyProcess() async {
     _sosTimer?.cancel();
 
-    final result = await Navigator.push(
+    final result = await Navigator.push<HomeEmergencyBannerPayload?>(
       context,
       MaterialPageRoute(builder: (_) => const EmergencyProcessScreen()),
     );
 
     if (!mounted) return;
 
-    // ALWAYS reset SOS UI when returning
+    // ✅ Always reset SOS UI
     _resetSosCountdown();
     setState(() => isSOSActive = false);
 
-    if (result is HomeEmergencyBannerPayload) {
-      _showHomeBanner(result);
+    if (result != null) {
+      widget.onBanner(result);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Ripple behavior:
-    // - calm mode normally
-    // - intense red mode when SOS countdown is active OR emergency happened recently
-    final rippleMode =
-        (isSOSActive || _recentEmergencyActive) ? RippleMode.intense : RippleMode.calm;
-
     return Container(
       color: bgDark,
-      child: Stack(
+      child: Column(
         children: [
-          Column(
-            children: [
-              const SizedBox(height: 20),
-              if (!isSOSActive) _buildStatusPill(),
-              if (isSOSActive) _buildSOSHeader(),
-              const Spacer(),
-              Center(
-                child: isSOSActive
-                    ? _buildSOSActiveView()
-                    : _buildHoldButton(rippleMode),
-              ),
-              const Spacer(),
-              const SizedBox(height: 100),
-            ],
+          const SizedBox(height: 20),
+          if (!isSOSActive) _buildStatusPill(),
+          if (isSOSActive) _buildSOSHeader(),
+          const Spacer(),
+          Center(
+            child: isSOSActive ? _buildSOSActiveView() : _buildHoldButton(),
           ),
-
-          // ✅ Floating banner (auto hides after 2 min)
-          if (_banner != null)
-            Positioned(
-              top: 12,
-              left: 16,
-              right: 16,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF15171B),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.primarySky.withOpacity(0.35)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.30),
-                      blurRadius: 14,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.notifications_active, color: Colors.white),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _banner!.title,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            _banner!.subtitle,
-                            style:
-                                TextStyle(color: Colors.grey[300], fontSize: 12),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () {
-                        _bannerTimer?.cancel();
-                        setState(() => _banner = null);
-                      },
-                      icon: const Icon(Icons.close, color: Colors.white70),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+          const Spacer(),
+          const SizedBox(height: 100),
         ],
       ),
     );
@@ -295,14 +289,11 @@ class _SOSDashboardState extends State<SOSDashboard>
     );
   }
 
-  Widget _buildHoldButton(RippleMode mode) {
+  Widget _buildHoldButton() {
     return SOSHoldInteraction(
       accentColor: accentBlue,
-      mode: mode, // ✅ calm or intense ripple
       onComplete: () {
-        setState(() {
-          isSOSActive = true;
-        });
+        setState(() => isSOSActive = true);
         _startSosCountdown();
       },
     );
@@ -337,15 +328,13 @@ class _SOSDashboardState extends State<SOSDashboard>
         ),
         const SizedBox(height: 30),
         const Text(
-          'An alert will be sent to your emergency contacts.',
+          'After the countdown, the emergency process will start.',
           style: TextStyle(color: Colors.grey, fontSize: 12),
         ),
         const SizedBox(height: 40),
         _buildActionButton('CANCEL SOS', tealBtn, Colors.black, () {
           _resetSosCountdown();
-          setState(() {
-            isSOSActive = false;
-          });
+          setState(() => isSOSActive = false);
         }),
         const SizedBox(height: 15),
         _buildActionButton('SEND HELP NOW', accentRed, Colors.white, () async {
@@ -385,6 +374,7 @@ class _SOSDashboardState extends State<SOSDashboard>
   void _startSosCountdown() {
     _sosTimer?.cancel();
     _remaining = _sosDuration;
+
     _sosTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
       if (!mounted) return;
 
@@ -414,21 +404,13 @@ class _SOSDashboardState extends State<SOSDashboard>
   }
 }
 
-/* ====================================================================== */
-/* ===================== SOS HOLD + RIPPLE ANIMATION ==================== */
-/* ====================================================================== */
-
-enum RippleMode { calm, intense }
-
 class SOSHoldInteraction extends StatefulWidget {
   final Color accentColor;
   final VoidCallback onComplete;
-  final RippleMode mode;
 
   const SOSHoldInteraction({
     required this.accentColor,
     required this.onComplete,
-    required this.mode,
     super.key,
   });
 
@@ -437,218 +419,92 @@ class SOSHoldInteraction extends StatefulWidget {
 }
 
 class _SOSHoldInteractionState extends State<SOSHoldInteraction>
-    with TickerProviderStateMixin {
-  late AnimationController _holdController;
-  late AnimationController _rippleController;
-
-  Duration get _rippleDuration =>
-      widget.mode == RippleMode.intense
-          ? const Duration(milliseconds: 900)   // faster
-          : const Duration(milliseconds: 2200); // slower
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
 
   @override
   void initState() {
     super.initState();
-
-    _holdController = AnimationController(
+    _controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 1),
     );
-    _holdController.addStatusListener((status) {
+    _controller.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         widget.onComplete();
-        _holdController.reset();
+        _controller.reset();
       }
     });
-
-    _rippleController = AnimationController(
-      vsync: this,
-      duration: _rippleDuration,
-    )..repeat();
-  }
-
-  @override
-  void didUpdateWidget(covariant SOSHoldInteraction oldWidget) {
-    super.didUpdateWidget(oldWidget);
-
-    if (oldWidget.mode != widget.mode) {
-      _rippleController
-        ..stop()
-        ..duration = _rippleDuration
-        ..repeat();
-    }
   }
 
   @override
   void dispose() {
-    _holdController.dispose();
-    _rippleController.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final bool intense = widget.mode == RippleMode.intense;
-    final Color rippleColor = intense ? const Color(0xFFFF3D00) : widget.accentColor;
-
-    // More rings + bigger scale in intense mode
-    final int rings = intense ? 3 : 2;
-    final double maxScale = intense ? 1.85 : 1.35;
-    final double baseOpacity = intense ? 0.30 : 0.16;
-
     return GestureDetector(
-      onTapDown: (_) => _holdController.forward(),
-      onTapUp: (_) => _holdController.reverse(),
-      onTapCancel: () => _holdController.reverse(),
+      onTapDown: (_) => _controller.forward(),
+      onTapUp: (_) => _controller.reverse(),
+      onTapCancel: () => _controller.reverse(),
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Water ripple rings behind everything
-          for (int i = 0; i < rings; i++)
-            _RippleRing(
-              controller: _rippleController,
-              color: rippleColor,
-              baseSize: 240,
-              phase: i / rings, // evenly stagger rings
-              maxScale: maxScale,
-              baseOpacity: baseOpacity,
-              intense: intense,
-            ),
-
-          // Outer static ring
           Container(
             width: 240,
             height: 240,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(
-                color: rippleColor.withOpacity(intense ? 0.18 : 0.10),
+                color: widget.accentColor.withOpacity(0.1),
                 width: 15,
               ),
             ),
           ),
-
-          // Hold progress ring
           SizedBox(
             width: 240,
             height: 240,
             child: AnimatedBuilder(
-              animation: _holdController,
+              animation: _controller,
               builder: (context, child) {
                 return CircularProgressIndicator(
-                  value: _holdController.value,
+                  value: _controller.value,
                   strokeWidth: 15,
                   backgroundColor: Colors.transparent,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    intense ? const Color(0xFFFF3D00) : widget.accentColor,
-                  ),
+                  valueColor: AlwaysStoppedAnimation<Color>(widget.accentColor),
                   strokeCap: StrokeCap.round,
                 );
               },
             ),
           ),
-
-          // Center content
           Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.touch_app_outlined,
-                color: Colors.white,
-                size: intense ? 34 : 32,
-              ),
+              const Icon(Icons.touch_app_outlined,
+                  color: Colors.white, size: 32),
               const SizedBox(height: 10),
-              Text(
+              const Text(
                 'Hold to Activate',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  letterSpacing: intense ? 0.4 : 0.0,
                 ),
               ),
               Text(
                 'SOS',
                 style: TextStyle(
-                  color: rippleColor,
+                  color: widget.accentColor,
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              if (intense) ...[
-                const SizedBox(height: 6),
-                Text(
-                  "RECENT EMERGENCY",
-                  style: TextStyle(
-                    color: rippleColor.withOpacity(0.9),
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-              ],
             ],
           ),
         ],
       ),
-    );
-  }
-}
-
-class _RippleRing extends StatelessWidget {
-  final AnimationController controller;
-  final Color color;
-  final double baseSize;
-  final double phase; // 0..1
-  final double maxScale;
-  final double baseOpacity;
-  final bool intense;
-
-  const _RippleRing({
-    required this.controller,
-    required this.color,
-    required this.baseSize,
-    required this.phase,
-    required this.maxScale,
-    required this.baseOpacity,
-    required this.intense,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, _) {
-        double t = (controller.value + phase) % 1.0;
-
-        // smooth curve
-        final curved = Curves.easeOut.transform(t);
-
-        // scale: 1.0 -> maxScale
-        final scale = 1.0 + ((maxScale - 1.0) * curved);
-
-        // opacity fades out as it expands
-        final opacity = (1.0 - curved).clamp(0.0, 1.0);
-
-        // thickness: stronger for intense
-        final strokeBase = intense ? 7.0 : 5.5;
-        final stroke = strokeBase - (intense ? 4.0 : 3.0) * curved;
-
-        return Transform.scale(
-          scale: scale,
-          child: Container(
-            width: baseSize,
-            height: baseSize,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: color.withOpacity(baseOpacity * opacity),
-                width: stroke.clamp(2.0, strokeBase),
-              ),
-            ),
-          ),
-        );
-      },
     );
   }
 }
