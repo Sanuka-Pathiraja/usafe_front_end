@@ -4,6 +4,7 @@ import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'contacts_screen.dart';
 import 'profile_screen.dart';
 import 'safety_score_screen.dart';
+import 'emergency_process_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -118,6 +119,23 @@ class _SOSDashboardState extends State<SOSDashboard>
   final Color accentBlue = AppColors.primarySky;
   final Color accentRed = const Color(0xFFFF3D00);
   final Color tealBtn = const Color(0xFF1DE9B6);
+
+  Future<void> _openEmergencyProcess() async {
+    _sosTimer?.cancel();
+
+    final result = await Navigator.push<EmergencyProcessResult>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const EmergencyProcessScreen(),
+      ),
+    );
+
+    if (!mounted) return;
+    if (result != null && result.stoppedByUser) {
+      _resetSosCountdown();
+      setState(() => isSOSActive = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -238,7 +256,10 @@ class _SOSDashboardState extends State<SOSDashboard>
           });
         }),
         const SizedBox(height: 15),
-        _buildActionButton('SEND HELP NOW', accentRed, Colors.white, () {}),
+        // _buildActionButton('SEND HELP NOW', accentRed, Colors.white, () {}),
+        _buildActionButton('SEND HELP NOW', accentRed, Colors.white, () async {
+          await _openEmergencyProcess();
+        }),
       ],
     );
   }
@@ -274,13 +295,20 @@ class _SOSDashboardState extends State<SOSDashboard>
   void _startSosCountdown() {
     _sosTimer?.cancel();
     _remaining = _sosDuration;
-    _sosTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+    _sosTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
       if (!mounted) return;
+      // if (_remaining.inSeconds <= 1) {
+      //   timer.cancel();
+      //   setState(() {
+      //     _remaining = Duration.zero;
+      //   });
+      //   return;
+      // }
       if (_remaining.inSeconds <= 1) {
         timer.cancel();
-        setState(() {
-          _remaining = Duration.zero;
-        });
+        setState(() => _remaining = Duration.zero);
+
+        await _openEmergencyProcess();
         return;
       }
       setState(() {
