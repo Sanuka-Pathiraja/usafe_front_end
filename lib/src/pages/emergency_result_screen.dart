@@ -47,29 +47,42 @@ class EmergencyResultScreen extends StatelessWidget {
     }
   }
 
+  IconData get _bigIcon {
+    switch (summary.outcome) {
+      case EmergencyOutcome.completed:
+        return Icons.verified_rounded;
+      case EmergencyOutcome.cancelled:
+        return Icons.pause_circle_filled_rounded;
+      case EmergencyOutcome.failed:
+        return Icons.error_rounded;
+    }
+  }
+
   String get _title {
     switch (summary.outcome) {
       case EmergencyOutcome.completed:
-        return "Emergency Process Completed";
+        return "Emergency Completed";
       case EmergencyOutcome.cancelled:
-        return "Emergency Process Cancelled";
+        return "Emergency Cancelled";
       case EmergencyOutcome.failed:
-        return "Emergency Process Failed";
+        return "Emergency Failed";
     }
   }
 
   String get _subtitle {
     switch (summary.outcome) {
       case EmergencyOutcome.completed:
-        return summary.emergencyServicesCalled
-            ? "Emergency services were contacted."
-            : "Completed before contacting emergency services.";
+        if (summary.emergencyServicesCalled) {
+          return "Emergency contacts were notified and 119 was contacted.";
+        }
+        return "Emergency contacts were notified. 119 was not contacted.";
       case EmergencyOutcome.cancelled:
-        return "You stopped the emergency process.";
+        return "You stopped the emergency process before it finished.";
       case EmergencyOutcome.failed:
-        return summary.failedStepTitle != null
-            ? "Failed at: ${summary.failedStepTitle}"
-            : "A step failed during the process.";
+        if (summary.failedStepTitle != null) {
+          return "Something went wrong at: ${summary.failedStepTitle}";
+        }
+        return "Something went wrong during the emergency process.";
     }
   }
 
@@ -95,82 +108,41 @@ class EmergencyResultScreen extends StatelessWidget {
     }
   }
 
+  String get _outcomeChipText {
+    switch (summary.outcome) {
+      case EmergencyOutcome.completed:
+        return "COMPLETED";
+      case EmergencyOutcome.cancelled:
+        return "CANCELLED";
+      case EmergencyOutcome.failed:
+        return "FAILED";
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final bg = AppColors.background;
+
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: bg,
       appBar: AppBar(
         backgroundColor: const Color(0xFF15171B),
-        title: const Text("Emergency Result"),
+        title: const Text("Emergency Summary"),
         centerTitle: true,
         automaticallyImplyLeading: false,
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(18),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
           child: Column(
             children: [
-              const SizedBox(height: 12),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.06),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: _accent.withOpacity(0.35)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _title,
-                      style: TextStyle(
-                        color: _accent,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      _subtitle,
-                      style: TextStyle(color: Colors.grey[300], fontSize: 13),
-                    ),
-                    const SizedBox(height: 14),
-                    _infoRow(
-                        "Someone answered", summary.someoneAnswered ? "Yes" : "No"),
-                    _infoRow("119 contacted",
-                        summary.emergencyServicesCalled ? "Yes" : "No"),
-                    if (summary.outcome == EmergencyOutcome.failed &&
-                        summary.failedStepTitle != null)
-                      _infoRow("Failed step", summary.failedStepTitle!),
-                  ],
-                ),
-              ),
-              const Spacer(),
-              SizedBox(
-                height: 54,
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    // ✅ Return payload upward (to process screen, then to home)
-                    Navigator.pop(context, _bannerPayload);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _accent,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  child: const Text(
-                    "CLOSE",
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
+              _heroCard(),
+              const SizedBox(height: 14),
+              _detailsGrid(),
+              const SizedBox(height: 14),
+              _timelineCard(),
+              const SizedBox(height: 16),
+              _actions(context),
             ],
           ),
         ),
@@ -178,16 +150,351 @@ class EmergencyResultScreen extends StatelessWidget {
     );
   }
 
-  Widget _infoRow(String k, String v) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+  Widget _heroCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFF15171B),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: _accent.withOpacity(0.28)),
+        boxShadow: [
+          BoxShadow(
+            color: _accent.withOpacity(0.18),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.35),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(k, style: TextStyle(color: Colors.grey[400], fontSize: 12)),
-          Text(v, style: const TextStyle(color: Colors.white, fontSize: 12)),
+          // big icon with glow
+          Container(
+            width: 74,
+            height: 74,
+            decoration: BoxDecoration(
+              color: _accent.withOpacity(0.14),
+              shape: BoxShape.circle,
+              border: Border.all(color: _accent.withOpacity(0.35)),
+            ),
+            child: Icon(_bigIcon, size: 44, color: _accent),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // outcome chip
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: _accent.withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: _accent.withOpacity(0.35)),
+                    ),
+                    child: Text(
+                      _outcomeChipText,
+                      style: TextStyle(
+                        color: _accent,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.6,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  _title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _subtitle,
+                  style: TextStyle(color: Colors.grey[300], fontSize: 13),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
+
+  Widget _detailsGrid() {
+    return Row(
+      children: [
+        Expanded(
+          child: _miniCard(
+            icon: Icons.phone_in_talk_rounded,
+            title: "Answered",
+            value: summary.someoneAnswered ? "YES" : "NO",
+            accent: summary.someoneAnswered ? Colors.greenAccent : Colors.white70,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _miniCard(
+            icon: Icons.local_phone_rounded,
+            title: "119 Contacted",
+            value: summary.emergencyServicesCalled ? "YES" : "NO",
+            accent: summary.emergencyServicesCalled ? Colors.greenAccent : Colors.white70,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _miniCard({
+    required IconData icon,
+    required String title,
+    required String value,
+    required Color accent,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: accent.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: accent.withOpacity(0.25)),
+            ),
+            child: Icon(icon, color: accent, size: 22),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: TextStyle(color: Colors.grey[300], fontSize: 12)),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: TextStyle(
+                    color: accent,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _timelineCard() {
+    final items = _buildTimelineItems();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF15171B),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "What happened",
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...items,
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildTimelineItems() {
+    // We don't have per-step states in the summary,
+    // so we present a clean narrative timeline.
+    final List<_TimelineRow> rows = [
+      _TimelineRow(
+        icon: Icons.sms_rounded,
+        title: "Emergency contacts messaged",
+        status: "Sent",
+        ok: true,
+      ),
+      _TimelineRow(
+        icon: Icons.call_rounded,
+        title: "Emergency contact calls attempted",
+        status: summary.someoneAnswered ? "Answered" : "No answer",
+        ok: summary.someoneAnswered,
+      ),
+      _TimelineRow(
+        icon: Icons.support_agent_rounded,
+        title: "Emergency services (119)",
+        status: summary.emergencyServicesCalled ? "Contacted" : "Not contacted",
+        ok: summary.emergencyServicesCalled,
+      ),
+    ];
+
+    if (summary.outcome == EmergencyOutcome.failed) {
+      rows.add(
+        _TimelineRow(
+          icon: Icons.warning_rounded,
+          title: "Failure detected",
+          status: summary.failedStepTitle ?? "Unknown step",
+          ok: false,
+        ),
+      );
+    }
+
+    if (summary.outcome == EmergencyOutcome.cancelled) {
+      rows.add(
+        _TimelineRow(
+          icon: Icons.pause_rounded,
+          title: "User action",
+          status: "Cancelled",
+          ok: false,
+        ),
+      );
+    }
+
+    return List.generate(rows.length, (i) {
+      final r = rows[i];
+      final color = r.ok ? Colors.greenAccent : _accent;
+
+      return Padding(
+        padding: EdgeInsets.only(bottom: i == rows.length - 1 ? 0 : 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: color.withOpacity(0.28)),
+              ),
+              child: Icon(r.icon, color: color, size: 20),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    r.title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    r.status,
+                    style: TextStyle(color: Colors.grey[300], fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+
+  Widget _actions(BuildContext context) {
+    return Column(
+      children: [
+        SizedBox(
+          width: double.infinity,
+          height: 54,
+          child: ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context, _bannerPayload);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _accent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+            child: const Text(
+              "CLOSE",
+              style: TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.4,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          height: 54,
+          child: OutlinedButton(
+            onPressed: () {
+              // close but still return payload (same effect)
+              Navigator.pop(context, _bannerPayload);
+            },
+            style: OutlinedButton.styleFrom(
+              side: BorderSide(color: Colors.white.withOpacity(0.18)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+            child: Text(
+              "BACK TO HOME",
+              style: TextStyle(
+                color: Colors.grey[200],
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.4,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TimelineRow {
+  final IconData icon;
+  final String title;
+  final String status;
+  final bool ok;
+
+  _TimelineRow({
+    required this.icon,
+    required this.title,
+    required this.status,
+    required this.ok,
+  });
 }
