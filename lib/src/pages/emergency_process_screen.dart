@@ -93,15 +93,23 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
 
   // ---------- Navigation to Result ----------
   Future<void> _goToResult(EmergencySummary summary) async {
-    if (!mounted || _screenClosed) return;
-    _screenClosed = true;
+  if (!mounted || _screenClosed) return;
+  _screenClosed = true;
 
-    // Replace this screen with Result screen
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => EmergencyResultScreen(summary: summary)),
-    );
-  }
+  // 1) Show the result screen on top
+  final payload = await Navigator.push<HomeEmergencyBannerPayload>(
+    context,
+    MaterialPageRoute(
+      builder: (_) => EmergencyResultScreen(summary: summary),
+    ),
+  );
+
+  if (!mounted) return;
+
+  // 2) Close THIS process screen and return payload back to SOSDashboard/Home
+  Navigator.pop(context, payload);
+}
+
 
   // ---------- Flow helpers ----------
   void _cancelCurrentFlow() {

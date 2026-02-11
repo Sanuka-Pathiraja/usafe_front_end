@@ -19,11 +19,17 @@ class EmergencySummary {
   });
 }
 
-/// This is what we return back to Home to show the floating notification.
+/// Returned up the navigation stack to show banner on Home.
 class HomeEmergencyBannerPayload {
   final String title;
   final String subtitle;
-  const HomeEmergencyBannerPayload({required this.title, required this.subtitle});
+  const HomeEmergencyBannerPayload({
+    required this.title,
+    required this.subtitle,
+  });
+
+  @override
+  String toString() => "HomeEmergencyBannerPayload(title=$title, subtitle=$subtitle)";
 }
 
 class EmergencyResultScreen extends StatelessWidget {
@@ -130,8 +136,10 @@ class EmergencyResultScreen extends StatelessWidget {
                       style: TextStyle(color: Colors.grey[300], fontSize: 13),
                     ),
                     const SizedBox(height: 14),
-                    _infoRow("Someone answered", summary.someoneAnswered ? "Yes" : "No"),
-                    _infoRow("119 contacted", summary.emergencyServicesCalled ? "Yes" : "No"),
+                    _infoRow(
+                        "Someone answered", summary.someoneAnswered ? "Yes" : "No"),
+                    _infoRow("119 contacted",
+                        summary.emergencyServicesCalled ? "Yes" : "No"),
                     if (summary.outcome == EmergencyOutcome.failed &&
                         summary.failedStepTitle != null)
                       _infoRow("Failed step", summary.failedStepTitle!),
@@ -144,7 +152,7 @@ class EmergencyResultScreen extends StatelessWidget {
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: () {
-                    // ✅ Close -> go straight back to Home and return banner payload
+                    // ✅ Return payload upward (to process screen, then to home)
                     Navigator.pop(context, _bannerPayload);
                   },
                   style: ElevatedButton.styleFrom(

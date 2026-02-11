@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
+
 import 'contacts_screen.dart';
 import 'profile_screen.dart';
 import 'safety_score_screen.dart';
 import 'emergency_process_screen.dart';
+import 'emergency_result_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -15,16 +17,37 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
+
   final Color bgDark = AppColors.background;
   final Color accentBlue = AppColors.primarySky;
+
   final GlobalKey<ContactsScreenState> _contactsKey =
       GlobalKey<ContactsScreenState>();
 
+  // ✅ Banner state lives in HomeScreen so it shows on ANY tab
+  HomeEmergencyBannerPayload? _banner;
+  Timer? _bannerTimer;
+
+  @override
+  void dispose() {
+    _bannerTimer?.cancel();
+    super.dispose();
+  }
+
+  void _showBanner(HomeEmergencyBannerPayload payload) {
+    _bannerTimer?.cancel();
+    setState(() => _banner = payload);
+
+    _bannerTimer = Timer(const Duration(minutes: 2), () {
+      if (!mounted) return;
+      setState(() => _banner = null);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Main tab pages rendered via the bottom navigation.
     final pages = [
-      const SOSDashboard(),
+      SOSDashboard(onBanner: _showBanner),
       const SafetyScoreScreen(safetyScore: 85, showBottomNav: false),
       ContactsScreen(key: _contactsKey),
       const ProfileScreen(),
@@ -39,6 +62,70 @@ class _HomeScreenState extends State<HomeScreen> {
               index: _currentIndex,
               children: pages,
             ),
+
+            // ✅ Floating banner overlay (auto hides after 2 minutes)
+            if (_banner != null)
+              Positioned(
+                top: 12,
+                left: 16,
+                right: 16,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF15171B),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: AppColors.primarySky.withOpacity(0.35),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.3),
+                        blurRadius: 14,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.notifications_active,
+                          color: Colors.white),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _banner!.title,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              _banner!.subtitle,
+                              style: TextStyle(
+                                color: Colors.grey[300],
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () {
+                          _bannerTimer?.cancel();
+                          setState(() => _banner = null);
+                        },
+                        icon: const Icon(Icons.close, color: Colors.white70),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
             // Custom bottom navigation overlay.
             Positioned(
               bottom: 30,
@@ -46,7 +133,8 @@ class _HomeScreenState extends State<HomeScreen> {
               right: 20,
               child: _buildBottomNavBar(),
             ),
-            // Show the add-contact FAB only on the Contacts tab.
+
+            // Show add-contact FAB only on Contacts tab.
             if (_currentIndex == 2)
               Positioned(
                 left: 0,
@@ -100,7 +188,12 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class SOSDashboard extends StatefulWidget {
-  const SOSDashboard({super.key});
+  final void Function(HomeEmergencyBannerPayload payload) onBanner;
+
+  const SOSDashboard({
+    super.key,
+    required this.onBanner,
+  });
 
   @override
   State<SOSDashboard> createState() => _SOSDashboardState();
@@ -110,7 +203,7 @@ class _SOSDashboardState extends State<SOSDashboard>
     with TickerProviderStateMixin {
   bool isSOSActive = false;
 
-  // 3-minute countdown before auto alert.
+  // 3-minute countdown before auto alert
   static const Duration _sosDuration = Duration(minutes: 3);
   Timer? _sosTimer;
   Duration _remaining = _sosDuration;
@@ -120,27 +213,30 @@ class _SOSDashboardState extends State<SOSDashboard>
   final Color accentRed = const Color(0xFFFF3D00);
   final Color tealBtn = const Color(0xFF1DE9B6);
 
-  Future<void> _openEmergencyProcess() async {
-    _sosTimer?.cancel();
-
-    final result = await Navigator.push<EmergencyProcessResult>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const EmergencyProcessScreen(),
-      ),
-    );
-
-    if (!mounted) return;
-    if (result != null && result.stoppedByUser) {
-      _resetSosCountdown();
-      setState(() => isSOSActive = false);
-    }
-  }
-
   @override
   void dispose() {
     _sosTimer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _openEmergencyProcess() async {
+    _sosTimer?.cancel();
+
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const EmergencyProcessScreen()),
+    );
+
+    if (!mounted) return;
+
+    // ✅ Always reset SOS UI when returning
+    _resetSosCountdown();
+    setState(() => isSOSActive = false);
+
+    // If result screen returned a banner payload, show it in HomeScreen
+    if (result is HomeEmergencyBannerPayload) {
+      widget.onBanner(result);
+    }
   }
 
   @override
@@ -207,10 +303,7 @@ class _SOSDashboardState extends State<SOSDashboard>
     return SOSHoldInteraction(
       accentColor: accentBlue,
       onComplete: () {
-        setState(() {
-          isSOSActive = true;
-        });
-        // Start the visible countdown once SOS is activated.
+        setState(() => isSOSActive = true);
         _startSosCountdown();
       },
     );
@@ -245,18 +338,15 @@ class _SOSDashboardState extends State<SOSDashboard>
         ),
         const SizedBox(height: 30),
         const Text(
-          'An alert will be sent to your emergency contacts.',
+          'After the countdown, the emergency process will start.',
           style: TextStyle(color: Colors.grey, fontSize: 12),
         ),
         const SizedBox(height: 40),
         _buildActionButton('CANCEL SOS', tealBtn, Colors.black, () {
           _resetSosCountdown();
-          setState(() {
-            isSOSActive = false;
-          });
+          setState(() => isSOSActive = false);
         }),
         const SizedBox(height: 15),
-        // _buildActionButton('SEND HELP NOW', accentRed, Colors.white, () {}),
         _buildActionButton('SEND HELP NOW', accentRed, Colors.white, () async {
           await _openEmergencyProcess();
         }),
@@ -277,8 +367,7 @@ class _SOSDashboardState extends State<SOSDashboard>
         onPressed: onTap,
         style: ElevatedButton.styleFrom(
           backgroundColor: bg,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         ),
         child: Text(
           label,
@@ -295,15 +384,10 @@ class _SOSDashboardState extends State<SOSDashboard>
   void _startSosCountdown() {
     _sosTimer?.cancel();
     _remaining = _sosDuration;
+
     _sosTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
       if (!mounted) return;
-      // if (_remaining.inSeconds <= 1) {
-      //   timer.cancel();
-      //   setState(() {
-      //     _remaining = Duration.zero;
-      //   });
-      //   return;
-      // }
+
       if (_remaining.inSeconds <= 1) {
         timer.cancel();
         setState(() => _remaining = Duration.zero);
@@ -311,6 +395,7 @@ class _SOSDashboardState extends State<SOSDashboard>
         await _openEmergencyProcess();
         return;
       }
+
       setState(() {
         _remaining = Duration(seconds: _remaining.inSeconds - 1);
       });
