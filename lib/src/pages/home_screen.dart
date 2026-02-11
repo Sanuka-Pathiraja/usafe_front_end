@@ -443,7 +443,7 @@ class _SOSHoldInteractionState extends State<SOSHoldInteraction>
 
   Duration get _rippleDuration =>
       widget.mode == RippleMode.intense
-          ? const Duration(milliseconds: 900)   // faster
+          ? const Duration(milliseconds: 2000)   // faster
           : const Duration(milliseconds: 2200); // slower
 
   @override
@@ -493,8 +493,8 @@ class _SOSHoldInteractionState extends State<SOSHoldInteraction>
 
     // More rings + bigger scale in intense mode
     final int rings = intense ? 3 : 2;
-    final double maxScale = intense ? 1.85 : 1.35;
-    final double baseOpacity = intense ? 0.30 : 0.16;
+    final double maxScale = intense ? 1.45 : 1.35;
+    final double baseOpacity = intense ? 0.22 : 0.16;
 
     return GestureDetector(
       onTapDown: (_) => _holdController.forward(),
