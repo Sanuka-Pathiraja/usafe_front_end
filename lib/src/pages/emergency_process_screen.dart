@@ -70,12 +70,10 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
   bool _someoneAnswered = false;
   bool _emergencyServicesCalled = false;
 
-  // step progress
   double _stepProgress = 0.0;
   Duration _stepRemaining = Duration.zero;
   Timer? _stepTimer;
 
-  // flow cancel token
   int _flowId = 0;
 
   @override
@@ -91,27 +89,23 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
     super.dispose();
   }
 
-  // ---------- Navigation to Result ----------
+  // ✅ IMPORTANT: this now returns payload back to Home via pop()
   Future<void> _goToResult(EmergencySummary summary) async {
-  if (!mounted || _screenClosed) return;
-  _screenClosed = true;
+    if (!mounted || _screenClosed) return;
+    _screenClosed = true;
 
-  // 1) Show the result screen on top
-  final payload = await Navigator.push<HomeEmergencyBannerPayload>(
-    context,
-    MaterialPageRoute(
-      builder: (_) => EmergencyResultScreen(summary: summary),
-    ),
-  );
+    // show result screen on top
+    final payload = await Navigator.push<HomeEmergencyBannerPayload>(
+      context,
+      MaterialPageRoute(builder: (_) => EmergencyResultScreen(summary: summary)),
+    );
 
-  if (!mounted) return;
+    if (!mounted) return;
 
-  // 2) Close THIS process screen and return payload back to SOSDashboard/Home
-  Navigator.pop(context, payload);
-}
+    // close process screen and return payload to home
+    Navigator.pop(context, payload);
+  }
 
-
-  // ---------- Flow helpers ----------
   void _cancelCurrentFlow() {
     _flowId++;
     _stepTimer?.cancel();
@@ -283,7 +277,6 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
     return result;
   }
 
-  // ---------- Manual override buttons ----------
   Future<void> _stopProcess() async {
     _cancelCurrentFlow();
     await _goToResult(EmergencySummary(
@@ -302,7 +295,8 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
     setState(() {
       for (int i = 0; i < _steps.length; i++) {
         if (i < idx119) {
-          _states[i] = (_states[i] == StepState.done) ? StepState.done : StepState.skipped;
+          _states[i] =
+              (_states[i] == StepState.done) ? StepState.done : StepState.skipped;
         } else if (i == idx119) {
           _states[i] = StepState.running;
           _currentIndex = i;
@@ -349,8 +343,10 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
     final myFlow = ++_flowId;
     _someoneAnswered = false;
 
-    final msgIdx = _steps.indexWhere((s) => s.type == EmergencyStepType.messageAll);
-    final idxWait = _steps.indexWhere((s) => s.type == EmergencyStepType.waitBefore119);
+    final msgIdx =
+        _steps.indexWhere((s) => s.type == EmergencyStepType.messageAll);
+    final idxWait =
+        _steps.indexWhere((s) => s.type == EmergencyStepType.waitBefore119);
     final idx119 = _steps.indexWhere((s) => s.type == EmergencyStepType.call119);
 
     final callIdxs = <int>[];
@@ -358,15 +354,16 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
       if (_steps[i].type == EmergencyStepType.callContact) callIdxs.add(i);
     }
 
-    // mark WAIT skipped for instant mode, reset others to pending if not done
     setState(() {
       for (int i = 0; i < _steps.length; i++) {
-        if (i == idxWait) _states[i] = StepState.skipped;
-        else if (_states[i] != StepState.done) _states[i] = StepState.pending;
+        if (i == idxWait) {
+          _states[i] = StepState.skipped;
+        } else if (_states[i] != StepState.done) {
+          _states[i] = StepState.pending;
+        }
       }
     });
 
-    // Message step (fast but visible)
     setState(() {
       _currentIndex = msgIdx;
       _states[msgIdx] = StepState.running;
@@ -385,6 +382,7 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
     } catch (_) {
       if (!mounted || myFlow != _flowId) return;
       setState(() => _states[msgIdx] = StepState.failed);
+
       await _goToResult(EmergencySummary(
         outcome: EmergencyOutcome.failed,
         someoneAnswered: _someoneAnswered,
@@ -395,7 +393,6 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
       return;
     }
 
-    // Calls (fast but visible)
     for (final idx in callIdxs) {
       if (!mounted || myFlow != _flowId) return;
 
@@ -433,11 +430,9 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
       } catch (_) {
         if (!mounted || myFlow != _flowId) return;
         setState(() => _states[idx] = StepState.failed);
-        // continue to next contact
       }
     }
 
-    // Call 119 (fast but visible)
     setState(() {
       _currentIndex = idx119;
       _states[idx119] = StepState.running;
@@ -475,7 +470,6 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
     }
   }
 
-  // ---------- Replace with real logic later ----------
   Future<void> _messageAll() async {
     if (widget.onMessageAllContacts != null) {
       await widget.onMessageAllContacts!();
@@ -501,9 +495,9 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
     await Future.delayed(const Duration(milliseconds: 600));
   }
 
-  // ---------- UI ----------
   double get _overallProgress {
-    final totalMs = _steps.fold<int>(0, (sum, s) => sum + s.duration.inMilliseconds);
+    final totalMs =
+        _steps.fold<int>(0, (sum, s) => sum + s.duration.inMilliseconds);
 
     int doneMs = 0;
     for (int i = 0; i < _steps.length; i++) {
@@ -553,44 +547,43 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
   }
 
   Widget _chipForState(StepState st) {
-  String text;
+    String text;
+    switch (st) {
+      case StepState.pending:
+        text = "PENDING";
+        break;
+      case StepState.running:
+        text = "RUNNING";
+        break;
+      case StepState.done:
+        text = "DONE";
+        break;
+      case StepState.skipped:
+        text = "SKIPPED";
+        break;
+      case StepState.failed:
+        text = "FAILED";
+        break;
+    }
 
-  switch (st) {
-    case StepState.pending:
-      text = "PENDING";
-      break;
-    case StepState.running:
-      text = "RUNNING";
-      break;
-    case StepState.done:
-      text = "DONE";
-      break;
-    case StepState.skipped:
-      text = "SKIPPED";
-      break;
-    case StepState.failed:
-      text = "FAILED";
-      break;
-  }
-
-  return Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-    decoration: BoxDecoration(
-      color: _stateColor(st).withOpacity(0.12),
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: _stateColor(st).withOpacity(0.35)),
-    ),
-    child: Text(
-      text,
-      style: TextStyle(
-        color: _stateColor(st),
-        fontSize: 11,
-        fontWeight: FontWeight.bold,
-        letterSpacing: 0.5,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: _stateColor(st).withOpacity(0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _stateColor(st).withOpacity(0.35)),
       ),
-    ),
-  );
-}
+      child: Text(
+        text,
+        style: TextStyle(
+          color: _stateColor(st),
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
 
   Widget _button({
     required String label,
@@ -640,7 +633,6 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
                 style: TextStyle(color: Colors.grey[400], fontSize: 12),
               ),
               const SizedBox(height: 14),
-
               ClipRRect(
                 borderRadius: BorderRadius.circular(10),
                 child: LinearProgressIndicator(
@@ -650,16 +642,13 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
                   valueColor: AlwaysStoppedAnimation<Color>(accentBlue),
                 ),
               ),
-
               const SizedBox(height: 10),
               if (isRunning)
                 Text(
                   "Current step time left: ${_stepRemaining.inSeconds}s",
                   style: TextStyle(color: Colors.grey[400], fontSize: 12),
                 ),
-
               const SizedBox(height: 18),
-
               Expanded(
                 child: ListView.separated(
                   itemCount: _steps.length,
@@ -670,7 +659,8 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
                   itemBuilder: (context, i) {
                     final step = _steps[i];
                     final st = _states[i];
-                    final isCurrent = i == _currentIndex && st == StepState.running;
+                    final isCurrent =
+                        i == _currentIndex && st == StepState.running;
 
                     return ListTile(
                       contentPadding: const EdgeInsets.symmetric(horizontal: 2),
@@ -679,7 +669,8 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
                         step.title,
                         style: TextStyle(
                           color: Colors.white,
-                          fontWeight: isCurrent ? FontWeight.bold : FontWeight.w500,
+                          fontWeight:
+                              isCurrent ? FontWeight.bold : FontWeight.w500,
                         ),
                       ),
                       subtitle: isCurrent
@@ -690,8 +681,10 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
                                 child: LinearProgressIndicator(
                                   minHeight: 8,
                                   value: _stepProgress,
-                                  backgroundColor: Colors.white.withOpacity(0.06),
-                                  valueColor: AlwaysStoppedAnimation<Color>(dangerRed),
+                                  backgroundColor:
+                                      Colors.white.withOpacity(0.06),
+                                  valueColor:
+                                      AlwaysStoppedAnimation<Color>(dangerRed),
                                 ),
                               ),
                             )
@@ -701,9 +694,7 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
                   },
                 ),
               ),
-
               const SizedBox(height: 10),
-
               Row(
                 children: [
                   Expanded(
