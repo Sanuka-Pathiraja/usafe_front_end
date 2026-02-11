@@ -44,23 +44,51 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
   final Color tealBtn = const Color(0xFF1DE9B6);
 
   final List<EmergencyStep> _steps = const [
-    EmergencyStep("Messaging all emergency contacts", EmergencyStepType.messageAll,
-        duration: Duration(minutes: 1)),
-    EmergencyStep("Calling Emergency contact 1", EmergencyStepType.callContact,
-        contactIndex: 1, duration: Duration(seconds: 30)),
-    EmergencyStep("Calling Emergency contact 2", EmergencyStepType.callContact,
-        contactIndex: 2, duration: Duration(seconds: 30)),
-    EmergencyStep("Calling Emergency contact 3", EmergencyStepType.callContact,
-        contactIndex: 3, duration: Duration(seconds: 30)),
-    EmergencyStep("Calling Emergency contact 4", EmergencyStepType.callContact,
-        contactIndex: 4, duration: Duration(seconds: 30)),
-    EmergencyStep("Calling Emergency contact 5", EmergencyStepType.callContact,
-        contactIndex: 5, duration: Duration(seconds: 30)),
-    EmergencyStep("Waiting before contacting Emergency Services",
-        EmergencyStepType.waitBefore119,
-        duration: Duration(minutes: 1)),
-    EmergencyStep("Calling Emergency Services (119)", EmergencyStepType.call119,
-        duration: Duration(seconds: 10)),
+    EmergencyStep(
+      "Messaging all emergency contacts",
+      EmergencyStepType.messageAll,
+      duration: Duration(minutes: 1),
+    ),
+    EmergencyStep(
+      "Calling Emergency contact 1",
+      EmergencyStepType.callContact,
+      contactIndex: 1,
+      duration: Duration(seconds: 30),
+    ),
+    EmergencyStep(
+      "Calling Emergency contact 2",
+      EmergencyStepType.callContact,
+      contactIndex: 2,
+      duration: Duration(seconds: 30),
+    ),
+    EmergencyStep(
+      "Calling Emergency contact 3",
+      EmergencyStepType.callContact,
+      contactIndex: 3,
+      duration: Duration(seconds: 30),
+    ),
+    EmergencyStep(
+      "Calling Emergency contact 4",
+      EmergencyStepType.callContact,
+      contactIndex: 4,
+      duration: Duration(seconds: 30),
+    ),
+    EmergencyStep(
+      "Calling Emergency contact 5",
+      EmergencyStepType.callContact,
+      contactIndex: 5,
+      duration: Duration(seconds: 30),
+    ),
+    EmergencyStep(
+      "Waiting before contacting Emergency Services",
+      EmergencyStepType.waitBefore119,
+      duration: Duration(minutes: 1),
+    ),
+    EmergencyStep(
+      "Calling Emergency Services (119)",
+      EmergencyStepType.call119,
+      duration: Duration(seconds: 10),
+    ),
   ];
 
   late List<StepState> _states;
@@ -70,10 +98,12 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
   bool _someoneAnswered = false;
   bool _emergencyServicesCalled = false;
 
+  // step progress
   double _stepProgress = 0.0;
   Duration _stepRemaining = Duration.zero;
   Timer? _stepTimer;
 
+  // flow cancel token
   int _flowId = 0;
 
   @override
@@ -89,23 +119,21 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
     super.dispose();
   }
 
-  // ✅ IMPORTANT: this now returns payload back to Home via pop()
+  // ---------- Navigation to Result ----------
   Future<void> _goToResult(EmergencySummary summary) async {
     if (!mounted || _screenClosed) return;
     _screenClosed = true;
 
-    // show result screen on top
     final payload = await Navigator.push<HomeEmergencyBannerPayload>(
       context,
       MaterialPageRoute(builder: (_) => EmergencyResultScreen(summary: summary)),
     );
 
     if (!mounted) return;
-
-    // close process screen and return payload to home
     Navigator.pop(context, payload);
   }
 
+  // ---------- Flow helpers ----------
   void _cancelCurrentFlow() {
     _flowId++;
     _stepTimer?.cancel();
@@ -277,6 +305,7 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
     return result;
   }
 
+  // ---------- Manual override buttons ----------
   Future<void> _stopProcess() async {
     _cancelCurrentFlow();
     await _goToResult(EmergencySummary(
@@ -364,6 +393,7 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
       }
     });
 
+    // Message (fast but visible)
     setState(() {
       _currentIndex = msgIdx;
       _states[msgIdx] = StepState.running;
@@ -393,6 +423,7 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
       return;
     }
 
+    // Calls (fast but visible)
     for (final idx in callIdxs) {
       if (!mounted || myFlow != _flowId) return;
 
@@ -433,6 +464,7 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
       }
     }
 
+    // Call 119 (fast but visible)
     setState(() {
       _currentIndex = idx119;
       _states[idx119] = StepState.running;
@@ -470,6 +502,7 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
     }
   }
 
+  // ---------- Replace with real logic later ----------
   Future<void> _messageAll() async {
     if (widget.onMessageAllContacts != null) {
       await widget.onMessageAllContacts!();
@@ -495,6 +528,7 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
     await Future.delayed(const Duration(milliseconds: 600));
   }
 
+  // ---------- UI helpers ----------
   double get _overallProgress {
     final totalMs =
         _steps.fold<int>(0, (sum, s) => sum + s.duration.inMilliseconds);
@@ -585,24 +619,186 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
     );
   }
 
+  String _formatMs(Duration d) {
+    final m = d.inMinutes;
+    final s = d.inSeconds % 60;
+    if (m <= 0) return "${s}s";
+    return "${m}m ${s}s";
+  }
+
+  // ✅ Overflow-safe button: Flexible text + short labels on tight width
   Widget _button({
     required String label,
     required Color bg,
     required Color fg,
     required VoidCallback onTap,
+    IconData? icon,
   }) {
     return SizedBox(
-      height: 52,
+      height: 54,
       child: ElevatedButton(
         onPressed: onTap,
         style: ElevatedButton.styleFrom(
           backgroundColor: bg,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
         ),
-        child: Text(
-          label,
-          style: TextStyle(color: fg, fontWeight: FontWeight.bold),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final bool tight = constraints.maxWidth < 150;
+
+            String shown = label;
+            if (tight) {
+              if (label == "NOTIFY ALL INSTANTLY") shown = "NOTIFY ALL";
+              if (label == "STOP PROCESS") shown = "STOP";
+              if (label == "CALL 119 NOW") shown = "CALL 119";
+            }
+
+            return Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.max,
+              children: [
+                if (icon != null) ...[
+                  Icon(icon, color: fg, size: 18),
+                  const SizedBox(width: 8),
+                ],
+                Flexible(
+                  child: Text(
+                    shown,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    softWrap: false,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: fg,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
+      ),
+    );
+  }
+
+  Widget _headerCard() {
+    final overallPercent = (_overallProgress * 100).round();
+    final isRunning = _states[_currentIndex] == StepState.running;
+
+    final statusLine = _someoneAnswered
+        ? "Someone answered — skipping remaining calls"
+        : (isRunning ? "Running emergency actions…" : "Preparing…");
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF15171B),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: dangerRed.withOpacity(0.14),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: dangerRed.withOpacity(0.25)),
+                ),
+                child: Icon(Icons.sos_rounded, color: dangerRed, size: 22),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  "Emergency Process",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: accentBlue.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: accentBlue.withOpacity(0.28)),
+                ),
+                child: Text(
+                  "$overallPercent%",
+                  style: TextStyle(
+                    color: accentBlue,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+              )
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(statusLine, style: TextStyle(color: Colors.grey[300], fontSize: 12)),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: LinearProgressIndicator(
+              minHeight: 10,
+              value: _overallProgress,
+              backgroundColor: Colors.white.withOpacity(0.08),
+              valueColor: AlwaysStoppedAnimation<Color>(accentBlue),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  "Current: ${_steps[_currentIndex].title}",
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.25),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: Colors.white.withOpacity(0.10)),
+                ),
+                child: Text(
+                  isRunning ? _formatMs(_stepRemaining) : "--",
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (isRunning) ...[
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: LinearProgressIndicator(
+                minHeight: 7,
+                value: _stepProgress,
+                backgroundColor: Colors.white.withOpacity(0.06),
+                valueColor: AlwaysStoppedAnimation<Color>(dangerRed),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -615,119 +811,182 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
       backgroundColor: bgDark,
       appBar: AppBar(
         backgroundColor: const Color(0xFF15171B),
-        title: const Text("Emergency Process"),
+        title: const Text("Emergency"),
         centerTitle: true,
         automaticallyImplyLeading: false,
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 8),
-              Text(
-                _someoneAnswered
-                    ? "Someone answered. Remaining calls will be skipped."
-                    : "Following the emergency steps...",
-                style: TextStyle(color: Colors.grey[400], fontSize: 12),
-              ),
-              const SizedBox(height: 14),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: LinearProgressIndicator(
-                  minHeight: 12,
-                  value: _overallProgress,
-                  backgroundColor: Colors.white.withOpacity(0.08),
-                  valueColor: AlwaysStoppedAnimation<Color>(accentBlue),
-                ),
-              ),
-              const SizedBox(height: 10),
-              if (isRunning)
-                Text(
-                  "Current step time left: ${_stepRemaining.inSeconds}s",
-                  style: TextStyle(color: Colors.grey[400], fontSize: 12),
-                ),
-              const SizedBox(height: 18),
-              Expanded(
-                child: ListView.separated(
-                  itemCount: _steps.length,
-                  separatorBuilder: (_, __) => Divider(
-                    color: Colors.white.withOpacity(0.06),
-                    height: 1,
-                  ),
-                  itemBuilder: (context, i) {
-                    final step = _steps[i];
-                    final st = _states[i];
-                    final isCurrent =
-                        i == _currentIndex && st == StepState.running;
+        child: Column(
+          children: [
+            // ✅ Compact header
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+              child: _headerCard(),
+            ),
 
-                    return ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 2),
-                      leading: Icon(_stateIcon(st), color: _stateColor(st)),
-                      title: Text(
-                        step.title,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight:
-                              isCurrent ? FontWeight.bold : FontWeight.w500,
+            // ✅ Steps area (scrollable only here)
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF15171B),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: Colors.white.withOpacity(0.08)),
+                  ),
+                  child: ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                    itemCount: _steps.length,
+                    separatorBuilder: (_, __) => Divider(
+                      color: Colors.white.withOpacity(0.06),
+                      height: 10,
+                    ),
+                    itemBuilder: (context, i) {
+                      final step = _steps[i];
+                      final st = _states[i];
+                      final isCurrent = i == _currentIndex && st == StepState.running;
+
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: isCurrent ? accentBlue.withOpacity(0.08) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: isCurrent ? accentBlue.withOpacity(0.25) : Colors.transparent,
+                          ),
                         ),
-                      ),
-                      subtitle: isCurrent
-                          ? Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: LinearProgressIndicator(
-                                  minHeight: 8,
-                                  value: _stepProgress,
-                                  backgroundColor:
-                                      Colors.white.withOpacity(0.06),
-                                  valueColor:
-                                      AlwaysStoppedAnimation<Color>(dangerRed),
+                        child: Row(
+                          children: [
+                            Icon(_stateIcon(st), color: _stateColor(st)),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    step.title,
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: isCurrent ? FontWeight.bold : FontWeight.w600,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    "Duration: ${_formatMs(step.duration)}",
+                                    style: TextStyle(color: Colors.grey[400], fontSize: 11),
+                                  ),
+                                  if (isCurrent && isRunning) ...[
+                                    const SizedBox(height: 10),
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: LinearProgressIndicator(
+                                        minHeight: 7,
+                                        value: _stepProgress,
+                                        backgroundColor: Colors.white.withOpacity(0.06),
+                                        valueColor: AlwaysStoppedAnimation<Color>(dangerRed),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            _chipForState(st),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+
+            // ✅ Controls ALWAYS visible at bottom (no long scroll)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.06),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: Colors.white.withOpacity(0.08)),
+                ),
+                child: Column(
+                  children: [
+                    LayoutBuilder(
+                      builder: (context, c) {
+                        final narrow = c.maxWidth < 360;
+
+                        if (narrow) {
+                          return Column(
+                            children: [
+                              SizedBox(
+                                width: double.infinity,
+                                child: _button(
+                                  label: "STOP PROCESS",
+                                  bg: tealBtn,
+                                  fg: Colors.black,
+                                  icon: Icons.stop_circle_rounded,
+                                  onTap: () async => await _stopProcess(),
                                 ),
                               ),
-                            )
-                          : null,
-                      trailing: _chipForState(st),
-                    );
-                  },
+                              const SizedBox(height: 10),
+                              SizedBox(
+                                width: double.infinity,
+                                child: _button(
+                                  label: "CALL 119 NOW",
+                                  bg: dangerRed,
+                                  fg: Colors.white,
+                                  icon: Icons.local_phone_rounded,
+                                  onTap: () async => await _call119NowTakeOver(),
+                                ),
+                              ),
+                            ],
+                          );
+                        }
+
+                        return Row(
+                          children: [
+                            Expanded(
+                              child: _button(
+                                label: "STOP PROCESS",
+                                bg: tealBtn,
+                                fg: Colors.black,
+                                icon: Icons.stop_circle_rounded,
+                                onTap: () async => await _stopProcess(),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _button(
+                                label: "CALL 119 NOW",
+                                bg: dangerRed,
+                                fg: Colors.white,
+                                icon: Icons.local_phone_rounded,
+                                onTap: () async => await _call119NowTakeOver(),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: _button(
+                        label: "NOTIFY ALL INSTANTLY",
+                        bg: accentBlue,
+                        fg: Colors.white,
+                        icon: Icons.flash_on_rounded,
+                        onTap: () async => await _notifyAllInstantlyTakeOver(),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: _button(
-                      label: "STOP PROCESS",
-                      bg: tealBtn,
-                      fg: Colors.black,
-                      onTap: () async => await _stopProcess(),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _button(
-                      label: "CALL 119 NOW",
-                      bg: dangerRed,
-                      fg: Colors.white,
-                      onTap: () async => await _call119NowTakeOver(),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: _button(
-                  label: "NOTIFY ALL INSTANTLY",
-                  bg: accentBlue,
-                  fg: Colors.white,
-                  onTap: () async => await _notifyAllInstantlyTakeOver(),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
