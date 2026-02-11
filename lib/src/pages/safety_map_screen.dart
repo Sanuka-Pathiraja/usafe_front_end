@@ -7,6 +7,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:usafe_front_end/src/services/audio_analysis_service.dart';
 import 'package:usafe_front_end/src/services/live_safety_score_service.dart';
 import 'package:usafe_front_end/src/services/motion_analysis_service.dart';
+import 'package:usafe_front_end/widgets/guardian_bottom_sheet.dart';
 
 class SafetyMapScreen extends StatefulWidget {
   const SafetyMapScreen({Key? key}) : super(key: key);
@@ -44,6 +45,11 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   Color _micStatusColor = Colors.white70;
   final AudioAnalysisService _audioService = AudioAnalysisService();
   final MotionAnalysisService _motionService = MotionAnalysisService();
+
+  final TextEditingController _guardianRouteController = TextEditingController();
+  final List<GuardianCheckpoint> _guardianCheckpoints = [];
+  bool _isGuardianSheetOpen = false;
+  bool _isGuardianMonitoringActive = false;
 
   // Live Safety Score (dynamic, from external APIs)
   final SafetyScoreInputsProvider _scoreProvider = SafetyScoreInputsProvider();
@@ -493,6 +499,62 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
     _dangerDialogSetState = null;
   }
 
+  void _openGuardianSheet() {
+    setState(() {
+      _isGuardianSheetOpen = !_isGuardianSheetOpen;
+    });
+  }
+
+  void _closeGuardianSheet() {
+    if (!_isGuardianSheetOpen) return;
+    setState(() {
+      _isGuardianSheetOpen = false;
+    });
+  }
+
+  void _handleGuardianMapTap(LatLng position) {
+    if (!_isGuardianSheetOpen || _isGuardianMonitoringActive) return;
+    _addGuardianCheckpoint(position);
+  }
+
+  void _addGuardianCheckpoint(LatLng position) {
+    final index = _guardianCheckpoints.length + 1;
+    final checkpoint = GuardianCheckpoint(
+      name: 'Checkpoint $index',
+      lat: position.latitude,
+      lng: position.longitude,
+      safetyScore: _mockSafetyScore(index),
+    );
+    setState(() {
+      _guardianCheckpoints.add(checkpoint);
+    });
+  }
+
+  void _removeGuardianCheckpoint(GuardianCheckpoint checkpoint) {
+    setState(() {
+      _guardianCheckpoints.remove(checkpoint);
+    });
+  }
+
+  int _mockSafetyScore(int index) {
+    final base = 88 - (index * 9);
+    if (base < 25) return 25;
+    return base;
+  }
+
+  void _startGuardianMonitoring() {
+    if (_guardianCheckpoints.length < 2) return;
+    setState(() {
+      _isGuardianMonitoringActive = true;
+    });
+  }
+
+  void _stopGuardianMonitoring() {
+    setState(() {
+      _isGuardianMonitoringActive = false;
+    });
+  }
+
   void _showStatusSnack(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -586,6 +648,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
     _scoreUpdateTimer?.cancel();
     _pulseController.dispose();
     _dangerTimer?.cancel();
+    _guardianRouteController.dispose();
     if (_isSafetyModeActive) {
       _audioService.stopListening();
       _motionService.stopListening();
@@ -595,8 +658,13 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
 
   @override
   Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final guardianPanelHeight = _isGuardianMonitoringActive
+        ? screenHeight * 0.26
+        : screenHeight * 0.40;
     return Scaffold(
       backgroundColor: AppColors.background,
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -619,7 +687,10 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                     _mapController.setMapStyle(_darkMapStyle);
                   }
                 },
+                onTap: _handleGuardianMapTap,
                 circles: _buildCircles(_pulseAnimation.value),
+                markers: _buildGuardianMarkers(),
+                polylines: _buildGuardianPolylines(),
                 myLocationEnabled: true,
                 myLocationButtonEnabled: false,
                 zoomControlsEnabled: false,
@@ -711,9 +782,77 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
               ],
             ),
           ),
+
+          Positioned(
+            bottom: 30,
+            left: 20,
+            child: FloatingActionButton.extended(
+              heroTag: "guardian_mode",
+              backgroundColor: AppColors.primaryNavy,
+              onPressed: _openGuardianSheet,
+              icon: const Icon(Icons.shield_outlined, color: Colors.white),
+              label: const Text(
+                "Guardian Mode",
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
+
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeInOut,
+            left: 0,
+            right: 0,
+            bottom: _isGuardianSheetOpen ? 0 : -guardianPanelHeight,
+            height: guardianPanelHeight,
+            child: Material(
+              color: AppColors.surfaceCard,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              child: SafeArea(
+                top: false,
+                child: GuardianBottomSheet(
+                  routeNameController: _guardianRouteController,
+                  checkpoints: _guardianCheckpoints,
+                  isMonitoringActive: _isGuardianMonitoringActive,
+                  onRemoveCheckpoint: _removeGuardianCheckpoint,
+                  onStartMonitoring: _startGuardianMonitoring,
+                  onStopMonitoring: _stopGuardianMonitoring,
+                  onClose: _closeGuardianSheet,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  Set<Marker> _buildGuardianMarkers() {
+    return _guardianCheckpoints.asMap().entries.map((entry) {
+      final index = entry.key;
+      final checkpoint = entry.value;
+      return Marker(
+        markerId: MarkerId('guardian_$index'),
+        position: LatLng(checkpoint.lat, checkpoint.lng),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+        infoWindow: InfoWindow(title: checkpoint.name),
+      );
+    }).toSet();
+  }
+
+  Set<Polyline> _buildGuardianPolylines() {
+    if (_guardianCheckpoints.length < 2) return {};
+    final points = _guardianCheckpoints
+        .map((checkpoint) => LatLng(checkpoint.lat, checkpoint.lng))
+        .toList();
+    return {
+      Polyline(
+        polylineId: const PolylineId('guardian_route'),
+        color: AppColors.primarySky,
+        width: 4,
+        points: points,
+      ),
+    };
   }
 
   Widget _buildLegendItem(String label, Color color) {
