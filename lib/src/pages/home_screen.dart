@@ -17,14 +17,13 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
-
   final Color bgDark = AppColors.background;
   final Color accentBlue = AppColors.primarySky;
 
   final GlobalKey<ContactsScreenState> _contactsKey =
       GlobalKey<ContactsScreenState>();
 
-  // ✅ Banner state lives in HomeScreen so it shows on ANY tab
+  // ✅ Banner state in HomeScreen (shows across all tabs)
   HomeEmergencyBannerPayload? _banner;
   Timer? _bannerTimer;
 
@@ -58,12 +57,9 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-            IndexedStack(
-              index: _currentIndex,
-              children: pages,
-            ),
+            IndexedStack(index: _currentIndex, children: pages),
 
-            // ✅ Floating banner overlay (auto hides after 2 minutes)
+            // ✅ Floating banner overlay
             if (_banner != null)
               Positioned(
                 top: 12,
@@ -126,7 +122,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
 
-            // Custom bottom navigation overlay.
+            // Bottom nav
             Positioned(
               bottom: 30,
               left: 20,
@@ -134,7 +130,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: _buildBottomNavBar(),
             ),
 
-            // Show add-contact FAB only on Contacts tab.
+            // FAB on contacts tab only
             if (_currentIndex == 2)
               Positioned(
                 left: 0,
@@ -189,11 +185,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
 class SOSDashboard extends StatefulWidget {
   final void Function(HomeEmergencyBannerPayload payload) onBanner;
-
-  const SOSDashboard({
-    super.key,
-    required this.onBanner,
-  });
+  const SOSDashboard({super.key, required this.onBanner});
 
   @override
   State<SOSDashboard> createState() => _SOSDashboardState();
@@ -203,7 +195,6 @@ class _SOSDashboardState extends State<SOSDashboard>
     with TickerProviderStateMixin {
   bool isSOSActive = false;
 
-  // 3-minute countdown before auto alert
   static const Duration _sosDuration = Duration(minutes: 3);
   Timer? _sosTimer;
   Duration _remaining = _sosDuration;
@@ -222,19 +213,18 @@ class _SOSDashboardState extends State<SOSDashboard>
   Future<void> _openEmergencyProcess() async {
     _sosTimer?.cancel();
 
-    final result = await Navigator.push(
+    final result = await Navigator.push<HomeEmergencyBannerPayload?>(
       context,
       MaterialPageRoute(builder: (_) => const EmergencyProcessScreen()),
     );
 
     if (!mounted) return;
 
-    // ✅ Always reset SOS UI when returning
+    // ✅ Always reset SOS UI
     _resetSosCountdown();
     setState(() => isSOSActive = false);
 
-    // If result screen returned a banner payload, show it in HomeScreen
-    if (result is HomeEmergencyBannerPayload) {
+    if (result != null) {
       widget.onBanner(result);
     }
   }
