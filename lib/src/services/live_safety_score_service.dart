@@ -63,8 +63,10 @@ class SafetyScoreDebugInfo {
   final int totalMitigations;
   final double crowdDensity;
   final double trafficCongestion;
+  final bool trafficAvailable;
   final int nearbyVenueCount;
   final int openVenueCount;
+  final bool openPlacesAvailable;
   final double distanceToHelpMeters;
   final double? embassyDistanceMeters;
   final bool? isSideLane;
@@ -97,8 +99,10 @@ class SafetyScoreDebugInfo {
     required this.totalMitigations,
     required this.crowdDensity,
     required this.trafficCongestion,
+    required this.trafficAvailable,
     required this.nearbyVenueCount,
     required this.openVenueCount,
+    required this.openPlacesAvailable,
     required this.distanceToHelpMeters,
     required this.embassyDistanceMeters,
     required this.isSideLane,
@@ -133,8 +137,12 @@ class SafetyScoreInputs {
   final int nearbyVenueCount;
   /// Optional: open venues nearby (open now).
   final int openVenueCount;
+  /// Whether open-places data was available.
+  final bool openPlacesAvailable;
   /// Optional: traffic congestion proxy (0 = free flow, 1 = heavy traffic).
   final double trafficCongestion;
+  /// Whether traffic data was available.
+  final bool trafficAvailable;
   /// Optional: indicates whether the nearest road is a side lane.
   final bool? isSideLane;
   /// Optional: indicates if the nearest road is well lit (OSM lit=yes/no).
@@ -164,7 +172,9 @@ class SafetyScoreInputs {
     this.crowdDensity = 0.5,
     this.nearbyVenueCount = 0,
     this.openVenueCount = 0,
+    this.openPlacesAvailable = false,
     this.trafficCongestion = 0.0,
+    this.trafficAvailable = false,
     this.isSideLane,
     this.isWellLit,
     this.isNearEmbassy,
@@ -405,8 +415,10 @@ class LiveSafetyScoreService {
         totalMitigations: mitigations,
         crowdDensity: inputs.crowdDensity,
         trafficCongestion: inputs.trafficCongestion,
+        trafficAvailable: inputs.trafficAvailable,
         nearbyVenueCount: inputs.nearbyVenueCount,
         openVenueCount: inputs.openVenueCount,
+        openPlacesAvailable: inputs.openPlacesAvailable,
         distanceToHelpMeters: inputs.distanceToHelpMeters,
         embassyDistanceMeters: inputs.embassyDistanceMeters,
         isSideLane: inputs.isSideLane,
@@ -740,7 +752,9 @@ class SafetyScoreInputsProvider {
       crowdDensity: populationDensity,
       nearbyVenueCount: venueCount,
       openVenueCount: openVenueCount,
+      openPlacesAvailable: openPlaceResult.isOk,
       trafficCongestion: trafficResult.isOk ? trafficResult.congestion : 0.0,
+      trafficAvailable: trafficResult.isOk,
       isSideLane: roadContext.isSideLane,
       isWellLit: roadContext.isWellLit,
       isNearEmbassy: embassyResult.isOk && embassyResult.distanceMeters <= 1000,

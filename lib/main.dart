@@ -18,11 +18,16 @@ Future<String?> _loadPlacesKeyFromPlatform() async {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Configure optional Google Places key from build-time env.
+  // Configure optional Google Places + Maps keys from build-time env.
   const envKey = String.fromEnvironment('GOOGLE_PLACES_API_KEY');
   String? placesKey = envKey.trim().isEmpty ? null : envKey;
-  placesKey ??= await _loadPlacesKeyFromPlatform();
+  const envMapsKey = String.fromEnvironment('GOOGLE_MAPS_API_KEY');
+  String? mapsKey = envMapsKey.trim().isEmpty ? null : envMapsKey;
+  final platformKey = await _loadPlacesKeyFromPlatform();
+  placesKey ??= platformKey;
+  mapsKey ??= platformKey;
   SafetyApiConfig.setGooglePlacesApiKey(placesKey);
+  SafetyApiConfig.setGoogleMapsApiKey(mapsKey);
   // App is optimized for Sri Lanka; past incidents use Sri Lanka data only (no Crimeometer/UK).
   await MockDatabase.loadUserSession();
   runApp(const USafeApp());

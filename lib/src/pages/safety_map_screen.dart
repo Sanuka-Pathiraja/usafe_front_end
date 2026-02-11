@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:usafe_front_end/core/config/safety_api_config.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:usafe_front_end/src/services/audio_analysis_service.dart';
@@ -192,6 +193,38 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   _LocationFetchResult _fallbackLocation(String source, String warning) {
     final position = _currentPosition ?? _kInitialPosition.target;
     return _LocationFetchResult(position, source, warning);
+  }
+
+  String? _buildApiWarnings() {
+    final warnings = <String>[];
+    if (SafetyApiConfig.googlePlacesApiKey == null) {
+      warnings.add('Places API key missing (open shops, activity)');
+    }
+    if (SafetyApiConfig.googleMapsApiKey == null) {
+      warnings.add('Maps API key missing (traffic)');
+    }
+    if (warnings.isEmpty) return null;
+    return warnings.join(' • ');
+  }
+
+  Widget _buildMissingDataRow() {
+    final warning = _buildApiWarnings();
+    if (warning == null) return const SizedBox.shrink();
+    return Row(
+      children: [
+        SizedBox(
+          width: 100,
+          child: Text('Missing data', style: TextStyle(color: Colors.grey[500], fontSize: 10)),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            warning,
+            style: TextStyle(color: Colors.orange[200], fontSize: 10),
+          ),
+        ),
+      ],
+    );
   }
 
   /// Active Trigger: when score drops to Red, silently warm start monitoring
@@ -846,11 +879,16 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
+              if (_scoreExpanded && _buildApiWarnings() != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: _buildMissingDataRow(),
+                ),
               if (_scoreExpanded) ...[
                 const SizedBox(height: 12),
                 const Divider(color: Colors.white12, height: 1),
                 const SizedBox(height: 8),
-                _buildPillarRow('Time of day', result.breakdown.timeLight),
+                _buildTimeRow(result.breakdown.timeLight),
                 _buildPillarRow('Isolation (low density)', result.breakdown.environment),
                 _buildPillarRow('Distance to help', result.breakdown.proximity),
                 _buildPillarRow('Past incidents (Sri Lanka)', result.breakdown.history),
@@ -872,24 +910,46 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                     result.debugInfo!.nearestHospitalName,
                     result.debugInfo!.nearestHospitalDistanceMeters,
                   )),
-                  _buildDebugRow('Time penalty', '-${result.debugInfo!.timePenalty}'),
-                  _buildDebugRow('Infra penalty', '-${result.debugInfo!.infraPenalty}'),
-                  _buildDebugRow('Isolation penalty', '-${result.debugInfo!.isolationPenalty}'),
-                  _buildDebugRow('Proximity penalty', '-${result.debugInfo!.proximityPenalty}'),
-                  _buildDebugRow('Weather penalty', '-${result.debugInfo!.weatherPenalty}'),
-                  _buildDebugRow('History penalty', '-${result.debugInfo!.historyPenalty}'),
-                  _buildDebugRow('Police bonus', '+${result.debugInfo!.distanceBonus}'),
-                  _buildDebugRow('Hospital bonus', '+${result.debugInfo!.hospitalBonus}'),
-                  _buildDebugRow('Crowd bonus', '+${result.debugInfo!.crowdBonus}'),
-                  _buildDebugRow('Traffic bonus', '+${result.debugInfo!.trafficBonus}'),
-                  _buildDebugRow('Open venues bonus', '+${result.debugInfo!.openVenueBonus}'),
-                  _buildDebugRow('Embassy bonus', '+${result.debugInfo!.embassyBonus}'),
+                  if (result.debugInfo!.timePenalty != 0)
+                    _buildDebugRow('Time penalty', '-${result.debugInfo!.timePenalty}'),
+                  if (result.debugInfo!.infraPenalty != 0)
+                    _buildDebugRow('Infra penalty', '-${result.debugInfo!.infraPenalty}'),
+                  if (result.debugInfo!.isolationPenalty != 0)
+                    _buildDebugRow('Isolation penalty', '-${result.debugInfo!.isolationPenalty}'),
+                  if (result.debugInfo!.proximityPenalty != 0)
+                    _buildDebugRow('Proximity penalty', '-${result.debugInfo!.proximityPenalty}'),
+                  if (result.debugInfo!.weatherPenalty != 0)
+                    _buildDebugRow('Weather penalty', '-${result.debugInfo!.weatherPenalty}'),
+                  if (result.debugInfo!.historyPenalty != 0)
+                    _buildDebugRow('History penalty', '-${result.debugInfo!.historyPenalty}'),
+                  if (result.debugInfo!.distanceBonus != 0)
+                    _buildDebugRow('Police bonus', '+${result.debugInfo!.distanceBonus}'),
+                  if (result.debugInfo!.hospitalBonus != 0)
+                    _buildDebugRow('Hospital bonus', '+${result.debugInfo!.hospitalBonus}'),
+                  if (result.debugInfo!.crowdBonus != 0)
+                    _buildDebugRow('Crowd bonus', '+${result.debugInfo!.crowdBonus}'),
+                  if (result.debugInfo!.trafficBonus != 0)
+                    _buildDebugRow('Traffic bonus', '+${result.debugInfo!.trafficBonus}'),
+                  if (result.debugInfo!.openVenueBonus != 0)
+                    _buildDebugRow('Open venues bonus', '+${result.debugInfo!.openVenueBonus}'),
+                  if (result.debugInfo!.embassyBonus != 0)
+                    _buildDebugRow('Embassy bonus', '+${result.debugInfo!.embassyBonus}'),
                   _buildDebugRow('Total penalties', '-${result.debugInfo!.totalPenalties}'),
                   _buildDebugRow('Total mitigations', '+${result.debugInfo!.totalMitigations}'),
                   _buildDebugRow('Crowd density', result.debugInfo!.crowdDensity.toStringAsFixed(2)),
-                  _buildDebugRow('Traffic congestion', result.debugInfo!.trafficCongestion.toStringAsFixed(2)),
+                  _buildDebugRow(
+                    'Traffic level',
+                    result.debugInfo!.trafficAvailable
+                        ? _formatPercent(result.debugInfo!.trafficCongestion)
+                        : 'unavailable',
+                  ),
                   _buildDebugRow('Venue count', '${result.debugInfo!.nearbyVenueCount}'),
-                  _buildDebugRow('Open venues', '${result.debugInfo!.openVenueCount}'),
+                  _buildDebugRow(
+                    'Open shops nearby',
+                    result.debugInfo!.openPlacesAvailable
+                        ? '${result.debugInfo!.openVenueCount}'
+                        : 'unavailable',
+                  ),
                   _buildDebugRow('Help distance', _formatDistance(result.debugInfo!.distanceToHelpMeters)),
                   _buildDebugRow('Embassy distance', _formatDistance(result.debugInfo!.embassyDistanceMeters ?? double.infinity)),
                   _buildDebugRow('Side lane', '${result.debugInfo!.isSideLane ?? 'unknown'}'),
@@ -937,6 +997,28 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
     );
   }
 
+  Widget _buildTimeRow(double timeRisk) {
+    final isNight = timeRisk > 0.0;
+    final icon = isNight ? Icons.nightlight_round : Icons.wb_sunny_outlined;
+    final label = isNight ? 'Night' : 'Day';
+    final color = isNight ? Colors.orangeAccent : AppColors.successGreen;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text('Time of day', style: TextStyle(color: Colors.grey[400], fontSize: 11)),
+          ),
+          const Spacer(),
+          Icon(icon, color: color, size: 14),
+          const SizedBox(width: 6),
+          Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w500)),
+        ],
+      ),
+    );
+  }
+
   Widget _buildDebugRow(String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
@@ -970,6 +1052,11 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
     final offsetHours = offset.inHours.abs().toString().padLeft(2, '0');
     final offsetMinutes = (offset.inMinutes.abs() % 60).toString().padLeft(2, '0');
     return '$y-$m-$d $hh:$mm $sign$offsetHours:$offsetMinutes';
+  }
+
+  String _formatPercent(double value) {
+    final percent = (value * 100).clamp(0.0, 100.0);
+    return '${percent.toStringAsFixed(0)}%';
   }
 
   String _formatAmenity(String? name, double? distanceMeters) {
