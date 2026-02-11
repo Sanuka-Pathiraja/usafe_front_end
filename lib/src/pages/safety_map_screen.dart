@@ -7,6 +7,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:usafe_front_end/src/services/audio_analysis_service.dart';
 import 'package:usafe_front_end/src/services/live_safety_score_service.dart';
 import 'package:usafe_front_end/src/services/motion_analysis_service.dart';
+import 'package:usafe_front_end/src/services/guardian_logic.dart';
 import 'package:usafe_front_end/widgets/guardian_bottom_sheet.dart';
 
 class SafetyMapScreen extends StatefulWidget {
@@ -50,6 +51,9 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   final List<GuardianCheckpoint> _guardianCheckpoints = [];
   bool _isGuardianSheetOpen = false;
   bool _isGuardianMonitoringActive = false;
+  GuardianLogic? _guardianLogic; // Real GPS tracking service
+  double _guardianDistance = 0.0; // Distance to next checkpoint (meters)
+  int _guardianCurrentCheckpointIndex = 0; // Currently heading toward which checkpoint
 
   // Live Safety Score (dynamic, from external APIs)
   final SafetyScoreInputsProvider _scoreProvider = SafetyScoreInputsProvider();
@@ -544,15 +548,126 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
 
   void _startGuardianMonitoring() {
     if (_guardianCheckpoints.length < 2) return;
+    
     setState(() {
       _isGuardianMonitoringActive = true;
+      _isGuardianSheetOpen = false;
+      _guardianCurrentCheckpointIndex = 0;
+      _guardianDistance = 0.0;
     });
+
+    // Initialize real GPS tracking
+    _guardianLogic = GuardianLogic(
+      onDistanceUpdate: (double distance) {
+        if (mounted) {
+          setState(() {
+            _guardianDistance = distance;
+          });
+        }
+      },
+      onCheckpointReached: (int checkpointIndex) {
+        if (!mounted) return;
+        
+        // Show notification for reached checkpoint
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '✅ ${_guardianCheckpoints[checkpointIndex].name} Reached!',
+            ),
+            backgroundColor: AppColors.successGreen,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+
+        setState(() {
+          _guardianCurrentCheckpointIndex++;
+        });
+
+        // Check if all checkpoints reached (arrived at destination)
+        if (_guardianCurrentCheckpointIndex >= _guardianCheckpoints.length) {
+          _guardianLogic?.stopTracking();
+          setState(() {
+            _isGuardianMonitoringActive = false;
+          });
+          _showArrivalDialog();
+        }
+      },
+    );
+
+    // Start real GPS tracking
+    try {
+      _guardianLogic!.startTracking(
+        _guardianCheckpoints
+            .asMap()
+            .entries
+            .map((e) => {
+                  'lat': e.value.lat,
+                  'lng': e.value.lng,
+                  'name': e.value.name,
+                })
+            .toList(),
+        0,
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('🚀 Real GPS Tracking Started - Guardian Mode Active'),
+          backgroundColor: AppColors.successGreen,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      // Handle permission denied or other errors
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('⚠️ Error: $e'),
+            backgroundColor: AppColors.alertRed,
+          ),
+        );
+        setState(() {
+          _isGuardianMonitoringActive = false;
+        });
+      }
+    }
   }
 
   void _stopGuardianMonitoring() {
+    _guardianLogic?.stopTracking();
     setState(() {
       _isGuardianMonitoringActive = false;
     });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('⏹️ Monitoring Stopped'),
+        backgroundColor: Colors.orange,
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  /// Shows arrival dialog when child reaches final destination
+  void _showArrivalDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surfaceCard,
+        title: const Text(
+          '🎉 Safe Arrival',
+          style: TextStyle(color: AppColors.successGreen, fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          'Your child has safely reached the destination. All checkpoints completed!',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Got It', style: TextStyle(color: AppColors.successGreen)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showStatusSnack(String message) {
@@ -649,6 +764,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
     _pulseController.dispose();
     _dangerTimer?.cancel();
     _guardianRouteController.dispose();
+    _guardianLogic?.dispose(); // Clean up GPS tracking
     if (_isSafetyModeActive) {
       _audioService.stopListening();
       _motionService.stopListening();
@@ -798,30 +914,36 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
             ),
           ),
 
-          AnimatedPositioned(
-            duration: const Duration(milliseconds: 260),
-            curve: Curves.easeInOut,
-            left: 0,
-            right: 0,
-            bottom: _isGuardianSheetOpen ? 0 : -guardianPanelHeight,
-            height: guardianPanelHeight,
-            child: Material(
-              color: AppColors.surfaceCard,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-              child: SafeArea(
-                top: false,
-                child: GuardianBottomSheet(
-                  routeNameController: _guardianRouteController,
-                  checkpoints: _guardianCheckpoints,
-                  isMonitoringActive: _isGuardianMonitoringActive,
-                  onRemoveCheckpoint: _removeGuardianCheckpoint,
-                  onStartMonitoring: _startGuardianMonitoring,
-                  onStopMonitoring: _stopGuardianMonitoring,
-                  onClose: _closeGuardianSheet,
+          // SETUP PANEL (Show when setting up, NOT monitoring)
+          if (!_isGuardianMonitoringActive)
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 260),
+              curve: Curves.easeInOut,
+              left: 0,
+              right: 0,
+              bottom: _isGuardianSheetOpen ? 0 : -guardianPanelHeight,
+              height: guardianPanelHeight,
+              child: Material(
+                color: AppColors.surfaceCard,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                child: SafeArea(
+                  top: false,
+                  child: GuardianBottomSheet(
+                    routeNameController: _guardianRouteController,
+                    checkpoints: _guardianCheckpoints,
+                    isMonitoringActive: _isGuardianMonitoringActive,
+                    onRemoveCheckpoint: _removeGuardianCheckpoint,
+                    onStartMonitoring: _startGuardianMonitoring,
+                    onStopMonitoring: _stopGuardianMonitoring,
+                    onClose: _closeGuardianSheet,
+                  ),
                 ),
               ),
             ),
-          ),
+
+          // LIVE TRACKING CARD (Show when actively monitoring)
+          if (_isGuardianMonitoringActive)
+            _buildLiveTrackingCard(),
         ],
       ),
     );
@@ -853,6 +975,106 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
         points: points,
       ),
     };
+  }
+
+  Widget _buildLiveTrackingCard() {
+    final nextCheckpointIndex = _guardianCurrentCheckpointIndex;
+    final nextCheckpoint = nextCheckpointIndex < _guardianCheckpoints.length
+        ? _guardianCheckpoints[nextCheckpointIndex].name
+        : 'Destination';
+    
+    // Format distance nicely (meters / kilometers)
+    final distanceText = _guardianDistance < 1000
+        ? '${_guardianDistance.toStringAsFixed(0)}m'
+        : '${(_guardianDistance / 1000).toStringAsFixed(1)}km';
+
+    return Positioned(
+      bottom: 30,
+      left: 20,
+      right: 20,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E1E2C),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.successGreen.withOpacity(0.3),
+              blurRadius: 15,
+              offset: const Offset(0, 4),
+            ),
+          ],
+          border: Border.all(color: AppColors.successGreen, width: 1.5),
+        ),
+        child: Row(
+          children: [
+            // Pulsing shield icon
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.successGreen.withOpacity(0.15),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.shield_rounded,
+                color: AppColors.successGreen,
+                size: 28,
+              ),
+            ),
+            const SizedBox(width: 15),
+
+            // Status text with REAL distance
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: AppColors.successGreen,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Guardian Active',
+                        style: TextStyle(
+                          color: AppColors.successGreen,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Next: $nextCheckpoint ($distanceText)',
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Stop button (red)
+            IconButton(
+              onPressed: _stopGuardianMonitoring,
+              icon: Icon(
+                Icons.stop_circle_outlined,
+                color: AppColors.alertRed,
+                size: 32,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildLegendItem(String label, Color color) {

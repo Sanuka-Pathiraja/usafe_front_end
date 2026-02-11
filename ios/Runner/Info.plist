@@ -26,6 +26,8 @@
 	<string>USafe needs access to your contacts to add trusted contacts for SOS alerts.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>USafe needs your location to provide safety features and show your position on the map.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>USafe monitors your safety even when the screen is off to track your route and send alerts if needed.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>USafe needs microphone access to record audio for safety features.</string>
 	<key>LSRequiresIPhoneOS</key>
