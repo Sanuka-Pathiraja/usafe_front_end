@@ -57,4 +57,51 @@ class ApiService {
 
     return scoreValue.round().clamp(0, 100);
   }
+
+  static Future<String> saveGuardianRoute({
+    required String routeName,
+    required List<Map<String, dynamic>> checkpoints,
+  }) async {
+    final uri = Uri.parse('$backendUrl/api/guardian/routes');
+    final resp = await http.post(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'route_name': routeName,
+        'name': routeName,
+        'is_active': true,
+        'checkpoints': checkpoints,
+      }),
+    );
+
+    if (resp.statusCode != 200 && resp.statusCode != 201) {
+      throw Exception('Route save failed (${resp.statusCode})');
+    }
+
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    return data['route_id'] as String? ?? 'unknown';
+  }
+
+  static Future<void> sendGuardianAlert({
+    required String routeId,
+    required int checkpointIndex,
+    required double lat,
+    required double lng,
+  }) async {
+    final uri = Uri.parse('$backendUrl/api/guardian/alert');
+    final resp = await http.post(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'route_id': routeId,
+        'checkpoint_index': checkpointIndex,
+        'lat': lat,
+        'lng': lng,
+      }),
+    );
+
+    if (resp.statusCode != 200 && resp.statusCode != 201) {
+      throw Exception('Alert send failed (${resp.statusCode})');
+    }
+  }
 }

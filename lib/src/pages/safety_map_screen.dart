@@ -55,6 +55,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   GuardianLogic? _guardianLogic; // Real GPS tracking service
   double _guardianDistance = 0.0; // Distance to next checkpoint (meters)
   int _guardianCurrentCheckpointIndex = 0; // Currently heading toward which checkpoint
+  String? _guardianRouteId; // Backend route ID
 
   // Live Safety Score (dynamic, from external APIs)
   final SafetyScoreInputsProvider _scoreProvider = SafetyScoreInputsProvider();
@@ -199,10 +200,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
 
       try {
         final pos = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.medium,
-            timeLimit: Duration(seconds: 6),
-          ),
+          forceAndroidLocationManager: true,
         );
         final current = LatLng(pos.latitude, pos.longitude);
         return _LocationFetchResult(current, 'gps', null);
@@ -572,9 +570,37 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
     });
   }
 
-  void _startGuardianMonitoring() {
+  Future<void> _startGuardianMonitoring() async {
     if (_guardianCheckpoints.length < 2) return;
     
+    // Save route to backend first
+    try {
+      final routeId = await ApiService.saveGuardianRoute(
+        routeName: _guardianRouteController.text.isEmpty
+            ? 'Route ${DateTime.now().month}/${DateTime.now().day}'
+            : _guardianRouteController.text,
+        checkpoints: _guardianCheckpoints
+            .map((c) => {
+                  'name': c.name,
+                  'lat': c.lat,
+                  'lng': c.lng,
+                  'safety_score': c.safetyScore,
+                })
+            .toList(),
+      );
+      if (!mounted) return;
+      _guardianRouteId = routeId;
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to save route: $e'),
+          backgroundColor: AppColors.alertRed,
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _isGuardianMonitoringActive = true;
       _isGuardianSheetOpen = false;
@@ -594,11 +620,22 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
       onCheckpointReached: (int checkpointIndex) {
         if (!mounted) return;
         
+        // Send alert to backend
+        final checkpoint = _guardianCheckpoints[checkpointIndex];
+        ApiService.sendGuardianAlert(
+          routeId: _guardianRouteId ?? 'unknown',
+          checkpointIndex: checkpointIndex,
+          lat: checkpoint.lat,
+          lng: checkpoint.lng,
+        ).catchError((e) {
+          print('Alert send failed: $e');
+        });
+
         // Show notification for reached checkpoint
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '✅ ${_guardianCheckpoints[checkpointIndex].name} Reached!',
+              '✅ ${checkpoint.name} Reached!',
             ),
             backgroundColor: AppColors.successGreen,
             duration: const Duration(seconds: 3),

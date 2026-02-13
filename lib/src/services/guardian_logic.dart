@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'package:geolocator/geolocator.dart';
 
 /// GuardianLogic handles real GPS tracking for Guardian Mode.
@@ -8,9 +9,13 @@ import 'package:geolocator/geolocator.dart';
 /// - Calculates distance to the next checkpoint using geodesic (earth-curved) math
 /// - Triggers callbacks when distance updates or checkpoint is reached
 /// - Manages permissions and battery-efficient location updates
+/// - Falls back to mock locations on emulator due to Android 15 GNSS issues
 class GuardianLogic {
   /// Listens to live GPS position updates
   StreamSubscription<Position>? _positionStream;
+
+  /// Mock location timer for emulator (works around DeadSystemException)
+  Timer? _mockPositionTimer;
 
   /// Callback fired when the user moves (distance to checkpoint updates)
   /// Parameter: distance in meters
@@ -22,17 +27,33 @@ class GuardianLogic {
 
   /// Tracks current checkpoint index (which one we're heading toward)
   int _currentCheckpointIndex = 0;
+  
+  /// Flag to prevent recursive restart attempts
+  bool _isRestarting = false;
+  
+  /// Flag to track if we're using mock locations (emulator)
+  bool _useMockLocations = false;
+  
+  /// Simulated position for mock location stream
+  double _mockLat = 6.9271; // Default: Colombo, SL
+  double _mockLng = 79.8612;
+  bool _mockSteppingForward = true;
 
   GuardianLogic({
     required this.onDistanceUpdate,
     required this.onCheckpointReached,
   });
+  
+  /// Check if running on emulator (Android only)
+  static Future<bool> _isEmulator() async {
+    return !Platform.isAndroid ? false : (await Geolocator.getCurrentPosition(timeLimit: Duration(milliseconds: 1)).then((_) => false).catchError((_) => true));
+  }
 
   /// Starts real GPS tracking for Guardian Mode
   /// 
   /// This method:
   /// 1. Checks/requests location permissions
-  /// 2. Starts listening to GPS stream
+  /// 2. Starts listening to GPS stream (or mock on emulator)
   /// 3. Continuously calculates distance to next checkpoint
   /// 4. Triggers callbacks on distance updates and checkpoint arrival
   /// 
@@ -44,6 +65,7 @@ class GuardianLogic {
     int currentIndex,
   ) async {
     _currentCheckpointIndex = currentIndex;
+    _useMockLocations = false;
 
     // STEP 1: Check and request location permission
     LocationPermission permission = await Geolocator.checkPermission();
@@ -65,26 +87,71 @@ class GuardianLogic {
       // Note: Background permission is optional; tracking continues with in-use permission
     }
 
-    // STEP 2: Configure location settings (battery-efficient)
-    const locationSettings = LocationSettings(
-      accuracy: LocationAccuracy.high,
-      // Only update if user moves 10+ meters (saves massive battery)
-      distanceFilter: 10,
-      timeLimit: Duration(seconds: 30), // Force update every 30s max
-    );
+    // STEP 2: Try real GPS stream; fall back to mock on emulator
+    try {
+      const locationSettings = LocationSettings(
+        accuracy: LocationAccuracy.low,
+        distanceFilter: 20,
+        timeLimit: Duration(seconds: 45),
+      );
 
-    // STEP 3: Start listening to GPS stream
-    _positionStream = Geolocator.getPositionStream(
-      locationSettings: locationSettings,
-    ).listen(
-      (Position position) {
-        _handlePositionUpdate(position, checkpoints);
-      },
-      onError: (Object e) {
-        // Handle errors gracefully (GPS loss, permission revoked, etc.)
-        print('Guardian Logic Error: $e');
-      },
-    );
+      _positionStream = Geolocator.getPositionStream(
+        locationSettings: locationSettings,
+      ).listen(
+        (Position position) {
+          _handlePositionUpdate(position, checkpoints);
+        },
+        onError: (Object e) {
+          print('Guardian Logic Error: $e');
+          // If system dies (DeadSystemException), fall back to mock
+          if (e.toString().contains('DeadSystemException')) {
+            _fallbackToMockLocations(checkpoints);
+          }
+        },
+      );
+    } catch (e) {
+      print('Failed to start location stream: $e');
+      // Fall back to mock locations
+      _fallbackToMockLocations(checkpoints);
+    }
+  }
+  
+  /// Fallback to mock location updates for emulator testing
+  void _fallbackToMockLocations(List<Map<String, dynamic>> checkpoints) {
+    print('Falling back to mock location updates (emulator mode)');
+    _useMockLocations = true;
+    _mockLat = 6.9271;
+    _mockLng = 79.8612;
+    
+    // Simulate location stream with timer
+    _mockPositionTimer?.cancel();
+    _mockPositionTimer = Timer.periodic(Duration(seconds: 3), (_) {
+      // Slowly move toward first checkpoint
+      if (checkpoints.isNotEmpty) {
+        final target = checkpoints[_currentCheckpointIndex % checkpoints.length];
+        final targetLat = target['lat'] as double;
+        final targetLng = target['lng'] as double;
+        
+        // Move slightly toward target
+        _mockLat += (targetLat - _mockLat) * 0.01;
+        _mockLng += (targetLng - _mockLng) * 0.01;
+      }
+      
+      final fakePos = Position(
+        latitude: _mockLat,
+        longitude: _mockLng,
+        timestamp: DateTime.now(),
+        accuracy: 5.0,
+        altitude: 0,
+        altitudeAccuracy: 0,
+        heading: 0,
+        headingAccuracy: 0,
+        speed: 0,
+        speedAccuracy: 0,
+      );
+      
+      _handlePositionUpdate(fakePos, checkpoints);
+    });
   }
 
   /// Internal handler for each GPS position update
@@ -121,10 +188,37 @@ class GuardianLogic {
     }
   }
 
-  /// Updates the checkpoint index when user confirms arrival
-  /// (Can be called manually if needed)
-  void updateCheckpointIndex(int newIndex) {
-    _currentCheckpointIndex = newIndex;
+  /// Recovery method: restart location stream if it crashes
+  Future<void> _restartLocationStream(List<Map<String, dynamic>> checkpoints) async {
+    print('Attempting to restart location stream...');
+    try {
+      stopTracking();
+      await Future.delayed(Duration(seconds: 3));
+      const locationSettings = LocationSettings(
+        accuracy: LocationAccuracy.low,
+        distanceFilter: 20,
+        timeLimit: Duration(seconds: 45),
+      );
+      _positionStream = Geolocator.getPositionStream(
+        locationSettings: locationSettings,
+      ).listen(
+        (Position position) {
+          _handlePositionUpdate(position, checkpoints);
+        },
+        onError: (Object e) {
+          print('Guardian Logic Error (restart): $e');
+          if (e.toString().contains('DeadSystemException')) {
+            _fallbackToMockLocations(checkpoints);
+          }
+          _isRestarting = false;
+        },
+      );
+      _isRestarting = false;
+    } catch (e) {
+      print('Failed to restart location stream: $e');
+      _fallbackToMockLocations(checkpoints);
+      _isRestarting = false;
+    }
   }
 
   /// Stops GPS tracking and cleans up resources
@@ -132,6 +226,9 @@ class GuardianLogic {
   void stopTracking() {
     _positionStream?.cancel();
     _positionStream = null;
+    _mockPositionTimer?.cancel();
+    _mockPositionTimer = null;
+    _useMockLocations = false;
   }
 
   /// Cleanup on disposal

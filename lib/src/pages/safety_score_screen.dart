@@ -73,7 +73,7 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
         }
       }
       final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
+        forceAndroidLocationManager: true,
       );
       final safetyPosition = SafetyPosition(pos.latitude, pos.longitude);
       _currentPosition = safetyPosition;
