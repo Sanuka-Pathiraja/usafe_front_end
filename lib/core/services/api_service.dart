@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  static const String backendUrl = "http://localhost:5000";
+  static const String backendUrl = "http://192.168.1.8";
 
   // Simulate backend login
   static Future<String> login(String email, String password) async {
