@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:usafe_front_end/core/config/safety_api_config.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
+import 'package:usafe_front_end/core/services/api_service.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:usafe_front_end/src/services/audio_analysis_service.dart';
 import 'package:usafe_front_end/src/services/live_safety_score_service.dart';
@@ -66,6 +67,8 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   LatLng? _currentPosition;
   bool _scoreExpanded = false;
   String _locationSource = 'unknown';
+  int _scoreFailureCount = 0;
+  DateTime? _scorePauseUntil;
   /// True when Safety Mode was auto-enabled by Red zone (Active Trigger). Used to return to passive in Green.
   bool _safetyModeAutoEnabled = false;
 
@@ -97,14 +100,20 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   }
 
   void _initLiveScore() {
-    _updateLiveScore();
-    _scoreUpdateTimer = Timer.periodic(const Duration(seconds: 15), (_) {
-      if (mounted) _updateLiveScore();
+    Timer(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      _updateLiveScore();
+      _scoreUpdateTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+        if (mounted) _updateLiveScore();
+      });
     });
   }
 
   Future<void> _updateLiveScore() async {
     if (_scoreLoading) return;
+    if (_scorePauseUntil != null && DateTime.now().isBefore(_scorePauseUntil!)) {
+      return;
+    }
     setState(() {
       _scoreLoading = true;
       _scoreError = null;
@@ -120,15 +129,23 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
         locationResult.source == 'permission_denied' ||
         locationResult.source == 'permission_denied_forever' ||
         locationResult.source == 'gps_off') {
+      _scoreFailureCount += 1;
+      if (_scoreFailureCount >= 3) {
+        _scorePauseUntil = DateTime.now().add(const Duration(seconds: 60));
+      }
       setState(() {
         _scoreLoading = false;
         _currentPosition = position;
         _locationSource = locationResult.source;
-        _scoreWarning = locationResult.warning ?? 'Location unavailable.';
+        _scoreWarning = _scorePauseUntil != null
+            ? 'Location paused for 60s to stabilize.'
+            : (locationResult.warning ?? 'Location unavailable.');
         _scoreError = 'Cannot calculate without live location.';
       });
       return;
     }
+    _scoreFailureCount = 0;
+    _scorePauseUntil = null;
     final fetchResult = await _scoreProvider.getScoreAt(position: safetyPosition);
     if (!mounted) return;
     setState(() {
@@ -183,8 +200,8 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
       try {
         final pos = await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.high,
-            timeLimit: Duration(seconds: 10),
+            accuracy: LocationAccuracy.medium,
+            timeLimit: Duration(seconds: 6),
           ),
         );
         final current = LatLng(pos.latitude, pos.longitude);
@@ -516,34 +533,43 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
     });
   }
 
-  void _handleGuardianMapTap(LatLng position) {
+  Future<void> _handleGuardianMapTap(LatLng position) async {
     if (!_isGuardianSheetOpen || _isGuardianMonitoringActive) return;
-    _addGuardianCheckpoint(position);
+    await _addGuardianCheckpoint(position);
   }
 
-  void _addGuardianCheckpoint(LatLng position) {
+  Future<void> _addGuardianCheckpoint(LatLng position) async {
     final index = _guardianCheckpoints.length + 1;
-    final checkpoint = GuardianCheckpoint(
-      name: 'Checkpoint $index',
-      lat: position.latitude,
-      lng: position.longitude,
-      safetyScore: _mockSafetyScore(index),
-    );
-    setState(() {
-      _guardianCheckpoints.add(checkpoint);
-    });
+    try {
+      final score = await ApiService.fetchGuardianSafetyScore(
+        lat: position.latitude,
+        lng: position.longitude,
+      );
+      if (!mounted) return;
+      final checkpoint = GuardianCheckpoint(
+        name: 'Checkpoint $index',
+        lat: position.latitude,
+        lng: position.longitude,
+        safetyScore: score,
+      );
+      setState(() {
+        _guardianCheckpoints.add(checkpoint);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to fetch safety score: $e'),
+          backgroundColor: AppColors.alertRed,
+        ),
+      );
+    }
   }
 
   void _removeGuardianCheckpoint(GuardianCheckpoint checkpoint) {
     setState(() {
       _guardianCheckpoints.remove(checkpoint);
     });
-  }
-
-  int _mockSafetyScore(int index) {
-    final base = 88 - (index * 9);
-    if (base < 25) return 25;
-    return base;
   }
 
   void _startGuardianMonitoring() {

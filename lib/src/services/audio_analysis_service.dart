@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:record/record.dart';
@@ -16,6 +17,7 @@ class AudioAnalysisService {
 
   static const int sampleRate = 16000;
   static const int requiredSamples = 15600;
+  static const int _maxBufferedSamples = requiredSamples * 2;
   static const Duration _triggerCooldown = Duration(seconds: 8);
 
   final List<double> _audioBuffer = [];
@@ -24,6 +26,7 @@ class AudioAnalysisService {
   bool _initialized = false;
   String? _lastError;
   DateTime? _lastTriggerAt;
+  bool _isInferencing = false;
 
   Function(String event, double confidence)? onDistressDetected;
 
@@ -42,9 +45,11 @@ class AudioAnalysisService {
       _lastError = null;
       return isReady;
     } catch (e) {
-      // Keep silent to avoid crashing; feature will stay inactive.
       _initialized = false;
-      _lastError = 'Audio model failed to load.';
+      _lastError = 'Audio model failed to load: $e';
+      if (kDebugMode) {
+        debugPrint('Audio model load failed: $e');
+      }
       return false;
     }
   }
@@ -105,22 +110,37 @@ class AudioAnalysisService {
       _audioBuffer.add(sample / 32768.0);
     }
 
-    if (_audioBuffer.length >= requiredSamples) {
+    if (_audioBuffer.length > _maxBufferedSamples) {
+      _audioBuffer.removeRange(0, _audioBuffer.length - _maxBufferedSamples);
+    }
+
+    if (_audioBuffer.length >= requiredSamples && !_isInferencing) {
       final inputChunk = _audioBuffer.sublist(0, requiredSamples);
       _audioBuffer.removeRange(0, requiredSamples);
-      _runInference(inputChunk);
+      unawaited(_runInference(inputChunk));
     }
   }
 
-  void _runInference(List<double> inputSignal) {
+  Future<void> _runInference(List<double> inputSignal) async {
     if (_interpreter == null) return;
+    if (_isInferencing) return;
+    _isInferencing = true;
 
-    final input = [inputSignal];
-    final output = List.filled(1 * 521, 0.0).reshape([1, 521]);
-    _interpreter!.run(input, output);
+    try {
+      final input = [Float32List.fromList(inputSignal)];
+      final output = List.filled(1 * 521, 0.0).reshape([1, 521]);
+      _interpreter!.run(input, output);
 
-    final scores = output[0] as List<double>;
-    _analyzeResults(scores);
+      final scores = output[0] as List<double>;
+      _analyzeResults(scores);
+    } catch (e) {
+      _lastError = 'Audio inference failed: $e';
+      if (kDebugMode) {
+        debugPrint('Audio inference failed: $e');
+      }
+    } finally {
+      _isInferencing = false;
+    }
   }
 
   void _analyzeResults(List<double> scores) {
