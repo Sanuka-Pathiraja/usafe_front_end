@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'safety_map_screen.dart';
+import 'safe_route_navigation_screen.dart';
 
 class SafetyScoreScreen extends StatelessWidget {
   final int safetyScore;
@@ -98,7 +99,7 @@ class SafetyScoreScreen extends StatelessWidget {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => const SafetyMapScreen(),
+                          builder: (context) => const SafeRouteNavigationScreen(),
                         ),
                       );
                     },
