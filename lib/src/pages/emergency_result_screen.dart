@@ -7,15 +7,21 @@ class EmergencySummary {
   final EmergencyOutcome outcome;
   final bool someoneAnswered;
   final bool emergencyServicesCalled; // 119 called or attempted
+  final bool contactsMessaged;
+  final String? contactsMessageError;
   final int? failedStepIndex; // if failed
   final String? failedStepTitle;
+  final String? failedStepReason;
 
   const EmergencySummary({
     required this.outcome,
     required this.someoneAnswered,
     required this.emergencyServicesCalled,
+    required this.contactsMessaged,
+    this.contactsMessageError,
     this.failedStepIndex,
     this.failedStepTitle,
+    this.failedStepReason,
   });
 }
 
@@ -72,6 +78,12 @@ class EmergencyResultScreen extends StatelessWidget {
   String get _subtitle {
     switch (summary.outcome) {
       case EmergencyOutcome.completed:
+        if (!summary.contactsMessaged) {
+          if (summary.emergencyServicesCalled) {
+            return "Messaging failed, but contact calls continued and 119 was contacted.";
+          }
+          return "Messaging failed. Some emergency actions may be incomplete.";
+        }
         if (summary.emergencyServicesCalled) {
           return "Emergency contacts were notified and 119 was contacted.";
         }
@@ -80,6 +92,10 @@ class EmergencyResultScreen extends StatelessWidget {
         return "You stopped the emergency process before it finished.";
       case EmergencyOutcome.failed:
         if (summary.failedStepTitle != null) {
+          if (summary.failedStepReason != null &&
+              summary.failedStepReason!.isNotEmpty) {
+            return "Failed at ${summary.failedStepTitle}: ${summary.failedStepReason}";
+          }
           return "Something went wrong at: ${summary.failedStepTitle}";
         }
         return "Something went wrong during the emergency process.";
@@ -91,9 +107,11 @@ class EmergencyResultScreen extends StatelessWidget {
       case EmergencyOutcome.completed:
         return HomeEmergencyBannerPayload(
           title: "Emergency activated",
-          subtitle: summary.emergencyServicesCalled
-              ? "Process completed (119 contacted)"
-              : "Process completed",
+          subtitle: !summary.contactsMessaged
+              ? "Completed with messaging errors"
+              : (summary.emergencyServicesCalled
+                    ? "Process completed (119 contacted)"
+                    : "Process completed"),
         );
       case EmergencyOutcome.cancelled:
         return const HomeEmergencyBannerPayload(
@@ -344,8 +362,13 @@ class EmergencyResultScreen extends StatelessWidget {
       _TimelineRow(
         icon: Icons.sms_rounded,
         title: "Emergency contacts messaged",
-        status: "Sent",
-        ok: true,
+        status: summary.contactsMessaged
+            ? "Sent"
+            : (summary.contactsMessageError != null &&
+                    summary.contactsMessageError!.isNotEmpty
+                ? "Failed: ${summary.contactsMessageError}"
+                : "Failed"),
+        ok: summary.contactsMessaged,
       ),
       _TimelineRow(
         icon: Icons.call_rounded,
@@ -366,7 +389,10 @@ class EmergencyResultScreen extends StatelessWidget {
         _TimelineRow(
           icon: Icons.warning_rounded,
           title: "Failure detected",
-          status: summary.failedStepTitle ?? "Unknown step",
+          status: summary.failedStepReason != null &&
+                  summary.failedStepReason!.isNotEmpty
+              ? "${summary.failedStepTitle ?? "Unknown step"}: ${summary.failedStepReason}"
+              : (summary.failedStepTitle ?? "Unknown step"),
           ok: false,
         ),
       );

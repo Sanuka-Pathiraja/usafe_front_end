@@ -1,9 +1,34 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'emergency_result_screen.dart';
 
 enum EmergencyStepType { messageAll, callContact, waitBefore119, call119 }
+
+class EmergencyActionResult {
+  final bool success;
+  final String? message;
+
+  const EmergencyActionResult({
+    required this.success,
+    this.message,
+  });
+}
+
+class EmergencyCallResult {
+  final bool success;
+  final bool answered;
+  final String? message;
+  final String? finalStatus;
+
+  const EmergencyCallResult({
+    required this.success,
+    required this.answered,
+    this.message,
+    this.finalStatus,
+  });
+}
 
 class EmergencyStep {
   final String title;
@@ -22,9 +47,9 @@ class EmergencyStep {
 enum StepState { pending, running, done, skipped, failed }
 
 class EmergencyProcessScreen extends StatefulWidget {
-  final Future<void> Function()? onMessageAllContacts;
-  final Future<bool> Function(int contactIndex)? onCallContact;
-  final Future<void> Function()? onCall119;
+  final Future<EmergencyActionResult> Function()? onMessageAllContacts;
+  final Future<EmergencyCallResult> Function(int contactIndex)? onCallContact;
+  final Future<EmergencyActionResult> Function()? onCall119;
 
   const EmergencyProcessScreen({
     super.key,
@@ -92,6 +117,7 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
   ];
 
   late List<StepState> _states;
+  late List<String?> _failureReasons;
   int _currentIndex = 0;
 
   bool _screenClosed = false;
@@ -106,10 +132,50 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
   // flow cancel token
   int _flowId = 0;
 
+  // Centralized debug logger for emergency process tracing during development.
+  void _debugLog(String message) {
+    if (kDebugMode) {
+      debugPrint("[EmergencyProcess] $message");
+    }
+  }
+
+  String _errorMessage(Object error) {
+    final raw = error.toString();
+    return raw.startsWith("Exception: ") ? raw.substring(11) : raw;
+  }
+
+  int get _messageStepIndex =>
+      _steps.indexWhere((s) => s.type == EmergencyStepType.messageAll);
+
+  EmergencySummary _buildSummary({
+    required EmergencyOutcome outcome,
+    int? failedStepIndex,
+    String? failedStepTitle,
+    String? failedStepReason,
+  }) {
+    final msgIdx = _messageStepIndex;
+    final hasMessageStep = msgIdx >= 0;
+    final messageFailed =
+        hasMessageStep && _states[msgIdx] == StepState.failed;
+
+    return EmergencySummary(
+      outcome: outcome,
+      someoneAnswered: _someoneAnswered,
+      emergencyServicesCalled: _emergencyServicesCalled,
+      contactsMessaged:
+          hasMessageStep ? _states[msgIdx] == StepState.done : false,
+      contactsMessageError: messageFailed ? _failureReasons[msgIdx] : null,
+      failedStepIndex: failedStepIndex,
+      failedStepTitle: failedStepTitle,
+      failedStepReason: failedStepReason,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
     _states = List<StepState>.filled(_steps.length, StepState.pending);
+    _failureReasons = List<String?>.filled(_steps.length, null);
     _startDefaultProcess();
   }
 
@@ -141,6 +207,7 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
 
   void _startDefaultProcess() {
     final myFlow = ++_flowId;
+    _debugLog("Starting default process flowId=$myFlow");
     _runDefaultSteps(myFlow);
   }
 
@@ -156,42 +223,77 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
       setState(() {
         _currentIndex = i;
         _states[i] = StepState.running;
+        _failureReasons[i] = null;
         _stepProgress = 0.0;
         _stepRemaining = _steps[i].duration;
       });
 
       final step = _steps[i];
+      var nonBlockingFailure = false;
 
       try {
+        _debugLog("Step[$i] started: ${step.title}");
         switch (step.type) {
           case EmergencyStepType.messageAll:
-            await _runFixedDurationStep<void>(
-              flow: myFlow,
-              duration: step.duration,
-              action: () async => await _messageAll(),
-            );
+            try {
+              await _runFixedDurationStep<void>(
+                flow: myFlow,
+                duration: step.duration,
+                action: () async => await _messageAll(),
+              );
+            } catch (e) {
+              if (!mounted || myFlow != _flowId) return;
+              final reason = _errorMessage(e);
+              setState(() {
+                _states[i] = StepState.failed;
+                _failureReasons[i] = reason;
+              });
+              nonBlockingFailure = true;
+              _debugLog(
+                "Step[$i] message failed but flow continues. reason=$reason",
+              );
+            }
             break;
 
           case EmergencyStepType.callContact:
-            final answered = await _runFixedDurationStep<bool>(
+            final callResult =
+                await _runFixedDurationStep<EmergencyCallResult>(
               flow: myFlow,
               duration: step.duration,
               action: () async => await _callContact(step.contactIndex!),
             );
+            _debugLog(
+              "Step[$i] call result: success=${callResult.success} answered=${callResult.answered} finalStatus=${callResult.finalStatus}",
+            );
             if (myFlow != _flowId) return;
 
-            if (answered) {
+            if (!callResult.success) {
+              setState(() {
+                _states[i] = StepState.failed;
+                _failureReasons[i] =
+                    callResult.message ?? "Call attempt failed";
+              });
+              nonBlockingFailure = true;
+              _debugLog(
+                "Step[$i] call failed but flow continues. reason=${_failureReasons[i]}",
+              );
+              break;
+            }
+
+            if (callResult.answered) {
               _someoneAnswered = true;
               _skipRemainingContactCalls(fromIndex: i + 1);
             }
             break;
 
           case EmergencyStepType.waitBefore119:
+            _debugLog("Step[$i] waiting gap before calling 119 started");
             await _runFixedDurationStep<void>(
               flow: myFlow,
               duration: step.duration,
               action: () async {},
             );
+            _debugLog("Step[$i] waiting gap before calling 119 completed");
             break;
 
           case EmergencyStepType.call119:
@@ -201,22 +303,29 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
               action: () async => await _call119(),
             );
             _emergencyServicesCalled = true;
+            _debugLog("Step[$i] emergency services call completed");
             break;
         }
 
         if (!mounted || myFlow != _flowId) return;
+        if (nonBlockingFailure) continue;
         setState(() => _states[i] = StepState.done);
-      } catch (_) {
+        _debugLog("Step[$i] done: ${step.title}");
+      } catch (e) {
         if (!mounted || myFlow != _flowId) return;
 
-        setState(() => _states[i] = StepState.failed);
+        final reason = _errorMessage(e);
+        setState(() {
+          _states[i] = StepState.failed;
+          _failureReasons[i] = reason;
+        });
+        _debugLog("Step[$i] failed: ${_steps[i].title} reason=$reason");
 
-        await _goToResult(EmergencySummary(
+        await _goToResult(_buildSummary(
           outcome: EmergencyOutcome.failed,
-          someoneAnswered: _someoneAnswered,
-          emergencyServicesCalled: _emergencyServicesCalled,
           failedStepIndex: i,
           failedStepTitle: _steps[i].title,
+          failedStepReason: reason,
         ));
         return;
       }
@@ -224,10 +333,11 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
 
     if (!mounted || myFlow != _flowId) return;
 
-    await _goToResult(EmergencySummary(
+    _debugLog(
+      "Process completed. someoneAnswered=$_someoneAnswered emergencyServicesCalled=$_emergencyServicesCalled",
+    );
+    await _goToResult(_buildSummary(
       outcome: EmergencyOutcome.completed,
-      someoneAnswered: _someoneAnswered,
-      emergencyServicesCalled: _emergencyServicesCalled,
     ));
   }
 
@@ -308,16 +418,16 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
   // ---------- Manual override buttons ----------
   Future<void> _stopProcess() async {
     _cancelCurrentFlow();
-    await _goToResult(EmergencySummary(
+    _debugLog("Process stopped by user");
+    await _goToResult(_buildSummary(
       outcome: EmergencyOutcome.cancelled,
-      someoneAnswered: _someoneAnswered,
-      emergencyServicesCalled: _emergencyServicesCalled,
     ));
   }
 
   Future<void> _call119NowTakeOver() async {
     _cancelCurrentFlow();
     final myFlow = ++_flowId;
+    _debugLog("Manual override: call 119 now, new flowId=$myFlow");
 
     final idx119 = _steps.indexWhere((s) => s.type == EmergencyStepType.call119);
 
@@ -344,25 +454,28 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
         action: () async => await _call119(),
       );
       _emergencyServicesCalled = true;
+      _debugLog("Manual 119 call completed");
 
       if (!mounted || myFlow != _flowId) return;
       setState(() => _states[idx119] = StepState.done);
 
-      await _goToResult(EmergencySummary(
+      await _goToResult(_buildSummary(
         outcome: EmergencyOutcome.completed,
-        someoneAnswered: _someoneAnswered,
-        emergencyServicesCalled: _emergencyServicesCalled,
       ));
-    } catch (_) {
+    } catch (e) {
       if (!mounted || myFlow != _flowId) return;
-      setState(() => _states[idx119] = StepState.failed);
+      final reason = _errorMessage(e);
+      setState(() {
+        _states[idx119] = StepState.failed;
+        _failureReasons[idx119] = reason;
+      });
+      _debugLog("Manual 119 call failed reason=$reason");
 
-      await _goToResult(EmergencySummary(
+      await _goToResult(_buildSummary(
         outcome: EmergencyOutcome.failed,
-        someoneAnswered: _someoneAnswered,
-        emergencyServicesCalled: _emergencyServicesCalled,
         failedStepIndex: idx119,
         failedStepTitle: _steps[idx119].title,
+        failedStepReason: reason,
       ));
     }
   }
@@ -371,6 +484,7 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
     _cancelCurrentFlow();
     final myFlow = ++_flowId;
     _someoneAnswered = false;
+    _debugLog("Manual override: notify all instantly, new flowId=$myFlow");
 
     final msgIdx =
         _steps.indexWhere((s) => s.type == EmergencyStepType.messageAll);
@@ -409,18 +523,17 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
       );
       if (!mounted || myFlow != _flowId) return;
       setState(() => _states[msgIdx] = StepState.done);
-    } catch (_) {
+      _debugLog("Instant notify: message-all completed");
+    } catch (e) {
       if (!mounted || myFlow != _flowId) return;
-      setState(() => _states[msgIdx] = StepState.failed);
-
-      await _goToResult(EmergencySummary(
-        outcome: EmergencyOutcome.failed,
-        someoneAnswered: _someoneAnswered,
-        emergencyServicesCalled: _emergencyServicesCalled,
-        failedStepIndex: msgIdx,
-        failedStepTitle: _steps[msgIdx].title,
-      ));
-      return;
+      final reason = _errorMessage(e);
+      setState(() {
+        _states[msgIdx] = StepState.failed;
+        _failureReasons[msgIdx] = reason;
+      });
+      _debugLog(
+        "Instant notify: message-all failed but flow continues reason=$reason",
+      );
     }
 
     // Calls (fast but visible)
@@ -435,21 +548,38 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
       setState(() {
         _currentIndex = idx;
         _states[idx] = StepState.running;
+        _failureReasons[idx] = null;
         _stepProgress = 0.0;
         _stepRemaining = const Duration(seconds: 6);
       });
 
       try {
-        final answered = await _runFixedDurationStep<bool>(
+        final callResult =
+            await _runFixedDurationStep<EmergencyCallResult>(
           flow: myFlow,
           duration: const Duration(seconds: 6),
           action: () async => await _callContact(_steps[idx].contactIndex!),
         );
         if (!mounted || myFlow != _flowId) return;
 
-        setState(() => _states[idx] = StepState.done);
+        if (!callResult.success) {
+          setState(() {
+            _states[idx] = StepState.failed;
+            _failureReasons[idx] =
+                callResult.message ?? "Call attempt failed";
+          });
+          _debugLog(
+            "Instant notify: call idx=$idx failed reason=${_failureReasons[idx]}",
+          );
+          continue;
+        }
 
-        if (answered) {
+        setState(() => _states[idx] = StepState.done);
+        _debugLog(
+          "Instant notify: call idx=$idx answered=${callResult.answered}",
+        );
+
+        if (callResult.answered) {
           _someoneAnswered = true;
           for (final later in callIdxs) {
             if (later > idx && _states[later] == StepState.pending) {
@@ -458,9 +588,14 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
           }
           if (mounted) setState(() {});
         }
-      } catch (_) {
+      } catch (e) {
         if (!mounted || myFlow != _flowId) return;
-        setState(() => _states[idx] = StepState.failed);
+        final reason = _errorMessage(e);
+        setState(() {
+          _states[idx] = StepState.failed;
+          _failureReasons[idx] = reason;
+        });
+        _debugLog("Instant notify: call idx=$idx failed reason=$reason");
       }
     }
 
@@ -479,53 +614,76 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
         action: () async => await _call119(),
       );
       _emergencyServicesCalled = true;
+      _debugLog("Instant notify: 119 call completed");
 
       if (!mounted || myFlow != _flowId) return;
       setState(() => _states[idx119] = StepState.done);
 
-      await _goToResult(EmergencySummary(
+      await _goToResult(_buildSummary(
         outcome: EmergencyOutcome.completed,
-        someoneAnswered: _someoneAnswered,
-        emergencyServicesCalled: _emergencyServicesCalled,
       ));
-    } catch (_) {
+    } catch (e) {
       if (!mounted || myFlow != _flowId) return;
-      setState(() => _states[idx119] = StepState.failed);
+      final reason = _errorMessage(e);
+      setState(() {
+        _states[idx119] = StepState.failed;
+        _failureReasons[idx119] = reason;
+      });
+      _debugLog("Instant notify: 119 call failed reason=$reason");
 
-      await _goToResult(EmergencySummary(
+      await _goToResult(_buildSummary(
         outcome: EmergencyOutcome.failed,
-        someoneAnswered: _someoneAnswered,
-        emergencyServicesCalled: _emergencyServicesCalled,
         failedStepIndex: idx119,
         failedStepTitle: _steps[idx119].title,
+        failedStepReason: reason,
       ));
     }
   }
 
   // ---------- Replace with real logic later ----------
   Future<void> _messageAll() async {
+    _debugLog("Calling onMessageAllContacts callback");
     if (widget.onMessageAllContacts != null) {
-      await widget.onMessageAllContacts!();
+      final result = await widget.onMessageAllContacts!();
+      if (!result.success) {
+        throw Exception(result.message ?? "Failed to message emergency contacts");
+      }
+      _debugLog("onMessageAllContacts callback completed success=true");
       return;
     }
     await Future.delayed(const Duration(milliseconds: 600));
+    _debugLog("Mock messageAll completed");
   }
 
-  Future<bool> _callContact(int contactIndex) async {
+  Future<EmergencyCallResult> _callContact(int contactIndex) async {
+    _debugLog("Calling onCallContact callback for contactIndex=$contactIndex");
     if (widget.onCallContact != null) {
-      return await widget.onCallContact!(contactIndex);
+      final result = await widget.onCallContact!(contactIndex);
+      _debugLog(
+        "onCallContact callback result contactIndex=$contactIndex success=${result.success} answered=${result.answered} finalStatus=${result.finalStatus}",
+      );
+      return result;
     }
     await Future.delayed(const Duration(milliseconds: 600));
     final answered = (DateTime.now().millisecondsSinceEpoch % 5) == 0;
-    return answered;
+    _debugLog(
+      "Mock callContact result contactIndex=$contactIndex success=true answered=$answered",
+    );
+    return EmergencyCallResult(success: true, answered: answered);
   }
 
   Future<void> _call119() async {
+    _debugLog("Calling onCall119 callback");
     if (widget.onCall119 != null) {
-      await widget.onCall119!();
+      final result = await widget.onCall119!();
+      if (!result.success) {
+        throw Exception(result.message ?? "Failed to contact emergency services");
+      }
+      _debugLog("onCall119 callback completed success=true");
       return;
     }
     await Future.delayed(const Duration(milliseconds: 600));
+    _debugLog("Mock call119 completed");
   }
 
   // ---------- UI helpers ----------
@@ -876,6 +1034,19 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
                                     "Duration: ${_formatMs(step.duration)}",
                                     style: TextStyle(color: Colors.grey[400], fontSize: 11),
                                   ),
+                                  if (st == StepState.failed &&
+                                      _failureReasons[i] != null &&
+                                      _failureReasons[i]!.isNotEmpty) ...[
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      _failureReasons[i]!,
+                                      style: TextStyle(
+                                        color: dangerRed,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
                                   if (isCurrent && isRunning) ...[
                                     const SizedBox(height: 10),
                                     ClipRRect(

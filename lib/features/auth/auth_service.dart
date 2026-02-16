@@ -219,4 +219,93 @@ class AuthService {
     await prefs.remove("medical_age");
     await prefs.remove("weight");
   }
+
+  // ================= EMERGENCY FLOW =================
+
+  static Future<Map<String, dynamic>> startEmergency() async {
+    final token = await getToken();
+
+    final response = await http.post(
+      Uri.parse("$baseUrl/emergency/start"),
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $token",
+      },
+      body: jsonEncode({}),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception("Failed to start emergency session");
+    }
+
+    final body = jsonDecode(response.body);
+    if (body is! Map<String, dynamic>) {
+      throw Exception("Invalid emergency start response");
+    }
+    return body;
+  }
+
+  static Future<Map<String, dynamic>> attemptEmergencyContactCall({
+    required String sessionId,
+    required int contactIndex,
+    int timeoutSec = 30,
+  }) async {
+    final token = await getToken();
+
+    final response = await http.post(
+      Uri.parse(
+        "$baseUrl/emergency/$sessionId/call/$contactIndex/attempt",
+      ),
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $token",
+      },
+      body: jsonEncode({"timeoutSec": timeoutSec}),
+    );
+
+    // Missing contact index in the ordered list should not crash the flow.
+    if (response.statusCode == 404) {
+      return {
+        "success": true,
+        "answered": false,
+        "finalStatus": "not-configured",
+      };
+    }
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception("Failed to attempt emergency call");
+    }
+
+    final body = jsonDecode(response.body);
+    if (body is! Map<String, dynamic>) {
+      throw Exception("Invalid emergency call response");
+    }
+
+    return body;
+  }
+
+  static Future<Map<String, dynamic>> callEmergency119({
+    required String sessionId,
+  }) async {
+    final token = await getToken();
+
+    final response = await http.post(
+      Uri.parse("$baseUrl/emergency/$sessionId/call-119"),
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $token",
+      },
+      body: jsonEncode({}),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception("Failed to call emergency services");
+    }
+
+    final body = jsonDecode(response.body);
+    if (body is Map<String, dynamic>) {
+      return body;
+    }
+    return {"ok": true};
+  }
 }

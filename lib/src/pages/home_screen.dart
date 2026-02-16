@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
+import 'package:usafe_front_end/features/auth/auth_service.dart';
 
 import 'contacts_screen.dart';
 import 'profile_screen.dart';
@@ -112,6 +113,7 @@ class SOSDashboard extends StatefulWidget {
 class _SOSDashboardState extends State<SOSDashboard>
     with TickerProviderStateMixin {
   bool isSOSActive = false;
+  String? _emergencySessionId;
 
   // Floating banner payload shown after emergency flow returns
   HomeEmergencyBannerPayload? _banner;
@@ -148,13 +150,21 @@ class _SOSDashboardState extends State<SOSDashboard>
 
   Future<void> _openEmergencyProcess() async {
     _sosTimer?.cancel();
+    _emergencySessionId = null;
 
     final result = await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const EmergencyProcessScreen()),
+      MaterialPageRoute(
+        builder: (_) => EmergencyProcessScreen(
+          onMessageAllContacts: _onMessageAllContacts,
+          onCallContact: _onCallContact,
+          onCall119: _onCall119,
+        ),
+      ),
     );
 
     if (!mounted) return;
+    _emergencySessionId = null;
 
     // ALWAYS reset SOS UI when returning
     _resetSosCountdown();
@@ -163,6 +173,100 @@ class _SOSDashboardState extends State<SOSDashboard>
     if (result is HomeEmergencyBannerPayload) {
       _showHomeBanner(result);
     }
+  }
+
+  Future<EmergencyActionResult> _onMessageAllContacts() async {
+    final response = await AuthService.startEmergency();
+    final sessionId =
+        response["sessionId"] ?? response["sessionID"] ?? response["id"];
+
+    if (sessionId is! String || sessionId.isEmpty) {
+      return const EmergencyActionResult(
+        success: false,
+        message: "Emergency session id missing in response",
+      );
+    }
+
+    _emergencySessionId = sessionId;
+
+    final ok = response["ok"];
+    final success = response["success"];
+    final message = response["message"]?.toString();
+    if (ok == false || success == false) {
+      return EmergencyActionResult(
+        success: false,
+        message: message ?? "Failed to message emergency contacts",
+      );
+    }
+
+    return const EmergencyActionResult(success: true);
+  }
+
+  Future<EmergencyCallResult> _onCallContact(int contactIndex) async {
+    final sessionId = _emergencySessionId;
+    if (sessionId == null || sessionId.isEmpty) {
+      return const EmergencyCallResult(
+        success: false,
+        answered: false,
+        message: "Emergency session not initialized",
+        finalStatus: "session-missing",
+      );
+    }
+
+    final response = await AuthService.attemptEmergencyContactCall(
+      sessionId: sessionId,
+      contactIndex: contactIndex,
+      timeoutSec: 30,
+    );
+
+    final answered = response["answered"] == true;
+    final message = response["message"]?.toString();
+    final code = response["code"]?.toString();
+    final finalStatus =
+        (response["finalStatus"] ?? response["status"])?.toString();
+
+    bool success;
+    if (response["success"] is bool) {
+      success = response["success"] == true;
+    } else if (response["ok"] is bool) {
+      success = response["ok"] == true;
+    } else {
+      final normalized = (finalStatus ?? "").toLowerCase();
+      final providerError = (code ?? "").toUpperCase() == "CALL_PROVIDER_ERROR";
+      success = normalized != "failed" && !providerError;
+    }
+
+    return EmergencyCallResult(
+      success: success,
+      answered: answered,
+      message: message,
+      finalStatus: finalStatus,
+    );
+  }
+
+  Future<EmergencyActionResult> _onCall119() async {
+    final sessionId = _emergencySessionId;
+    if (sessionId == null || sessionId.isEmpty) {
+      return const EmergencyActionResult(
+        success: false,
+        message: "Emergency session not initialized",
+      );
+    }
+
+    final response = await AuthService.callEmergency119(sessionId: sessionId);
+    final ok = response["ok"];
+    final success = response["success"];
+    final called = response["emergencyServicesCalled"];
+    final message = response["message"]?.toString();
+
+    if (ok == false || success == false || called == false) {
+      return EmergencyActionResult(
+        success: false,
+        message: message ?? "Emergency services call failed",
+      );
+    }
+
+    return const EmergencyActionResult(success: true);
   }
 
   @override

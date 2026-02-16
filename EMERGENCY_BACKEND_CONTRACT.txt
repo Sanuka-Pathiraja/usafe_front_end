@@ -1,0 +1,170 @@
+USafe Emergency Flow Backend Contract
+=====================================
+
+Purpose
+-------
+This document defines the backend behavior required by the current Flutter emergency flow:
+
+1) Message all emergency contacts
+2) Call contacts one by one in order
+3) If a contact does not answer, call the next contact
+4) Keep the waiting gap before emergency services
+5) Call 119 last
+
+
+Client Flow (Current Frontend)
+------------------------------
+Screen: EmergencyProcessScreen
+
+Step order:
+1. Messaging all emergency contacts
+2. Calling Emergency contact 1
+3. Calling Emergency contact 2
+4. Calling Emergency contact 3
+5. Calling Emergency contact 4
+6. Calling Emergency contact 5
+7. Waiting before contacting Emergency Services
+8. Calling Emergency Services (119)
+
+Important behavior:
+- If one contact answers, remaining contact-call steps are skipped.
+- The waiting step still runs.
+- 119 call still runs last.
+- If a call step fails with 404 (missing contact index), frontend treats it as "not answered" and continues.
+
+
+Authentication
+--------------
+All endpoints below should accept:
+- Authorization: Bearer <JWT>
+- Content-Type: application/json
+
+
+Required Endpoints
+------------------
+
+1) Start emergency session and message all contacts
+POST /emergency/start
+
+Request body:
+{}
+
+Success response (2xx) must include session id:
+{
+  "sessionId": "string",
+  "contacts": [
+    {
+      "contactIndex": 1,
+      "name": "string",
+      "phone": "string"
+    }
+  ]
+}
+
+Notes:
+- sessionId is required by frontend for all later calls.
+- contacts is recommended for observability and future dynamic UI.
+- Backend should send SMS/notification to all emergency contacts in this step.
+
+
+2) Attempt call to a specific contact index
+POST /emergency/:sessionId/call/:contactIndex/attempt
+
+Request body:
+{
+  "timeoutSec": 30
+}
+
+Success response (2xx):
+{
+  "answered": true
+}
+or
+{
+  "answered": false
+}
+
+Recommended extras (optional):
+{
+  "answered": false,
+  "status": "no-answer",
+  "contactIndex": 3
+}
+
+Behavior rules:
+- Return answered=true only when call is answered.
+- Return answered=false for no-answer/busy/failed-attempt states.
+- Return 404 if contactIndex does not exist for the session/user.
+- If one call is answered, backend should stop/cancel other pending contact call attempts for that session.
+
+
+3) Call emergency services
+POST /emergency/:sessionId/call-119
+
+Request body:
+{}
+
+Success response (2xx):
+{
+  "ok": true,
+  "emergencyServicesCalled": true
+}
+
+Behavior rules:
+- Mark session state as emergencyServicesCalled=true.
+- Idempotent behavior is recommended:
+  multiple requests should not duplicate real-world side effects.
+
+
+Session Model Requirements
+--------------------------
+Session should track at least:
+- sessionId
+- userId
+- ordered contacts (with contactIndex)
+- messageSentAt
+- per-contact call attempts and results
+- someoneAnswered (boolean)
+- answeredByContactIndex (nullable)
+- emergencyServicesCalled (boolean)
+- createdAt / updatedAt
+
+Recommended persistence:
+- Production: Redis or database (not process memory only).
+- In-memory sessions are acceptable only for local development.
+
+
+Error Handling Contract
+-----------------------
+Frontend expects:
+- 2xx for successful operation.
+- 404 on missing contact index/session can be handled as non-fatal for contact attempts.
+- Other non-2xx statuses are treated as failures and can terminate the process.
+
+Recommended response format:
+{
+  "error": "CODE",
+  "message": "Human-readable description"
+}
+
+
+Timing and Gap Alignment
+------------------------
+Frontend timing currently:
+- Message step UI duration: 60s
+- Each contact call UI duration: 30s
+- Waiting gap before 119: 60s
+- 119 UI duration: 10s
+
+Backend call attempt timeout should align with timeoutSec sent by frontend.
+
+
+Test Checklist
+--------------
+1) /emergency/start returns sessionId and sends messages.
+2) Contact 1 no answer => answered=false => frontend proceeds to contact 2.
+3) Contact 2 answers => answered=true => frontend skips remaining contacts.
+4) Waiting gap step still runs.
+5) /call-119 succeeds and sets emergencyServicesCalled=true.
+6) Missing contact index returns 404 and frontend continues.
+7) Repeated /call-119 does not cause duplicate external side effects.
