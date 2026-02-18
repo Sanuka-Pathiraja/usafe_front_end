@@ -49,67 +49,169 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
             zoomControlsEnabled: false,
           ),
 
-          //  ________SEARCH PANEL________ 
+          //  ________ SEARCH PANEL (Google Maps Style) ________
           Positioned(
             top: 20,
             left: 20,
             right: 20,
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E1E1E).withOpacity(0.95),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Colors.black45,
-                    blurRadius: 10,
-                    offset: Offset(0, 4),
-                  )
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Source Field..
-                  TextField(
-                    controller: _sourceController,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      hintText: "Enter Source Location",
-                      hintStyle: const TextStyle(color: Colors.white54),
-                      filled: true,
-                      fillColor: Colors.grey[900],
-                      border: OutlineInputBorder(
+            child: Column(
+              children: [
+                // White card containing FROM / TO fields
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black26,
+                        blurRadius: 6,
+                        offset: Offset(0, 3),
+                      )
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      //_______ SOURCE FIELD _____
+                      TextField(
+                        controller: _sourceController,
+                        decoration: const InputDecoration(
+                          hintText: "Your Location",
+                          prefixIcon:
+                              Icon(Icons.circle, size: 12, color: Colors.green),
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 14),
+                        ),
+                      ),
+
+                      const Divider(
+                          height: 1, thickness: 1, color: Colors.black12),
+
+                      // ___ DESTINATION FIELD ____
+                      TextField(
+                        controller: _destinationController,
+                        decoration: const InputDecoration(
+                          hintText: "Enter Destination",
+                          prefixIcon:
+                              Icon(Icons.location_on, color: Colors.red),
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 14),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                // ____ FIND ROUTE BUTTON  __
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black87,
+                      elevation: 3,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                    onPressed: () {
+                      print("Find Route clicked");
+                    },
+                    child: const Text(
+                      "Find Route",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
+                ),
+              ],
+            ),
+          ),
 
-                  const SizedBox(height: 10),
+          //__________ DRAGGABLE BOTTOM PANEL ______________
+          
+          DraggableScrollableSheet(
+            initialChildSize: 0.12,
+            minChildSize: 0.12,
+            maxChildSize: 0.45,
 
-                  // Destination Field...
-                  TextField(
-                    controller: _destinationController,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      hintText: "Enter Destination",
-                      hintStyle: const TextStyle(color: Colors.white54),
-                      filled: true,
-                      fillColor: Colors.grey[900],
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
+            builder: (context, scrollController) {
+              return Container(
+                decoration: const BoxDecoration(
+                  color: Color(0xFF1E1E1E),
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(22),
+                  ),
+                ),
+
+                child: ListView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.all(16),
+                  children: [
+
+                    // Drag handle
+
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 5,
+                        margin: const EdgeInsets.only(top: 10, bottom: 14),
+                        decoration: BoxDecoration(
+                          color: Colors.white24,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
                     ),
-                  ),
 
-                  const SizedBox(height: 14),
+                    const Text(
+                      "Route Details",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
 
-                  // Find Safe Route Button...
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
+
+                    const SizedBox(height: 14),
+
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.black26,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          Text(
+                            "Distance: 2.3 km",
+                            style: TextStyle(color: Colors.white, fontSize: 16),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            "Estimated Time: 8 mins",
+                            style: TextStyle(color: Colors.white, fontSize: 16),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            "Safety Score: High Safety Area",
+                            style: TextStyle(
+                                color: Colors.greenAccent, fontSize: 16),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    ElevatedButton(
+                      onPressed: () {},
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF2962FF),
                         padding: const EdgeInsets.symmetric(vertical: 14),
@@ -117,21 +219,15 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      onPressed: () {
-                        // Safe route logic will be added later...
-                        print("Find Safe Route clicked");
-                      },
                       child: const Text(
-                        "Find Safe Route",
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                        ),
+                        "Start Navigation",
+                        style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ),
+                  ],
+                ),
+              );
+            },
           ),
         ],
       ),
