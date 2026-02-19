@@ -1,154 +1,19 @@
-Backend Report for Emergency FE Integration
-Date: 2026-02-19
+Backend-to-FE Handoff Report (Emergency Integration)
+Date: February 19, 2026
 
-Observed FE Runtime Issue
-- Emergency flow fails at step 1 (`POST /emergency/start`), then all call steps fail with `session-missing`.
-- This means FE is not receiving a usable `sessionId` from the start call path.
+Active Endpoints
+POST /emergency/start
+GET /emergency/:sessionId/status
+POST /emergency/:sessionId/call/:contactIndex/start
+POST /emergency/:sessionId/call/:contactIndex/attempt
+POST /emergency/:sessionId/call-119
+POST /emergency/:sessionId/cancel (new)
 
-What FE Now Sends
-- Endpoint: `POST /emergency/start`
-- Headers:
-  - `Authorization: Bearer <JWT>`
-  - `Content-Type: application/json`
-- Body:
-  {
-    "locationText": "Unknown location",
-    "message": "USafe emergency alert",
-    "unicode": false
-  }
+Auth Contract
+All protected endpoints require:
+Authorization: Bearer <JWT>
 
-What FE Expects From Backend
-
-1) POST /emergency/start
-- Must return 2xx only when request is successfully processed.
-- Must include `sessionId` when session is created.
-- Must include clear outcome fields:
-  - `ok` and/or `success`
-  - `code`
-  - `message`
-  - `messaging: { attempted, sent, failed }`
-- FE handling:
-  - `code=PARTIAL_SEND` -> treated as messaging failure for step status (flow may continue).
-  - `code=SEND_FAILED` -> treated as messaging failure.
-  - `ok=false` or `success=false` -> failure.
-
-Recommended response example (success):
-{
-  "ok": true,
-  "success": true,
-  "code": "OK",
-  "message": "Emergency session started",
-  "sessionId": "sess_123",
-  "messaging": { "attempted": 5, "sent": 5, "failed": 0 }
-}
-
-Recommended response example (partial):
-{
-  "ok": true,
-  "success": true,
-  "code": "PARTIAL_SEND",
-  "message": "Some SMS could not be sent",
-  "sessionId": "sess_123",
-  "messaging": { "attempted": 5, "sent": 3, "failed": 2 }
-}
-
-Recommended response example (failed):
-{
-  "ok": false,
-  "success": false,
-  "code": "SEND_FAILED",
-  "message": "SMS provider rejected request",
-  "sessionId": "sess_123",
-  "messaging": { "attempted": 5, "sent": 0, "failed": 5 }
-}
-
-2) POST /emergency/:sessionId/call/:contactIndex/attempt
-- Return normalized call outcome payload:
-{
-  "success": true,
-  "answered": false,
-  "finalStatus": "no-answer",
-  "message": "No answer within timeout",
-  "code": "NO_ANSWER"
-}
-
-- On provider/system failure:
-{
-  "success": false,
-  "answered": false,
-  "finalStatus": "failed",
-  "message": "Provider rejected request",
-  "code": "CALL_PROVIDER_ERROR"
-}
-
-3) POST /emergency/:sessionId/call-119
-- Must explicitly state whether emergency services call actually happened:
-{
-  "ok": true,
-  "success": true,
-  "emergencyServicesCalled": true,
-  "message": "119 call placed"
-}
-
-Error Handling Requirements
-- For non-2xx responses, FE now surfaces:
-  - HTTP status code
-  - backend `message` (if present)
-  - backend `code` (if present)
-- Please return JSON for errors consistently:
-{
-  "ok": false,
-  "success": false,
-  "code": "UNAUTHORIZED",
-  "message": "Invalid or expired token"
-}
-
-Likely Root-Cause Candidates for Current Failure
-- 401/403 on `/emergency/start` due to JWT verification mismatch.
-- Route mount mismatch in backend (`/emergency/start` not active in deployed process).
-- Backend validation rejecting empty/unexpected fields (now FE sends explicit payload).
-- Session creation error path returning non-2xx without clear JSON message.
-
-Immediate Backend Verification Checklist
-- Confirm `/emergency/start` is mounted and reachable in active server.
-- Confirm route requires `Authorization: Bearer <JWT>` and same JWT secret as login.
-- Log and verify request body + auth claims for `/emergency/start`.
-- Ensure all error responses include JSON `message` and `code`.
-- Confirm `sessionId` is always included on successful session creation.
-
-Cancel API Integration (New)
-- FE now calls: `POST /emergency/:sessionId/cancel` when user taps `STOP PROCESS`.
-- Auth header is required (`Bearer <JWT>`).
-
-Expected cancel success payload:
-{
-  "ok": true,
-  "success": true,
-  "code": "CANCELLED",
-  "message": "Emergency process cancelled and contacts notified",
-  "sessionId": "....",
-  "cancelled": true,
-  "emergencyServicesCalled": false,
-  "cancellationMessaging": {
-    "attempted": 5,
-    "sent": 5,
-    "failed": 0
-  }
-}
-
-Expected already-cancelled payload:
-{
-  "ok": true,
-  "success": true,
-  "code": "ALREADY_CANCELLED",
-  "message": "Emergency process already cancelled",
-  "sessionId": "....",
-  "cancelled": true,
-  "emergencyServicesCalled": false
-}
-
-Unauthorized Contract (Required)
-- FE treats these as auth-expired and immediately logs out + redirects to login:
+Unauthorized response shape:
 {
   "ok": false,
   "success": false,
@@ -163,41 +28,124 @@ or
   "message": "Invalid or expired token. Please re-login."
 }
 
-UI Behavior for Cancel Response
-- FE displays backend cancellation status in Cancelled summary text:
-  - uses user-friendly message intent (not technical diagnostics).
-  - does not display `code`, stack text, provider errors, or raw stats to end users.
+Emergency Start Request (FE should send)
+POST /emergency/start
+{
+  "locationText": "Colombo Fort",
+  "dangerTime": "2026-02-19T10:30:00+05:30",
+  "unicode": true
+}
 
-User-Facing Cancellation Copy (Backend Request)
-- Please provide end-user-safe `message` text for cancel outcomes.
-- Avoid technical/internal terms in `message` such as:
-  - provider
-  - timeout
-  - token parsing
-  - route/session internals
-- Keep wording simple and action-focused.
+Optional:
+message (if FE explicitly wants custom text override)
 
-Recommended cancel message style by outcome:
-- `CANCELLED` + all notifications sent:
-  - "Emergency cancelled. Your contacts were informed."
-- `CANCELLED` + partial notification failure:
-  - "Emergency cancelled. Some contacts could not be informed."
-- `CANCELLED` + all notification failure:
-  - "Emergency cancelled. We could not notify your contacts."
-- `ALREADY_CANCELLED`:
-  - "This emergency was already cancelled."
+Current Observed Production Issue (2026-02-19)
+- Recipients are receiving only: "USafe emergency alert"
+- Location/time lines are missing.
+- Root cause found: FE had been sending a fixed `message` field, so backend correctly treated it as full override and skipped default template composition.
+- FE fix applied: FE no longer sends `message` by default.
 
-Emoji and Encoding Request (Fix `??` issue)
-- Backend must emit UTF-8 JSON responses end-to-end.
-- Set response header explicitly:
-  - `Content-Type: application/json; charset=utf-8`
-- Ensure DB/file/log pipeline also uses UTF-8 so emoji characters are preserved.
-- Do not substitute unknown glyphs with `??`; send either:
-  - valid emoji (UTF-8), or
-  - plain text fallback when client/platform does not support emoji.
+Emergency SMS Message (backend default)
+If message is not provided, backend sends:
+USafe Alert ⚠️
+Danger detected
+Location: <locationText or Unknown location>
+Time: <dangerTime/time/eventTime or current server time>
 
-Recommended emoji usage
-- Use at most one emoji per user message.
-- Use only widely supported emoji.
-- Example:
-  - "Emergency cancelled. Your contacts were informed. ✅"
+Backend Change Request (to prevent future regressions)
+1) Keep current behavior: if `message` is absent, always build full template with location/time.
+2) If `message` is present, support one of these safe options:
+   - Option A (recommended): still append normalized location/time lines unless `messageMode=exact` is explicitly set.
+   - Option B: add `useDefaultTemplate=true|false` flag and ignore raw `message` unless `useDefaultTemplate=false`.
+3) Return a response field confirming rendered content strategy, for example:
+   - `renderMode: "default-template" | "custom-message"`
+4) Ensure logs include whether location/time were included in final outbound SMS.
+
+Emergency Start Response (important fields)
+Backend returns:
+sessionId
+ok, success
+code
+message
+messaging: { attempted, sent, failed }
+
+Codes:
+OK => all notified
+PARTIAL_SEND => some notified, some failed
+SEND_FAILED / LOW_FUNDS => none notified
+
+Call Attempt Response Contract
+POST /emergency/:sessionId/call/:contactIndex/attempt
+Returns normalized shape including:
+success
+answered
+finalStatus
+message
+code
+
+Emergency Services Call Contract
+POST /emergency/:sessionId/call-119
+Includes:
+ok
+success
+emergencyServicesCalled (boolean)
+message
+
+Cancel Endpoint (new)
+POST /emergency/:sessionId/cancel
+
+Success response:
+{
+  "ok": true,
+  "success": true,
+  "code": "CANCELLED",
+  "message": "Emergency cancelled. Your contacts were informed.",
+  "sessionId": "....",
+  "cancelled": true,
+  "emergencyServicesCalled": false,
+  "cancellationMessaging": {
+    "attempted": 5,
+    "sent": 5,
+    "failed": 0
+  }
+}
+
+Message variants:
+all sent: "Emergency cancelled. Your contacts were informed."
+partial: "Emergency cancelled. Some contacts could not be informed."
+none sent: "Emergency cancelled. We could not notify your contacts."
+
+Already cancelled:
+{
+  "ok": true,
+  "success": true,
+  "code": "ALREADY_CANCELLED",
+  "message": "This emergency was already cancelled.",
+  "sessionId": "....",
+  "cancelled": true,
+  "emergencyServicesCalled": false
+}
+
+Error Handling Contract
+Non-2xx errors are consistent JSON:
+{
+  "ok": false,
+  "success": false,
+  "code": "<ERROR_CODE>",
+  "message": "<human readable>"
+}
+
+UTF-8 / Encoding
+Backend JSON responses are explicitly UTF-8:
+Content-Type: application/json; charset=utf-8
+
+Emoji handling note:
+- Use valid UTF-8 emoji only.
+- Do not emit "??" placeholders.
+- If emoji cannot be guaranteed, send plain-text fallback.
+- FE now sends `unicode: true` for emergency start to ensure emoji messages render correctly.
+
+FE Notes
+If /emergency/start is non-2xx, sessionId will not exist, so FE must stop flow and display backend message.
+FE should treat PARTIAL_SEND as session-created but with warning state.
+On UNAUTHORIZED, FE should logout and redirect to login.

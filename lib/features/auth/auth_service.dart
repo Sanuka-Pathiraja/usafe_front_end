@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -241,6 +242,9 @@ class AuthService {
       throw Exception("Missing auth token. Please log in again.");
     }
 
+    final locationText = await _getCurrentLocationText();
+    final dangerTime = _isoWithOffset(DateTime.now());
+
     final response = await http.post(
       Uri.parse("$baseUrl/emergency/start"),
       headers: {
@@ -248,9 +252,9 @@ class AuthService {
         "Authorization": "Bearer $token",
       },
       body: jsonEncode({
-        "locationText": "Unknown location",
-        "message": "USafe emergency alert",
-        "unicode": false,
+        "locationText": locationText,
+        "dangerTime": dangerTime,
+        "unicode": true,
       }),
     );
 
@@ -266,6 +270,47 @@ class AuthService {
       throw Exception("Invalid emergency start response");
     }
     return body;
+  }
+
+  static Future<String> _getCurrentLocationText() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return "Unknown location";
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return "Unknown location";
+      }
+
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 8),
+        ),
+      );
+      return "${pos.latitude.toStringAsFixed(6)}, ${pos.longitude.toStringAsFixed(6)}";
+    } catch (_) {
+      return "Unknown location";
+    }
+  }
+
+  static String _isoWithOffset(DateTime dt) {
+    final local = dt.toLocal();
+    final datePart =
+        "${local.year.toString().padLeft(4, "0")}-${local.month.toString().padLeft(2, "0")}-${local.day.toString().padLeft(2, "0")}";
+    final timePart =
+        "${local.hour.toString().padLeft(2, "0")}:${local.minute.toString().padLeft(2, "0")}:${local.second.toString().padLeft(2, "0")}";
+    final offset = local.timeZoneOffset;
+    final sign = offset.isNegative ? "-" : "+";
+    final abs = offset.abs();
+    final off =
+        "${abs.inHours.toString().padLeft(2, "0")}:${(abs.inMinutes % 60).toString().padLeft(2, "0")}";
+    return "${datePart}T$timePart$sign$off";
   }
 
   static EmergencyStartAssessment assessEmergencyStartResponse(
