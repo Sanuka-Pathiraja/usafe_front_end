@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
+import 'package:usafe_front_end/features/auth/screens/login_screen.dart';
 
 import 'contacts_screen.dart';
 import 'profile_screen.dart';
@@ -159,6 +160,7 @@ class _SOSDashboardState extends State<SOSDashboard>
           onMessageAllContacts: _onMessageAllContacts,
           onCallContact: _onCallContact,
           onCall119: _onCall119,
+          onCancelEmergency: _onCancelEmergency,
         ),
       ),
     );
@@ -176,7 +178,18 @@ class _SOSDashboardState extends State<SOSDashboard>
   }
 
   Future<EmergencyActionResult> _onMessageAllContacts() async {
-    final response = await AuthService.startEmergency();
+    Map<String, dynamic> response;
+    try {
+      response = await AuthService.startEmergency();
+    } catch (e) {
+      if (await _handleUnauthorizedError(e)) {
+        return const EmergencyActionResult(
+          success: false,
+          message: "Session expired. Please re-login.",
+        );
+      }
+      rethrow;
+    }
     final sessionId =
         response["sessionId"] ?? response["sessionID"] ?? response["id"];
 
@@ -189,13 +202,11 @@ class _SOSDashboardState extends State<SOSDashboard>
 
     _emergencySessionId = sessionId;
 
-    final ok = response["ok"];
-    final success = response["success"];
-    final message = response["message"]?.toString();
-    if (ok == false || success == false) {
+    final assessment = AuthService.assessEmergencyStartResponse(response);
+    if (!assessment.messagingSuccessful) {
       return EmergencyActionResult(
         success: false,
-        message: message ?? "Failed to message emergency contacts",
+        message: assessment.message,
       );
     }
 
@@ -213,11 +224,24 @@ class _SOSDashboardState extends State<SOSDashboard>
       );
     }
 
-    final response = await AuthService.attemptEmergencyContactCall(
-      sessionId: sessionId,
-      contactIndex: contactIndex,
-      timeoutSec: 30,
-    );
+    Map<String, dynamic> response;
+    try {
+      response = await AuthService.attemptEmergencyContactCall(
+        sessionId: sessionId,
+        contactIndex: contactIndex,
+        timeoutSec: 30,
+      );
+    } catch (e) {
+      if (await _handleUnauthorizedError(e)) {
+        return const EmergencyCallResult(
+          success: false,
+          answered: false,
+          message: "Session expired. Please re-login.",
+          finalStatus: "failed",
+        );
+      }
+      rethrow;
+    }
 
     final answered = response["answered"] == true;
     final message = response["message"]?.toString();
@@ -253,7 +277,18 @@ class _SOSDashboardState extends State<SOSDashboard>
       );
     }
 
-    final response = await AuthService.callEmergency119(sessionId: sessionId);
+    Map<String, dynamic> response;
+    try {
+      response = await AuthService.callEmergency119(sessionId: sessionId);
+    } catch (e) {
+      if (await _handleUnauthorizedError(e)) {
+        return const EmergencyActionResult(
+          success: false,
+          message: "Session expired. Please re-login.",
+        );
+      }
+      rethrow;
+    }
     final ok = response["ok"];
     final success = response["success"];
     final called = response["emergencyServicesCalled"];
@@ -267,6 +302,84 @@ class _SOSDashboardState extends State<SOSDashboard>
     }
 
     return const EmergencyActionResult(success: true);
+  }
+
+  Future<EmergencyActionResult> _onCancelEmergency() async {
+    final sessionId = _emergencySessionId;
+    if (sessionId == null || sessionId.isEmpty) {
+      return const EmergencyActionResult(
+        success: true,
+        message: "Emergency process stopped",
+      );
+    }
+
+    Map<String, dynamic> response;
+    try {
+      response = await AuthService.cancelEmergency(sessionId: sessionId);
+    } catch (e) {
+      if (await _handleUnauthorizedError(e)) {
+        return const EmergencyActionResult(
+          success: false,
+          message: "Session expired. Please re-login.",
+        );
+      }
+      return EmergencyActionResult(
+        success: false,
+        message:
+            "Emergency was stopped. We could not confirm contact notifications.",
+      );
+    }
+
+    final code = (response["code"] ?? "").toString().toUpperCase();
+    final cancelStats = response["cancellationMessaging"];
+    final cancelMessage = _friendlyCancelMessage(code, cancelStats);
+    final ok = response["ok"] != false && response["success"] != false;
+    return EmergencyActionResult(success: ok, message: cancelMessage);
+  }
+
+  String _friendlyCancelMessage(String code, dynamic cancelStats) {
+    if (code == "ALREADY_CANCELLED") {
+      return "This emergency was already cancelled.";
+    }
+
+    if (cancelStats is Map) {
+      final attempted =
+          int.tryParse(cancelStats["attempted"]?.toString() ?? "");
+      final sent = int.tryParse(cancelStats["sent"]?.toString() ?? "");
+      final failed = int.tryParse(cancelStats["failed"]?.toString() ?? "");
+
+      if (sent != null && sent > 0 && (failed ?? 0) == 0) {
+        return "Emergency cancelled. Your contacts were informed.";
+      }
+      if (sent != null && sent > 0 && (failed ?? 0) > 0) {
+        return "Emergency cancelled. Some contacts could not be informed.";
+      }
+      if (attempted != null && attempted > 0 && (sent ?? 0) == 0) {
+        return "Emergency cancelled. We could not notify your contacts.";
+      }
+    }
+
+    return "Emergency process cancelled.";
+  }
+
+  Future<bool> _handleUnauthorizedError(Object error) async {
+    final normalized = error.toString().toUpperCase();
+    final unauthorized =
+        normalized.contains("UNAUTHORIZED") ||
+        normalized.contains("HTTP 401") ||
+        normalized.contains("NO TOKEN PROVIDED") ||
+        normalized.contains("INVALID OR EXPIRED TOKEN");
+
+    if (!unauthorized) return false;
+    if (!mounted) return true;
+
+    await AuthService.logout();
+    if (!mounted) return true;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (_) => false,
+    );
+    return true;
   }
 
   @override

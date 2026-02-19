@@ -50,12 +50,14 @@ class EmergencyProcessScreen extends StatefulWidget {
   final Future<EmergencyActionResult> Function()? onMessageAllContacts;
   final Future<EmergencyCallResult> Function(int contactIndex)? onCallContact;
   final Future<EmergencyActionResult> Function()? onCall119;
+  final Future<EmergencyActionResult> Function()? onCancelEmergency;
 
   const EmergencyProcessScreen({
     super.key,
     this.onMessageAllContacts,
     this.onCallContact,
     this.onCall119,
+    this.onCancelEmergency,
   });
 
   @override
@@ -149,6 +151,7 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
 
   EmergencySummary _buildSummary({
     required EmergencyOutcome outcome,
+    String? cancellationStatus,
     int? failedStepIndex,
     String? failedStepTitle,
     String? failedStepReason,
@@ -165,6 +168,7 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
       contactsMessaged:
           hasMessageStep ? _states[msgIdx] == StepState.done : false,
       contactsMessageError: messageFailed ? _failureReasons[msgIdx] : null,
+      cancellationStatus: cancellationStatus,
       failedStepIndex: failedStepIndex,
       failedStepTitle: failedStepTitle,
       failedStepReason: failedStepReason,
@@ -419,8 +423,26 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
   Future<void> _stopProcess() async {
     _cancelCurrentFlow();
     _debugLog("Process stopped by user");
+
+    String? cancellationStatus;
+    if (widget.onCancelEmergency != null) {
+      try {
+        final result = await widget.onCancelEmergency!();
+        cancellationStatus = result.message;
+        if (!result.success) {
+          cancellationStatus =
+              result.message ??
+              "Emergency was stopped. We could not confirm contact notifications.";
+        }
+      } catch (e) {
+        cancellationStatus =
+            "Emergency was stopped. We could not confirm contact notifications.";
+      }
+    }
+
     await _goToResult(_buildSummary(
       outcome: EmergencyOutcome.cancelled,
+      cancellationStatus: cancellationStatus,
     ));
   }
 

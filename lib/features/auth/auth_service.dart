@@ -1,6 +1,19 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+
+class EmergencyStartAssessment {
+  final bool messagingSuccessful;
+  final String? message;
+  final String? code;
+
+  const EmergencyStartAssessment({
+    required this.messagingSuccessful,
+    this.message,
+    this.code,
+  });
+}
 
 class AuthService {
   static const String baseUrl = "http://10.0.2.2:5000";
@@ -224,6 +237,9 @@ class AuthService {
 
   static Future<Map<String, dynamic>> startEmergency() async {
     final token = await getToken();
+    if (token.isEmpty) {
+      throw Exception("Missing auth token. Please log in again.");
+    }
 
     final response = await http.post(
       Uri.parse("$baseUrl/emergency/start"),
@@ -231,11 +247,18 @@ class AuthService {
         "Content-Type": "application/json",
         "Authorization": "Bearer $token",
       },
-      body: jsonEncode({}),
+      body: jsonEncode({
+        "locationText": "Unknown location",
+        "message": "USafe emergency alert",
+        "unicode": false,
+      }),
     );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception("Failed to start emergency session");
+      throw Exception(_buildHttpError(
+        action: "start emergency session",
+        response: response,
+      ));
     }
 
     final body = jsonDecode(response.body);
@@ -245,12 +268,73 @@ class AuthService {
     return body;
   }
 
+  static EmergencyStartAssessment assessEmergencyStartResponse(
+    Map<String, dynamic> response,
+  ) {
+    final ok = response["ok"];
+    final success = response["success"];
+    final rawMessage = response["message"]?.toString();
+    final code = response["code"]?.toString().toUpperCase();
+
+    final messaging = response["messaging"];
+    int? attempted;
+    int? sent;
+    int? failed;
+    if (messaging is Map) {
+      attempted = int.tryParse(messaging["attempted"]?.toString() ?? "");
+      sent = int.tryParse(messaging["sent"]?.toString() ?? "");
+      failed = int.tryParse(messaging["failed"]?.toString() ?? "");
+    }
+
+    final explicitFailure = ok == false || success == false;
+    final isPartialByCode = code == "PARTIAL_SEND";
+    final isFailedByCode = code == "SEND_FAILED";
+    final isPartialByCounts =
+        attempted != null &&
+        attempted > 0 &&
+        sent != null &&
+        sent > 0 &&
+        failed != null &&
+        failed > 0;
+    final isFailedByCounts =
+        attempted != null &&
+        attempted > 0 &&
+        sent != null &&
+        sent == 0 &&
+        failed != null &&
+        failed >= attempted;
+
+    final messagingSuccessful =
+        !explicitFailure &&
+        !isFailedByCode &&
+        !isPartialByCode &&
+        !isFailedByCounts &&
+        !isPartialByCounts;
+
+    if (messagingSuccessful) {
+      return const EmergencyStartAssessment(messagingSuccessful: true);
+    }
+
+    final fallbackMessage = (isPartialByCode || isPartialByCounts)
+        ? "Some emergency SMS messages were not delivered"
+        : "Failed to message emergency contacts";
+
+    return EmergencyStartAssessment(
+      messagingSuccessful: false,
+      message: rawMessage ?? fallbackMessage,
+      code: code,
+    );
+  }
+
   static Future<Map<String, dynamic>> attemptEmergencyContactCall({
     required String sessionId,
     required int contactIndex,
     int timeoutSec = 30,
   }) async {
     final token = await getToken();
+    if (token.isEmpty) {
+      throw Exception("Missing auth token. Please log in again.");
+    }
 
     final response = await http.post(
       Uri.parse(
@@ -273,7 +357,10 @@ class AuthService {
     }
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception("Failed to attempt emergency call");
+      throw Exception(_buildHttpError(
+        action: "attempt emergency call",
+        response: response,
+      ));
     }
 
     final body = jsonDecode(response.body);
@@ -288,6 +375,9 @@ class AuthService {
     required String sessionId,
   }) async {
     final token = await getToken();
+    if (token.isEmpty) {
+      throw Exception("Missing auth token. Please log in again.");
+    }
 
     final response = await http.post(
       Uri.parse("$baseUrl/emergency/$sessionId/call-119"),
@@ -299,7 +389,10 @@ class AuthService {
     );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception("Failed to call emergency services");
+      throw Exception(_buildHttpError(
+        action: "call emergency services",
+        response: response,
+      ));
     }
 
     final body = jsonDecode(response.body);
@@ -307,5 +400,70 @@ class AuthService {
       return body;
     }
     return {"ok": true};
+  }
+
+  static Future<Map<String, dynamic>> cancelEmergency({
+    required String sessionId,
+  }) async {
+    final token = await getToken();
+    if (token.isEmpty) {
+      throw Exception("Missing auth token. Please log in again.");
+    }
+
+    final response = await http.post(
+      Uri.parse("$baseUrl/emergency/$sessionId/cancel"),
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $token",
+      },
+      body: jsonEncode({}),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(_buildHttpError(
+        action: "cancel emergency process",
+        response: response,
+      ));
+    }
+
+    final body = jsonDecode(response.body);
+    if (body is! Map<String, dynamic>) {
+      throw Exception("Invalid emergency cancel response");
+    }
+    return body;
+  }
+
+  static String _buildHttpError({
+    required String action,
+    required http.Response response,
+  }) {
+    String? serverMessage;
+    String? code;
+
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        serverMessage = decoded["message"]?.toString();
+        code = decoded["code"]?.toString();
+      }
+    } catch (_) {
+      // Keep fallback behavior when backend returns non-JSON payloads.
+    }
+
+    if (kDebugMode) {
+      debugPrint(
+        "[AuthService] $action failed status=${response.statusCode} body=${response.body}",
+      );
+    }
+
+    final base = "Failed to $action (HTTP ${response.statusCode})";
+    if (serverMessage != null && serverMessage.isNotEmpty) {
+      if (code != null && code.isNotEmpty) {
+        return "$base: $serverMessage [$code]";
+      }
+      return "$base: $serverMessage";
+    }
+
+    return base;
   }
 }

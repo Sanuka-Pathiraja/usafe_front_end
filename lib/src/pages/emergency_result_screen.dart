@@ -9,6 +9,7 @@ class EmergencySummary {
   final bool emergencyServicesCalled; // 119 called or attempted
   final bool contactsMessaged;
   final String? contactsMessageError;
+  final String? cancellationStatus;
   final int? failedStepIndex; // if failed
   final String? failedStepTitle;
   final String? failedStepReason;
@@ -19,6 +20,7 @@ class EmergencySummary {
     required this.emergencyServicesCalled,
     required this.contactsMessaged,
     this.contactsMessageError,
+    this.cancellationStatus,
     this.failedStepIndex,
     this.failedStepTitle,
     this.failedStepReason,
@@ -89,6 +91,10 @@ class EmergencyResultScreen extends StatelessWidget {
         }
         return "Emergency contacts were notified. 119 was not contacted.";
       case EmergencyOutcome.cancelled:
+        if (summary.cancellationStatus != null &&
+            summary.cancellationStatus!.isNotEmpty) {
+          return summary.cancellationStatus!;
+        }
         return "You stopped the emergency process before it finished.";
       case EmergencyOutcome.failed:
         if (summary.failedStepTitle != null) {
