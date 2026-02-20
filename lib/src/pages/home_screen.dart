@@ -41,6 +41,7 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             IndexedStack(index: _currentIndex, children: pages),
 
+            // Bottom Navigation Bar
             Positioned(
               bottom: 30,
               left: 20,
@@ -48,20 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: _buildBottomNavBar(),
             ),
 
-            if (_currentIndex == 2)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 30 + 70 + 8,
-                child: Center(
-                  child: FloatingActionButton(
-                    backgroundColor: AppColors.primarySky,
-                    onPressed: () =>
-                        _contactsKey.currentState?.addContactFromPhone(),
-                    child: const Icon(Icons.add, color: Colors.white),
-                  ),
-                ),
-              ),
+            // Note: The extra FloatingActionButton that was here has been removed.
           ],
         ),
       ),
@@ -74,6 +62,13 @@ class _HomeScreenState extends State<HomeScreen> {
       decoration: BoxDecoration(
         color: const Color(0xFF15171B),
         borderRadius: BorderRadius.circular(35),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
+        ],
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -116,7 +111,6 @@ class _SOSDashboardState extends State<SOSDashboard>
   bool isSOSActive = false;
   String? _emergencySessionId;
 
-  // Floating banner payload shown after emergency flow returns
   HomeEmergencyBannerPayload? _banner;
   Timer? _bannerTimer;
 
@@ -130,7 +124,6 @@ class _SOSDashboardState extends State<SOSDashboard>
     });
   }
 
-  // 3-minute countdown before auto alert.
   static const Duration _sosDuration = Duration(minutes: 3);
   Timer? _sosTimer;
   Duration _remaining = _sosDuration;
@@ -168,7 +161,6 @@ class _SOSDashboardState extends State<SOSDashboard>
     if (!mounted) return;
     _emergencySessionId = null;
 
-    // ALWAYS reset SOS UI when returning
     _resetSosCountdown();
     setState(() => isSOSActive = false);
 
@@ -364,8 +356,7 @@ class _SOSDashboardState extends State<SOSDashboard>
 
   Future<bool> _handleUnauthorizedError(Object error) async {
     final normalized = error.toString().toUpperCase();
-    final unauthorized =
-        normalized.contains("UNAUTHORIZED") ||
+    final unauthorized = normalized.contains("UNAUTHORIZED") ||
         normalized.contains("HTTP 401") ||
         normalized.contains("NO TOKEN PROVIDED") ||
         normalized.contains("INVALID OR EXPIRED TOKEN");
@@ -384,11 +375,9 @@ class _SOSDashboardState extends State<SOSDashboard>
 
   @override
   Widget build(BuildContext context) {
-    // Ripple behavior:
-    // - calm mode normally
-    // - intense red mode when SOS countdown is active OR emergency happened recently
-    final rippleMode =
-        (isSOSActive || _recentEmergencyActive) ? RippleMode.intense : RippleMode.calm;
+    final rippleMode = (isSOSActive || _recentEmergencyActive)
+        ? RippleMode.intense
+        : RippleMode.calm;
 
     return Container(
       color: bgDark,
@@ -409,8 +398,6 @@ class _SOSDashboardState extends State<SOSDashboard>
               const SizedBox(height: 100),
             ],
           ),
-
-          // ✅ Floating banner (auto hides after 2 min)
           if (_banner != null)
             Positioned(
               top: 12,
@@ -422,7 +409,8 @@ class _SOSDashboardState extends State<SOSDashboard>
                 decoration: BoxDecoration(
                   color: const Color(0xFF15171B),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.primarySky.withOpacity(0.35)),
+                  border:
+                      Border.all(color: AppColors.primarySky.withOpacity(0.35)),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(0.30),
@@ -450,8 +438,8 @@ class _SOSDashboardState extends State<SOSDashboard>
                           const SizedBox(height: 3),
                           Text(
                             _banner!.subtitle,
-                            style:
-                                TextStyle(color: Colors.grey[300], fontSize: 12),
+                            style: TextStyle(
+                                color: Colors.grey[300], fontSize: 12),
                           ),
                         ],
                       ),
@@ -515,7 +503,7 @@ class _SOSDashboardState extends State<SOSDashboard>
   Widget _buildHoldButton(RippleMode mode) {
     return SOSHoldInteraction(
       accentColor: accentBlue,
-      mode: mode, // ✅ calm or intense ripple
+      mode: mode,
       onComplete: () {
         setState(() {
           isSOSActive = true;
@@ -585,7 +573,8 @@ class _SOSDashboardState extends State<SOSDashboard>
         onPressed: onTap,
         style: ElevatedButton.styleFrom(
           backgroundColor: bg,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         ),
         child: Text(
           label,
@@ -658,10 +647,9 @@ class _SOSHoldInteractionState extends State<SOSHoldInteraction>
   late AnimationController _holdController;
   late AnimationController _rippleController;
 
-  Duration get _rippleDuration =>
-      widget.mode == RippleMode.intense
-          ? const Duration(milliseconds: 2000)   // faster
-          : const Duration(milliseconds: 2200); // slower
+  Duration get _rippleDuration => widget.mode == RippleMode.intense
+      ? const Duration(milliseconds: 2000)
+      : const Duration(milliseconds: 2200);
 
   @override
   void initState() {
@@ -706,9 +694,9 @@ class _SOSHoldInteractionState extends State<SOSHoldInteraction>
   @override
   Widget build(BuildContext context) {
     final bool intense = widget.mode == RippleMode.intense;
-    final Color rippleColor = intense ? const Color(0xFFFF3D00) : widget.accentColor;
+    final Color rippleColor =
+        intense ? const Color(0xFFFF3D00) : widget.accentColor;
 
-    // More rings + bigger scale in intense mode
     final int rings = intense ? 3 : 2;
     final double maxScale = intense ? 1.45 : 1.35;
     final double baseOpacity = intense ? 0.22 : 0.16;
@@ -720,19 +708,16 @@ class _SOSHoldInteractionState extends State<SOSHoldInteraction>
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Water ripple rings behind everything
           for (int i = 0; i < rings; i++)
             _RippleRing(
               controller: _rippleController,
               color: rippleColor,
               baseSize: 240,
-              phase: i / rings, // evenly stagger rings
+              phase: i / rings,
               maxScale: maxScale,
               baseOpacity: baseOpacity,
               intense: intense,
             ),
-
-          // Outer static ring
           Container(
             width: 240,
             height: 240,
@@ -744,8 +729,6 @@ class _SOSHoldInteractionState extends State<SOSHoldInteraction>
               ),
             ),
           ),
-
-          // Hold progress ring
           SizedBox(
             width: 240,
             height: 240,
@@ -764,8 +747,6 @@ class _SOSHoldInteractionState extends State<SOSHoldInteraction>
               },
             ),
           ),
-
-          // Center content
           Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -775,13 +756,12 @@ class _SOSHoldInteractionState extends State<SOSHoldInteraction>
                 size: intense ? 34 : 32,
               ),
               const SizedBox(height: 10),
-              Text(
+              const Text(
                 'Hold to Activate',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  letterSpacing: intense ? 0.4 : 0.0,
                 ),
               ),
               Text(
@@ -816,7 +796,7 @@ class _RippleRing extends StatelessWidget {
   final AnimationController controller;
   final Color color;
   final double baseSize;
-  final double phase; // 0..1
+  final double phase;
   final double maxScale;
   final double baseOpacity;
   final bool intense;
@@ -837,17 +817,9 @@ class _RippleRing extends StatelessWidget {
       animation: controller,
       builder: (context, _) {
         double t = (controller.value + phase) % 1.0;
-
-        // smooth curve
         final curved = Curves.easeOut.transform(t);
-
-        // scale: 1.0 -> maxScale
         final scale = 1.0 + ((maxScale - 1.0) * curved);
-
-        // opacity fades out as it expands
         final opacity = (1.0 - curved).clamp(0.0, 1.0);
-
-        // thickness: stronger for intense
         final strokeBase = intense ? 7.0 : 5.5;
         final stroke = strokeBase - (intense ? 4.0 : 3.0) * curved;
 

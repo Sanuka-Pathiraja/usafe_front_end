@@ -157,15 +157,17 @@ class AuthService {
     final token = await getToken();
 
     final response = await http.get(
-      Uri.parse('$baseUrl/contact'),
+      // Use the correct route here too
+      Uri.parse('$baseUrl/contact/contacts'),
       headers: {
         'Authorization': 'Bearer $token',
       },
     );
 
     if (response.statusCode == 200) {
-      final body = jsonDecode(response.body);
-      return List<Map<String, dynamic>>.from(body['contacts']);
+      final List<dynamic> body = jsonDecode(response.body);
+      // Directly cast the list since the backend doesn't wrap it in a Map
+      return List<Map<String, dynamic>>.from(body);
     } else {
       throw Exception("Failed to load contacts");
     }
@@ -181,7 +183,8 @@ class AuthService {
     final token = await getToken();
 
     final response = await http.post(
-      Uri.parse('$baseUrl/contact/add'),
+      // CHANGE THIS LINE: from /contact/add to /contact/contacts
+      Uri.parse('$baseUrl/contact/contacts'),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
@@ -193,8 +196,34 @@ class AuthService {
       }),
     );
 
-    if (response.statusCode != 201) {
-      throw Exception("Failed to add contact");
+    // ... rest of the method
+  }
+
+  /* ================= UPDATE CONTACT ================= */
+
+  static Future<void> updateContact({
+    required int contactId,
+    String? name,
+    String? phone,
+    String? relationship,
+  }) async {
+    final token = await getToken();
+    final response = await http.put(
+      Uri.parse('$baseUrl/contact/contacts/$contactId'), // Matches Backend
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        if (name != null) "name": name,
+        if (phone != null) "phone": phone,
+        if (relationship != null) "relationship": relationship,
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      final error = jsonDecode(response.body);
+      throw Exception(error['error'] ?? "Failed to update contact");
     }
   }
 
@@ -202,19 +231,16 @@ class AuthService {
 
   static Future<void> deleteContact(int contactId) async {
     final token = await getToken();
-
     final response = await http.delete(
-      Uri.parse('$baseUrl/contact/delete/$contactId'),
-      headers: {
-        'Authorization': 'Bearer $token',
-      },
+      Uri.parse('$baseUrl/contact/contacts/$contactId'), // Matches Backend
+      headers: {'Authorization': 'Bearer $token'},
     );
 
     if (response.statusCode != 200) {
-      throw Exception("Failed to delete contact");
+      final error = jsonDecode(response.body);
+      throw Exception(error['error'] ?? "Failed to delete contact");
     }
   }
-
   /* ================= TOKEN METHOD (already exists) ================= */
 
   static Future<String> getToken() async {
@@ -334,23 +360,20 @@ class AuthService {
     final explicitFailure = ok == false || success == false;
     final isPartialByCode = code == "PARTIAL_SEND";
     final isFailedByCode = code == "SEND_FAILED";
-    final isPartialByCounts =
-        attempted != null &&
+    final isPartialByCounts = attempted != null &&
         attempted > 0 &&
         sent != null &&
         sent > 0 &&
         failed != null &&
         failed > 0;
-    final isFailedByCounts =
-        attempted != null &&
+    final isFailedByCounts = attempted != null &&
         attempted > 0 &&
         sent != null &&
         sent == 0 &&
         failed != null &&
         failed >= attempted;
 
-    final messagingSuccessful =
-        !explicitFailure &&
+    final messagingSuccessful = !explicitFailure &&
         !isFailedByCode &&
         !isPartialByCode &&
         !isFailedByCounts &&
