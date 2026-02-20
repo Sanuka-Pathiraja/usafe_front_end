@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
 import 'package:usafe_front_end/src/pages/home_screen.dart';
+import 'package:usafe_front_end/core/services/api_service.dart';
 
 // --- 1. THEME GRADIENT ---
 BoxDecoration _buildBackgroundGradient() {
@@ -210,29 +211,50 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _handleLogin() async {
     setState(() => _isLoading = true);
-    // Validate credentials against the local mock store.
-    bool success = await MockDatabase.validateLogin(_emailController.text.trim(), _passwordController.text.trim());
+    
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+    
+    // Try backend login first
+    String? token;
+    try {
+      token = await ApiService.login(email, password);
+      // Backend login successful - save token
+      await MockDatabase.saveToken(token);
+      // Also save user locally for app functionality
+      await MockDatabase.validateLogin(email, password);
+    } catch (e) {
+      // Backend login failed - try local validation (for demo without backend)
+      print('Backend login failed, falling back to local: $e');
+      final localSuccess = await MockDatabase.validateLogin(email, password);
+      if (!localSuccess) {
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Invalid email or password."),
+            backgroundColor: AppColors.alertRed,
+            behavior: SnackBarBehavior.floating
+          ),
+        );
+        return;
+      }
+    }
     
     if (!mounted) return;
     setState(() => _isLoading = false);
 
-    if (success) {
-      final prefs = await SharedPreferences.getInstance();
-      final bool authorized = prefs.getBool('authorization_seen') ?? false;
-      if (!mounted) return;
-      if (!authorized) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const AuthorizationScreen()),
-        );
-      } else {
-        Navigator.pushReplacement(
-            context, MaterialPageRoute(builder: (_) => const HomeScreen()));
-      }
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Invalid email or password."), backgroundColor: AppColors.alertRed, behavior: SnackBarBehavior.floating),
+    final prefs = await SharedPreferences.getInstance();
+    final bool authorized = prefs.getBool('authorization_seen') ?? false;
+    if (!mounted) return;
+    if (!authorized) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const AuthorizationScreen()),
       );
+    } else {
+      Navigator.pushReplacement(
+          context, MaterialPageRoute(builder: (_) => const HomeScreen()));
     }
   }
 

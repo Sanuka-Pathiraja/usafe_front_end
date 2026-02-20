@@ -52,6 +52,24 @@ class MockDatabase {
     return false;
   }
 
+  // Store JWT token from backend
+  static Future<void> saveToken(String token) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('jwt_token', token);
+  }
+
+  // Retrieve JWT token
+  static Future<String?> getToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('jwt_token');
+  }
+
+  // Clear JWT token on logout
+  static Future<void> clearToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('jwt_token');
+  }
+
   static Future<void> updateUserProfile(
     String name,
     String email,
@@ -86,6 +104,7 @@ class MockDatabase {
   static Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('user_session');
+    await clearToken();
     currentUser = null;
   }
 }

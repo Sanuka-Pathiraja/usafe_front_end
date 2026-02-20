@@ -10,6 +10,7 @@ import 'package:usafe_front_end/src/services/live_safety_score_service.dart';
 import 'package:usafe_front_end/src/services/motion_analysis_service.dart';
 import 'package:usafe_front_end/src/services/guardian_logic.dart';
 import 'package:usafe_front_end/widgets/guardian_bottom_sheet.dart';
+import 'package:usafe_front_end/src/pages/report_incident_screen.dart';
 
 class SafetyMapScreen extends StatefulWidget {
   const SafetyMapScreen({Key? key}) : super(key: key);
@@ -953,7 +954,12 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                   heroTag: "report",
                   backgroundColor: const Color(0xFFE53935),
                   onPressed: () {
-                    // TODO: navigate to a report flow.
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const ReportIncidentScreen(),
+                      ),
+                    );
                   },
                   icon: const Icon(Icons.warning_amber_rounded, color: Colors.white),
                   label: const Text("Report Incident", style: TextStyle(color: Colors.white)),
