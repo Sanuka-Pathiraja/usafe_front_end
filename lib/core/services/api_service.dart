@@ -8,7 +8,7 @@ class ApiService {
 
   // Simulate backend login
   static Future<String> login(String email, String password) async {
-    final resp = await http.post(Uri.parse('$backendUrl/user/login'),
+    final resp = await http.post(Uri.parse('$backendUrl/login'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'email': email, 'password': password}));
 
@@ -74,6 +74,7 @@ class ApiService {
     if (token != null) {
       headers['Authorization'] = 'Bearer $token';
     }
+    print('[AUTH] Sending Authorization header: \\${headers['Authorization']}');
 
     final uri = Uri.parse('$backendUrl/api/guardian/routes');
     final resp = await http.post(
@@ -88,6 +89,7 @@ class ApiService {
     );
 
     if (resp.statusCode != 200 && resp.statusCode != 201) {
+      print('[AUTH] Route save failed. Status: \\${resp.statusCode}, Body: \\${resp.body}');
       throw Exception('Route save failed (${resp.statusCode})');
     }
 
@@ -124,6 +126,33 @@ class ApiService {
     }
   }
 
+  static Future<void> sendLocationUpdate({
+    required String routeId,
+    required double lat,
+    required double lng,
+  }) async {
+    final token = await MockDatabase.getToken();
+    final headers = {'Content-Type': 'application/json'};
+    if (token != null) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+
+    final uri = Uri.parse('$backendUrl/api/guardian/track');
+    final resp = await http.post(
+      uri,
+      headers: headers,
+      body: jsonEncode({
+        'route_id': routeId,
+        'lat': lat,
+        'lng': lng,
+      }),
+    );
+
+    if (resp.statusCode != 200 && resp.statusCode != 201) {
+      throw Exception('Location update failed (${resp.statusCode})');
+    }
+  }
+
   static Future<void> submitIncidentReport({
     required String incidentType,
     required String description,
@@ -137,7 +166,7 @@ class ApiService {
       headers['Authorization'] = 'Bearer $token';
     }
 
-    final uri = Uri.parse('$backendUrl/api/incident');
+    final uri = Uri.parse('$backendUrl/api/incidents/report');
     final resp = await http.post(
       uri,
       headers: headers,

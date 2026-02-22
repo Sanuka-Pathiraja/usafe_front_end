@@ -671,6 +671,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                 })
             .toList(),
         0,
+        routeId: _guardianRouteId,
       );
 
       ScaffoldMessenger.of(context).showSnackBar(

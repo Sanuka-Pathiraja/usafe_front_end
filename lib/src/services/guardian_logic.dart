@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io' show Platform;
 import 'package:geolocator/geolocator.dart';
+import 'package:usafe_front_end/core/services/api_service.dart';
 
 /// GuardianLogic handles real GPS tracking for Guardian Mode.
 /// 
@@ -16,6 +17,15 @@ class GuardianLogic {
 
   /// Mock location timer for emulator (works around DeadSystemException)
   Timer? _mockPositionTimer;
+  
+  /// Timer for sending periodic location updates to backend (every 60 seconds)
+  Timer? _locationUpdateTimer;
+  
+  /// Current route ID for tracking
+  String? _routeId;
+  
+  /// Last known position for backend updates
+  Position? _lastPosition;
 
   /// Callback fired when the user moves (distance to checkpoint updates)
   /// Parameter: distance in meters
@@ -56,16 +66,25 @@ class GuardianLogic {
   /// 2. Starts listening to GPS stream (or mock on emulator)
   /// 3. Continuously calculates distance to next checkpoint
   /// 4. Triggers callbacks on distance updates and checkpoint arrival
+  /// 5. Sends location updates to backend every 60 seconds
   /// 
   /// Parameters:
   /// - checkpoints: List of checkpoint maps with 'lat' and 'lng' keys
   /// - currentIndex: Starting checkpoint index (usually 0)
+  /// - routeId: Route ID for backend tracking (optional)
   Future<void> startTracking(
     List<Map<String, dynamic>> checkpoints,
-    int currentIndex,
-  ) async {
+    int currentIndex, {
+    String? routeId,
+  }) async {
     _currentCheckpointIndex = currentIndex;
+    _routeId = routeId;
     _useMockLocations = false;
+    
+    // Start periodic backend location updates (every 60 seconds)
+    if (_routeId != null) {
+      _startBackendLocationUpdates();
+    }
 
     // STEP 1: Check and request location permission
     LocationPermission permission = await Geolocator.checkPermission();
@@ -156,6 +175,9 @@ class GuardianLogic {
 
   /// Internal handler for each GPS position update
   void _handlePositionUpdate(Position position, List<Map<String, dynamic>> checkpoints) {
+    // Store latest position for backend updates
+    _lastPosition = position;
+    
     // Safety check: ensure we have checkpoints and valid index
     if (checkpoints.isEmpty || _currentCheckpointIndex >= checkpoints.length) {
       return;
@@ -221,6 +243,26 @@ class GuardianLogic {
     }
   }
 
+  /// Start sending location updates to backend every 60 seconds
+  void _startBackendLocationUpdates() {
+    _locationUpdateTimer?.cancel();
+    _locationUpdateTimer = Timer.periodic(Duration(seconds: 60), (_) async {
+      if (_routeId != null && _lastPosition != null) {
+        try {
+          await ApiService.sendLocationUpdate(
+            routeId: _routeId!,
+            lat: _lastPosition!.latitude,
+            lng: _lastPosition!.longitude,
+          );
+          print('Location update sent to backend: ${_lastPosition!.latitude}, ${_lastPosition!.longitude}');
+        } catch (e) {
+          print('Failed to send location update to backend: $e');
+          // Don't crash Guardian Mode if backend is unavailable
+        }
+      }
+    });
+  }
+
   /// Stops GPS tracking and cleans up resources
   /// IMPORTANT: Call this when monitoring ends to save battery
   void stopTracking() {
@@ -228,7 +270,11 @@ class GuardianLogic {
     _positionStream = null;
     _mockPositionTimer?.cancel();
     _mockPositionTimer = null;
+    _locationUpdateTimer?.cancel();
+    _locationUpdateTimer = null;
     _useMockLocations = false;
+    _routeId = null;
+    _lastPosition = null;
   }
 
   /// Cleanup on disposal

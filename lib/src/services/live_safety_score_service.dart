@@ -220,10 +220,10 @@ class LiveSafetyScoreService {
       radiusMeters: 1300,
       priority: 1,
       crowdFloor: 0.6,
-      baseBonusDay: 2.0,
+      baseBonusDay: 8.0, // Increased to ensure "Safe" during day
       baseBonusNight: 2.0,
-      crowdBonusBoost: 3.0,
-      timeRefundBoost: 0.05,
+      crowdBonusBoost: 8.0, // Increased for daytime safety
+      timeRefundBoost: 0.10, // Slightly increased
       nightIsolationPenalty: 0.0,
     ),
     _SriLankaAreaTuning(
