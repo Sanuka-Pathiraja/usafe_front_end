@@ -244,6 +244,225 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
     _dangerDialogSetState = null;
   }
 
+<<<<<<< HEAD
+=======
+  void _openGuardianSheet() {
+    setState(() {
+      _isGuardianSheetOpen = !_isGuardianSheetOpen;
+    });
+  }
+
+  void _closeGuardianSheet() {
+    if (!_isGuardianSheetOpen) return;
+    setState(() {
+      _isGuardianSheetOpen = false;
+    });
+  }
+
+  Future<void> _handleGuardianMapTap(LatLng position) async {
+    if (!_isGuardianSheetOpen) return;
+    await _addGuardianCheckpoint(position);
+  }
+
+  Future<void> _addGuardianCheckpoint(LatLng position) async {
+    final index = _guardianCheckpoints.length + 1;
+    try {
+      final score = await ApiService.fetchGuardianSafetyScore(
+        lat: position.latitude,
+        lng: position.longitude,
+      );
+      if (!mounted) return;
+      final checkpoint = GuardianCheckpoint(
+        name: 'Checkpoint $index',
+        lat: position.latitude,
+        lng: position.longitude,
+        safetyScore: score,
+      );
+      setState(() {
+        _guardianCheckpoints.add(checkpoint);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to fetch safety score: $e'),
+          backgroundColor: AppColors.alertRed,
+        ),
+      );
+    }
+  }
+
+  void _removeGuardianCheckpoint(GuardianCheckpoint checkpoint) {
+    setState(() {
+      _guardianCheckpoints.remove(checkpoint);
+    });
+  }
+
+  Future<void> _startGuardianMonitoring() async {
+    if (_guardianCheckpoints.length < 2) return;
+    
+    // Save route to backend first
+    try {
+      final routeId = await ApiService.saveGuardianRoute(
+        routeName: _guardianRouteController.text.isEmpty
+            ? 'Route ${DateTime.now().month}/${DateTime.now().day}'
+            : _guardianRouteController.text,
+        checkpoints: _guardianCheckpoints
+            .map((c) => {
+                  'name': c.name,
+                  'lat': c.lat,
+                  'lng': c.lng,
+                  'safety_score': c.safetyScore,
+                })
+            .toList(),
+      );
+      if (!mounted) return;
+      _guardianRouteId = routeId;
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to save route: $e'),
+          backgroundColor: AppColors.alertRed,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isGuardianMonitoringActive = true;
+      _isGuardianSheetOpen = false;
+      _guardianCurrentCheckpointIndex = 0;
+      _guardianDistance = 0.0;
+    });
+
+    // Initialize real GPS tracking
+    _guardianLogic = GuardianLogic(
+      onDistanceUpdate: (double distance) {
+        if (mounted) {
+          setState(() {
+            _guardianDistance = distance;
+          });
+        }
+      },
+      onCheckpointReached: (int checkpointIndex) {
+        if (!mounted) return;
+        
+        // Send alert to backend
+        final checkpoint = _guardianCheckpoints[checkpointIndex];
+        ApiService.sendGuardianAlert(
+          routeId: _guardianRouteId ?? 'unknown',
+          checkpointIndex: checkpointIndex,
+          lat: checkpoint.lat,
+          lng: checkpoint.lng,
+        ).catchError((e) {
+          print('Alert send failed: $e');
+        });
+
+        // Show notification for reached checkpoint
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '✅ ${checkpoint.name} Reached!',
+            ),
+            backgroundColor: AppColors.successGreen,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+
+        setState(() {
+          _guardianCurrentCheckpointIndex++;
+        });
+
+        // Check if all checkpoints reached (arrived at destination)
+        if (_guardianCurrentCheckpointIndex >= _guardianCheckpoints.length) {
+          _guardianLogic?.stopTracking();
+          setState(() {
+            _isGuardianMonitoringActive = false;
+          });
+          _showArrivalDialog();
+        }
+      },
+    );
+
+    // Start real GPS tracking
+    try {
+      _guardianLogic!.startTracking(
+        _guardianCheckpoints
+            .asMap()
+            .entries
+            .map((e) => {
+                  'lat': e.value.lat,
+                  'lng': e.value.lng,
+                  'name': e.value.name,
+                })
+            .toList(),
+        0,
+        routeId: _guardianRouteId,
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('🚀 Real GPS Tracking Started - Guardian Mode Active'),
+          backgroundColor: AppColors.successGreen,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      // Handle permission denied or other errors
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('⚠️ Error: $e'),
+            backgroundColor: AppColors.alertRed,
+          ),
+        );
+        setState(() {
+          _isGuardianMonitoringActive = false;
+        });
+      }
+    }
+  }
+
+  void _stopGuardianMonitoring() {
+    _guardianLogic?.stopTracking();
+    setState(() {
+      _isGuardianMonitoringActive = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('⏹️ Monitoring Stopped'),
+        backgroundColor: Colors.orange,
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  /// Shows arrival dialog when child reaches final destination
+  void _showArrivalDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surfaceCard,
+        title: const Text(
+          '🎉 Safe Arrival',
+          style: TextStyle(color: AppColors.successGreen, fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          'Your child has safely reached the destination. All checkpoints completed!',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Got It', style: TextStyle(color: AppColors.successGreen)),
+          ),
+        ],
+      ),
+    );
+  }
+
+>>>>>>> 5a5962c (Fix: Allow checkpoint selection when Guardian setup panel is open)
   void _showStatusSnack(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
