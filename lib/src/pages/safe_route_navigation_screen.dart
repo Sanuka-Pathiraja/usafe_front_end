@@ -28,6 +28,22 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     super.dispose();
   }
 
+  // _______________ MY LOCATION FUNCTION __________
+  Future<void> _goToMyLocation() async {
+    try {
+      _mapController.animateCamera(
+        CameraUpdate.newCameraPosition(
+          const CameraPosition(
+            target: LatLng(37.7749, -122.4194), // TEMP — replace with GPS later
+            zoom: 16,
+          ),
+        ),
+      );
+    } catch (e) {
+      print("Error moving to location: $e");
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -39,7 +55,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       ),
       body: Stack(
         children: [
-          // ______________ GOOGLE MAP __________
+          //_______________ GOOGLE MAP ____________
           GoogleMap(
             initialCameraPosition: _initialPosition,
             onMapCreated: (controller) {
@@ -49,14 +65,13 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
             zoomControlsEnabled: false,
           ),
 
-          //  ________ SEARCH PANEL (Google Maps Style) ________
+          //____________SEARCH PANEL_____________
           Positioned(
             top: 20,
             left: 20,
             right: 20,
             child: Column(
               children: [
-                // White card containing FROM / TO fields
                 Container(
                   decoration: BoxDecoration(
                     color: Colors.white,
@@ -71,7 +86,6 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                   ),
                   child: Column(
                     children: [
-                      //_______ SOURCE FIELD _____
                       TextField(
                         controller: _sourceController,
                         decoration: const InputDecoration(
@@ -83,11 +97,8 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                               horizontal: 16, vertical: 14),
                         ),
                       ),
-
                       const Divider(
                           height: 1, thickness: 1, color: Colors.black12),
-
-                      // ___ DESTINATION FIELD ____
                       TextField(
                         controller: _destinationController,
                         decoration: const InputDecoration(
@@ -102,10 +113,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                     ],
                   ),
                 ),
-
                 const SizedBox(height: 10),
-
-                // ____ FIND ROUTE BUTTON  __
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
@@ -123,9 +131,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                     },
                     child: const Text(
                       "Find Route",
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),
@@ -133,13 +139,11 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
             ),
           ),
 
-          //__________ DRAGGABLE BOTTOM PANEL ______________
-          
+          // __________DRAGGABLE SLIDING PANEL____________ 
           DraggableScrollableSheet(
             initialChildSize: 0.12,
             minChildSize: 0.12,
             maxChildSize: 0.45,
-
             builder: (context, scrollController) {
               return Container(
                 decoration: const BoxDecoration(
@@ -148,14 +152,10 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                     top: Radius.circular(22),
                   ),
                 ),
-
                 child: ListView(
                   controller: scrollController,
                   padding: const EdgeInsets.all(16),
                   children: [
-
-                    // Drag handle
-
                     Center(
                       child: Container(
                         width: 40,
@@ -167,7 +167,6 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                         ),
                       ),
                     ),
-
                     const Text(
                       "Route Details",
                       style: TextStyle(
@@ -176,10 +175,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                         color: Colors.white,
                       ),
                     ),
-
-
                     const SizedBox(height: 14),
-
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
@@ -207,9 +203,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                         ],
                       ),
                     ),
-
                     const SizedBox(height: 20),
-
                     ElevatedButton(
                       onPressed: () {},
                       style: ElevatedButton.styleFrom(
@@ -228,6 +222,19 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                 ),
               );
             },
+          ),
+
+          // _____ MY LOCATION BUTTON ___
+          Positioned(
+            bottom: 120,
+            right: 20,
+            child: FloatingActionButton(
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.blueAccent,
+              heroTag: "my_location_button",
+              onPressed: _goToMyLocation,
+              child: const Icon(Icons.my_location, size: 28),
+            ),
           ),
         ],
       ),
