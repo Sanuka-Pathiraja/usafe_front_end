@@ -139,7 +139,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
             ),
           ),
 
-          // __________DRAGGABLE SLIDING PANEL____________ 
+          // __________DRAGGABLE SLIDING PANEL____________
           DraggableScrollableSheet(
             initialChildSize: 0.12,
             minChildSize: 0.12,
@@ -234,6 +234,20 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
               heroTag: "my_location_button",
               onPressed: _goToMyLocation,
               child: const Icon(Icons.my_location, size: 28),
+            ),
+          ),
+          //_____SOS BUTTON_____
+          Positioned(
+            bottom: 20,
+            right: 20,
+            child: FloatingActionButton(
+              backgroundColor: Colors.redAccent,
+              foregroundColor: Colors.white,
+              heroTag: "sos_button",
+              onPressed: () {
+                print("SOS Button Pressed");
+              },
+              child: const Icon(Icons.warning, size: 28),
             ),
           ),
         ],
