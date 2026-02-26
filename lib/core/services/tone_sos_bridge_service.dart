@@ -1,37 +1,45 @@
 import 'dart:async';
-import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:record/record.dart';
 import 'package:audio_session/audio_session.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:http/http.dart' as http;
+import 'api_service.dart';
 
-class AudioAnalysisService {
-  static final AudioAnalysisService _instance = AudioAnalysisService._internal();
-  factory AudioAnalysisService() => _instance;
-  AudioAnalysisService._internal();
+class ToneSOSBridgeService {
+  static final ToneSOSBridgeService _instance =
+      ToneSOSBridgeService._internal();
+  factory ToneSOSBridgeService() => _instance;
+  ToneSOSBridgeService._internal();
 
   Interpreter? _interpreter;
   AudioRecorder? _audioRecorder;
-  StreamSubscription<Uint8List>? _audioSubscription;
-
-  static const int sampleRate = 16000;
-  static const int requiredSamples = 15600;
-
-  final List<double> _audioBuffer = [];
+  StreamSubscription? _audioSubscription;
   bool _isRecording = false;
+  List<double> _audioBuffer = [];
   List<String> _labels = [];
-
-  Function(String event, double confidence)? onDistressDetected;
 
   Future<void> initialize() async {
     try {
-      _interpreter = await Interpreter.fromAsset('assets/models/yamnet.tflite');
-      final csvData =
-          await rootBundle.loadString('assets/models/yamnet_class_map.csv');
-      _parseLabels(csvData);
+      final status = await Permission.microphone.request();
+      if (!status.isGranted) {
+        return;
+      }
+      try {
+        _interpreter = await Interpreter.fromAsset('assets/models/yamnet.tflite');
+        final csvData = await rootBundle.loadString('assets/models/yamnet_class_map.csv');
+        _parseLabels(csvData);
+        print('✅ YAMNet model loaded successfully!');
+      } catch (e) {
+        print('⚠️ Failed to load YAMNet model: $e');
+        print('Audio ML features will be disabled.');
+        _interpreter = null;
+      }
     } catch (e) {
-      // Keep silent to avoid crashing; feature will stay inactive.
+      print('⚠️ Error during audio service initialization: $e');
     }
   }
 
@@ -54,35 +62,29 @@ class AudioAnalysisService {
 
   Future<void> startListening() async {
     if (_isRecording) return;
-    if (!isReady) {
-      _lastError = 'Audio model not ready.';
-      return false;
+    try {
+      final session = await AudioSession.instance;
+      await session.configure(AudioSessionConfiguration.speech());
+
+      _audioRecorder = AudioRecorder();
+      if (!await _audioRecorder!.hasPermission()) {
+        return;
+      }
+
+      final stream = await _audioRecorder!.startStream(
+        const RecordConfig(
+          encoder: AudioEncoder.pcm16bits,
+          sampleRate: 16000,
+          numChannels: 1,
+        ),
+      );
+
+      _isRecording = true;
+      _audioBuffer.clear();
+      _audioSubscription = stream.listen(_processAudioData);
+    } catch (e) {
+      // Fail gracefully, do not crash app
     }
-
-    final session = await AudioSession.instance;
-    await session.configure(AudioSessionConfiguration.speech());
-
-    _audioRecorder = AudioRecorder();
-    if (!await _audioRecorder!.hasPermission()) {
-      _lastError = 'Microphone permission denied.';
-      await _audioRecorder?.dispose();
-      _audioRecorder = null;
-      return false;
-    }
-
-    final stream = await _audioRecorder!.startStream(
-      const RecordConfig(
-        encoder: AudioEncoder.pcm16bits,
-        sampleRate: sampleRate,
-        numChannels: 1,
-      ),
-    );
-
-    _isRecording = true;
-    _audioBuffer.clear();
-    _audioSubscription = stream.listen(_processAudioData);
-    _lastError = null;
-    return true;
   }
 
   void _processAudioData(Uint8List data) {
@@ -91,9 +93,9 @@ class AudioAnalysisService {
       _audioBuffer.add(sample / 32768.0);
     }
 
-    if (_audioBuffer.length >= requiredSamples) {
-      final inputChunk = _audioBuffer.sublist(0, requiredSamples);
-      _audioBuffer.removeRange(0, requiredSamples);
+    if (_audioBuffer.length >= 15600) {
+      final inputChunk = _audioBuffer.sublist(0, 15600);
+      _audioBuffer.removeRange(0, 15600);
       _runInference(inputChunk);
     }
   }
@@ -109,7 +111,7 @@ class AudioAnalysisService {
     _analyzeResults(scores);
   }
 
-  void _analyzeResults(List<double> scores) {
+  void _analyzeResults(List<double> scores) async {
     if (_labels.isEmpty) return;
 
     final Map<String, double> results = {};
@@ -138,13 +140,23 @@ class AudioAnalysisService {
     }
 
     if (detectedEvent != null) {
-      onDistressDetected?.call(detectedEvent!, maxConfidence);
+      await _triggerSOSBackend(detectedEvent!, maxConfidence);
+    }
+  }
+
+  Future<void> _triggerSOSBackend(String event, double confidence) async {
+    try {
+      // Use Supabase for JWT
+      final jwt = Supabase.instance.client.auth.currentSession?.accessToken;
+      if (jwt == null) return;
+      await ApiService.sendDistressSignal(event, confidence, jwt);
+    } catch (e) {
+      // Fail gracefully, do not crash app
     }
   }
 
   Future<void> stopListening() async {
     _isRecording = false;
-    _audioBuffer.clear();
     await _audioSubscription?.cancel();
     await _audioRecorder?.stop();
     await _audioRecorder?.dispose();

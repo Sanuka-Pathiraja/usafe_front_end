@@ -34,4 +34,21 @@ class ApiService {
       throw Exception("PaymentIntent creation failed");
     }
   }
+<<<<<<< HEAD
+=======
+
+  // Send Distress Signal (SOS)
+  static Future<void> sendDistressSignal(
+      String event, double confidence, String jwt) async {
+    final resp = await http.post(
+      Uri.parse('$backendUrl/sos'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $jwt',
+      },
+      body: jsonEncode({'event': event, 'confidence': confidence}),
+    );
+    // Optionally handle response, show UI, etc.
+  }
+>>>>>>> master
 }

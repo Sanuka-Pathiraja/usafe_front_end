@@ -35,4 +35,8 @@ android {
 
 flutter {
     source "../.."
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> master

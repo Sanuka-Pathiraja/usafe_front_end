@@ -24,7 +24,10 @@ class ContactsScreenState extends State<ContactsScreen> {
   @override
   void initState() {
     super.initState();
+<<<<<<< HEAD
     // Load persisted contacts on startup.
+=======
+>>>>>>> master
     _loadContacts();
   }
 
@@ -39,7 +42,10 @@ class ContactsScreenState extends State<ContactsScreen> {
   }
 
   Future<void> _addContactFromPhone() async {
+<<<<<<< HEAD
     // Enforce limits and request phonebook permission.
+=======
+>>>>>>> master
     if (_contacts.length >= _maxContacts) {
       _showSnack('You can add up to $_maxContacts contacts only.');
       return;
@@ -54,7 +60,10 @@ class ContactsScreenState extends State<ContactsScreen> {
     final Contact? picked = await FlutterContacts.openExternalPick();
     if (picked == null) return;
 
+<<<<<<< HEAD
     // Fetch full details and let the user pick a number + relation.
+=======
+>>>>>>> master
     final Contact? fullContact =
         await FlutterContacts.getContact(picked.id, withProperties: true);
     if (fullContact == null || fullContact.phones.isEmpty) {
@@ -84,12 +93,15 @@ class ContactsScreenState extends State<ContactsScreen> {
   }
 
   Future<void> openAddContact() async {
-    // Public entry point used by the Home FAB.
+  // Public entry point used by the Home FAB.
     await _addContactFromPhone();
   }
 
   Future<String?> _pickPhoneNumber(List<Phone> phones) async {
+<<<<<<< HEAD
     // If multiple numbers exist, show a sheet to choose one.
+=======
+>>>>>>> master
     if (phones.length == 1) {
       return phones.first.number;
     }
@@ -120,7 +132,10 @@ class ContactsScreenState extends State<ContactsScreen> {
   }
 
   Future<String?> _promptRelation() async {
+<<<<<<< HEAD
     // Ask the user how this contact is related.
+=======
+>>>>>>> master
     final controller = TextEditingController();
 
     final result = await showDialog<String>(
@@ -168,7 +183,10 @@ class ContactsScreenState extends State<ContactsScreen> {
   }
 
   Future<void> _removeContact(int index) async {
+<<<<<<< HEAD
     // Persist removals immediately.
+=======
+>>>>>>> master
     setState(() {
       _contacts.removeAt(index);
     });

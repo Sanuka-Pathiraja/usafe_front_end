@@ -21,7 +21,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Main tab pages rendered via the bottom navigation.
+  // Main tab pages rendered via the bottom navigation.
     final pages = [
       const SOSDashboard(),
       const SafetyScoreScreen(safetyScore: 85, showBottomNav: false),
@@ -193,7 +193,7 @@ class _SOSDashboardState extends State<SOSDashboard>
         setState(() {
           isSOSActive = true;
         });
-        // Start the visible countdown once SOS is activated.
+  // Start the visible countdown once SOS is activated.
         _startSosCountdown();
       },
     );

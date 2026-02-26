@@ -15,7 +15,11 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   late GoogleMapController _mapController;
   String _darkMapStyle = '';
 
+<<<<<<< HEAD
   // Animation for pulsing danger zones.
+=======
+  // Animation for pulsing Red Zones
+>>>>>>> master
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
 
@@ -23,11 +27,14 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   bool _isDangerCountdownActive = false;
   Timer? _dangerTimer;
   int _dangerSeconds = 10;
+<<<<<<< HEAD
   bool _audioReady = false;
   bool _isDangerDialogOpen = false;
   StateSetter? _dangerDialogSetState;
   String _micStatusText = 'Safety Mode Off';
   Color _micStatusColor = Colors.white70;
+=======
+>>>>>>> master
   final AudioAnalysisService _audioService = AudioAnalysisService();
 
   // Initial Camera Position (San Francisco placeholder)
@@ -39,10 +46,16 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   @override
   void initState() {
     super.initState();
+<<<<<<< HEAD
     // Prepare the dark map styling.
     _loadMapStyle();
     
     // Setup pulse animation for the high-risk circle.
+=======
+    _loadMapStyle();
+    
+    // Setup Pulse Animation for Danger Zones
+>>>>>>> master
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
@@ -56,6 +69,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   }
 
   Future<void> _initAudioService() async {
+<<<<<<< HEAD
     final ok = await _audioService.initialize();
     if (!mounted) return;
     setState(() {
@@ -68,10 +82,16 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
     _audioService.onDistressDetected = (event, confidence) {
       if (!mounted) return;
       if (!_isSafetyModeActive) return;
+=======
+    await _audioService.initialize();
+    _audioService.onDistressDetected = (event, confidence) {
+      if (!mounted) return;
+>>>>>>> master
       _startDangerCountdown(reason: event);
     };
   }
 
+<<<<<<< HEAD
   Future<void> _toggleSafetyMode() async {
     if (_isSafetyModeActive) {
       setState(() {
@@ -115,12 +135,39 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
 
   void _startDangerCountdown({required String reason}) {
     if (_isDangerCountdownActive || !_isSafetyModeActive) return;
+=======
+  void _toggleSafetyMode() {
+    setState(() {
+      _isSafetyModeActive = !_isSafetyModeActive;
+    });
+
+    if (_isSafetyModeActive) {
+      _audioService.startListening();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content:
+              Text('Safety Mode Activated: Listening for distress signals...'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    } else {
+      _audioService.stopListening();
+      _cancelDangerCountdown();
+    }
+  }
+
+  void _startDangerCountdown({required String reason}) {
+    if (_isDangerCountdownActive) return;
+>>>>>>> master
 
     setState(() {
       _isDangerCountdownActive = true;
       _dangerSeconds = 10;
+<<<<<<< HEAD
       _micStatusText = 'Potential distress: $_dangerSeconds s';
       _micStatusColor = Colors.orangeAccent;
+=======
+>>>>>>> master
     });
 
     _dangerTimer?.cancel();
@@ -131,30 +178,43 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
         setState(() {
           _isDangerCountdownActive = false;
           _dangerSeconds = 10;
+<<<<<<< HEAD
           if (_isSafetyModeActive) {
             _micStatusText = 'Listening for distress signals';
             _micStatusColor = Colors.redAccent;
           }
         });
         _closeDangerDialog();
+=======
+        });
+>>>>>>> master
         _triggerAlarm(reason: reason);
         return;
       }
       setState(() {
         _dangerSeconds -= 1;
+<<<<<<< HEAD
         _micStatusText = 'Potential distress: $_dangerSeconds s';
       });
       _dangerDialogSetState?.call(() {});
     });
 
     _isDangerDialogOpen = true;
+=======
+      });
+    });
+
+>>>>>>> master
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+<<<<<<< HEAD
             _dangerDialogSetState = setDialogState;
+=======
+>>>>>>> master
             return AlertDialog(
               backgroundColor: const Color(0xFF1E1E1E),
               title: const Text(
@@ -162,12 +222,20 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                 style: TextStyle(color: Colors.white),
               ),
               content: Text(
+<<<<<<< HEAD
                 'Detected: $reason\n\nSOS will trigger in $_dangerSeconds seconds.\nAre you safe?',
+=======
+                'SOS will trigger in $_dangerSeconds seconds.\nAre you safe?',
+>>>>>>> master
                 style: const TextStyle(color: Colors.white70),
               ),
               actions: [
                 TextButton(
                   onPressed: () {
+<<<<<<< HEAD
+=======
+                    Navigator.pop(context);
+>>>>>>> master
                     _cancelDangerCountdown();
                   },
                   child: const Text("I'M SAFE",
@@ -178,10 +246,14 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
           },
         );
       },
+<<<<<<< HEAD
     ).then((_) {
       _isDangerDialogOpen = false;
       _dangerDialogSetState = null;
     });
+=======
+    );
+>>>>>>> master
   }
 
   void _cancelDangerCountdown() {
@@ -190,6 +262,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
     setState(() {
       _isDangerCountdownActive = false;
       _dangerSeconds = 10;
+<<<<<<< HEAD
       if (_isSafetyModeActive) {
         _micStatusText = 'Listening for distress signals';
         _micStatusColor = Colors.redAccent;
@@ -206,6 +279,12 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
       _micStatusText = 'Distress detected';
       _micStatusColor = Colors.redAccent;
     });
+=======
+    });
+  }
+
+  void _triggerAlarm({required String reason}) {
+>>>>>>> master
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -237,6 +316,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
     );
   }
 
+<<<<<<< HEAD
   void _closeDangerDialog() {
     if (!_isDangerDialogOpen || !mounted) return;
     Navigator.of(context, rootNavigator: true).pop();
@@ -470,6 +550,8 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
     );
   }
 
+=======
+>>>>>>> master
   // Load custom JSON for Dark Mode map
   Future<void> _loadMapStyle() async {
     // You can paste a full JSON style here or load from assets/map_style.json
@@ -522,7 +604,10 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   }
 
   Set<Circle> _buildCircles(double pulseRadius) {
+<<<<<<< HEAD
     // Static + animated overlays representing risk zones.
+=======
+>>>>>>> master
     return {
       // 🔴 HIGH RISK (Pulsing Animation)
       Circle(
@@ -624,12 +709,15 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
             ),
           ),
 
+<<<<<<< HEAD
           Positioned(
             top: 120,
             left: 20,
             child: _buildMicStatusPill(),
           ),
 
+=======
+>>>>>>> master
           // --- Bottom Floating Action Buttons ---
           Positioned(
             bottom: 30,
@@ -640,7 +728,11 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                   heroTag: "recenter",
                   backgroundColor: const Color(0xFF1E1E1E),
                   onPressed: () {
+<<<<<<< HEAD
                     // TODO: implement re-center to current location.
+=======
+                    // Logic to re-center on user
+>>>>>>> master
                   },
                   child: const Icon(Icons.my_location, color: Colors.white),
                 ),
@@ -661,7 +753,11 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                   heroTag: "report",
                   backgroundColor: const Color(0xFFE53935),
                   onPressed: () {
+<<<<<<< HEAD
                     // TODO: navigate to a report flow.
+=======
+                    // Navigate to Report Screen
+>>>>>>> master
                   },
                   icon: const Icon(Icons.warning_amber_rounded, color: Colors.white),
                   label: const Text("Report Incident", style: TextStyle(color: Colors.white)),
@@ -687,6 +783,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
       ],
     );
   }
+<<<<<<< HEAD
 
   Widget _buildMicStatusPill() {
     return Container(
@@ -712,4 +809,6 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
       ),
     );
   }
+=======
+>>>>>>> master
 }

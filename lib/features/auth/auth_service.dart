@@ -69,12 +69,19 @@ class MockDatabase {
     }
   }
 
+<<<<<<< HEAD
   static Future<void> registerUser(String name, String email, String phone, String password) async {
+=======
+  static Future<void> registerUser(String name, String email, String password) async {
+>>>>>>> master
     await Future.delayed(const Duration(milliseconds: 800));
     final newUser = {
       'name': name,
       'email': email,
+<<<<<<< HEAD
       'phone': phone,
+=======
+>>>>>>> master
       'password': password,
       'blood': 'Unknown',
       'age': '--',

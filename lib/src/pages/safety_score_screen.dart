@@ -47,7 +47,7 @@ class SafetyScoreScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Primary score card.
+            // Main Score Card
             Container(
               width: double.infinity,
               height: 360,
@@ -95,7 +95,7 @@ class SafetyScoreScreen extends StatelessWidget {
                   const SizedBox(height: 30),
                   ElevatedButton(
                     onPressed: () {
-                      // Drill down into the map detail screen.
+                      // Navigate to the Map Screen
                       Navigator.push(
                         context,
                         MaterialPageRoute(
