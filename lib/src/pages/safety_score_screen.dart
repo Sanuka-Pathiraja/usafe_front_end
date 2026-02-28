@@ -1,16 +1,75 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
+import 'package:usafe_front_end/core/services/api_service.dart';
 import 'safety_map_screen.dart';
 
-class SafetyScoreScreen extends StatelessWidget {
-  final int safetyScore;
+class SafetyScoreScreen extends StatefulWidget {
   final bool showBottomNav;
 
   const SafetyScoreScreen({
     super.key,
-    this.safetyScore = 85,
     this.showBottomNav = true,
   });
+
+  @override
+  State<SafetyScoreScreen> createState() => _SafetyScoreScreenState();
+}
+
+class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
+  bool _isLoading = true;
+  int _safetyScore = 0;
+  String _status = 'Standard';
+  List<String> _tips = [];
+  String _errorMessage = '';
+  Timer? _refreshTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchLiveScore();
+    // Auto-refresh every 2 minutes as requested
+    _refreshTimer = Timer.periodic(const Duration(minutes: 2), (timer) {
+      _fetchLiveScore();
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _fetchLiveScore() async {
+    try {
+      final data = await ApiService.getLiveSafetyScore("mock-testing-token");
+      if (mounted) {
+        setState(() {
+          _safetyScore = data['score'];
+          _status = data['status'] ?? 'Caution';
+          _tips = List<String>.from(data['tips'] ?? []);
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = "Unable to fetch live score. Please check your connection.";
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Color get _scoreColor {
+    if (_safetyScore >= 80) return const Color(0xFF10B981); // Emerald Green
+    if (_safetyScore >= 50) return const Color(0xFFF59E0B); // Amber/Yellow
+    return const Color(0xFFEF4444); // Red
+  }
+
+  String get _scoreStatusText {
+    return _status;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,159 +89,160 @@ class SafetyScoreScreen extends StatelessWidget {
         centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.more_vert_rounded, color: AppColors.textPrimary),
-            onPressed: () {},
+            icon: const Icon(Icons.refresh_rounded, color: AppColors.textPrimary),
+            onPressed: () {
+              setState(() => _isLoading = true);
+              _fetchLiveScore();
+            },
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Main Score Card
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(32),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [AppColors.primary, AppColors.primaryDark],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(32),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primary.withOpacity(0.3),
-                    spreadRadius: 2,
-                    blurRadius: 20,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.shield_rounded, color: Colors.white, size: 48),
-                  ),
-                  const SizedBox(height: 24),
-                  RichText(
-                    text: TextSpan(
-                      children: [
-                        TextSpan(
-                          text: '$safetyScore',
-                          style: const TextStyle(
-                            fontSize: 72,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                            letterSpacing: -2,
+      body: _isLoading 
+          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+          : _errorMessage.isNotEmpty
+              ? Center(child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Text(_errorMessage, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.alert, fontSize: 16)),
+                ))
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Main Score Card
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(32),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [AppColors.primary, AppColors.primaryDark],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
                           ),
+                          borderRadius: BorderRadius.circular(32),
+                          boxShadow: [
+                            BoxShadow(
+                              color: _scoreColor.withOpacity(0.5),
+                              spreadRadius: 4,
+                              blurRadius: 24,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
                         ),
-                        TextSpan(
-                          text: '/100',
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white.withOpacity(0.7),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'You are in a safe area',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 56, // Accessible touch target
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const SafetyMapScreen(),
-                          ),
-                        );
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: AppColors.primaryDark,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(20),
+                              decoration: BoxDecoration(
+                                color: _scoreColor.withOpacity(0.2),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(Icons.shield_rounded, color: _scoreColor, size: 48),
+                            ),
+                            const SizedBox(height: 24),
+                            RichText(
+                              text: TextSpan(
+                                children: [
+                                  TextSpan(
+                                    text: '$_safetyScore',
+                                    style: TextStyle(
+                                      fontSize: 72,
+                                      fontWeight: FontWeight.w900,
+                                      color: _scoreColor,
+                                      letterSpacing: -2,
+                                    ),
+                                  ),
+                                  TextSpan(
+                                    text: '/100',
+                                    style: TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white.withOpacity(0.7),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _scoreStatusText,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 32),
+                            SizedBox(
+                              width: double.infinity,
+                              height: 56, // Accessible touch target
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => const SafetyMapScreen(),
+                                    ),
+                                  );
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.white,
+                                  foregroundColor: AppColors.primaryDark,
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                ),
+                                icon: const Text(
+                                  'View Map Details',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                                label: const Icon(Icons.arrow_forward_rounded, size: 20),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      icon: const Text(
-                        'View Map Details',
+                      const SizedBox(height: 48),
+                      const Text(
+                        'ACTIONABLE TIPS',
                         style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 0.5,
+                          color: AppColors.textSecondary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.5,
                         ),
                       ),
-                      label: const Icon(Icons.arrow_forward_rounded, size: 20),
-                    ),
+                      const SizedBox(height: 16),
+                      if (_tips.isEmpty)
+                        const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(16.0),
+                            child: Text('You are doing great! No immediate action needed.', style: TextStyle(color: AppColors.textDisabled, fontSize: 16)),
+                          ),
+                        )
+                      else  
+                        ..._tips.map((tip) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12.0),
+                          child: _buildTipCard(tip),
+                        )),
+                      const SizedBox(height: 120), // Bottom padding for floating nav
+                    ],
                   ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 48),
-            const Text(
-              'OTHER AREA CONDITIONS',
-              style: TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.5,
-              ),
-            ),
-            const SizedBox(height: 16),
-            _buildStateCard(
-              score: '62/100',
-              status: 'Proceed with Caution',
-              icon: Icons.warning_amber_rounded,
-              iconColor: const Color(0xFFF59E0B), // Amber-500
-              bgColor: AppColors.surface,
-            ),
-            const SizedBox(height: 16),
-            _buildStateCard(
-              score: '28/100',
-              status: 'High Risk Area',
-              icon: Icons.cancel_outlined,
-              iconColor: AppColors.alert,
-              bgColor: AppColors.surface,
-            ),
-            const SizedBox(height: 120), // Bottom padding for floating nav
-          ],
-        ),
-      ),
+                ),
     );
   }
 
-  Widget _buildStateCard({
-    required String score,
-    required String status,
-    required IconData icon,
-    required Color iconColor,
-    required Color bgColor,
-  }) {
+  Widget _buildTipCard(String tip) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
       decoration: BoxDecoration(
-        color: bgColor,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: AppColors.border, width: 1.5),
       ),
@@ -191,37 +251,22 @@ class SafetyScoreScreen extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.1),
+              color: AppColors.primary.withOpacity(0.1),
               borderRadius: BorderRadius.circular(16),
             ),
-            child: Icon(icon, color: iconColor, size: 28),
+            child: const Icon(Icons.lightbulb_outline_rounded, color: AppColors.primary, size: 28),
           ),
           const SizedBox(width: 20),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  score,
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 20,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  status,
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
+            child: Text(
+              tip,
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
-          const Icon(Icons.chevron_right_rounded, color: AppColors.textDisabled, size: 28),
         ],
       ),
     );

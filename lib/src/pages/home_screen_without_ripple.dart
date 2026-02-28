@@ -49,7 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final pages = [
       SOSDashboard(onBanner: _showBanner),
-      const SafetyScoreScreen(safetyScore: 85, showBottomNav: false),
+      const SafetyScoreScreen(showBottomNav: false),
       ContactsScreen(key: _contactsKey),
       const ProfileScreen(),
     ];

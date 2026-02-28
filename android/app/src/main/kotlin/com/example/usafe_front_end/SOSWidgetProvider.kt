@@ -7,7 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import android.widget.RemoteViews
-
+import com.example.usafe_fresh.R
 class SOSWidgetProvider : AppWidgetProvider() {
 
     private val TAG = "SOSWidgetProvider"
