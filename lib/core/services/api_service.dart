@@ -34,9 +34,6 @@ class ApiService {
       throw Exception("PaymentIntent creation failed");
     }
   }
-<<<<<<< HEAD
-=======
-
   // Send Distress Signal (SOS)
   static Future<void> sendDistressSignal(
       String event, double confidence, String jwt) async {
@@ -50,5 +47,4 @@ class ApiService {
     );
     // Optionally handle response, show UI, etc.
   }
->>>>>>> master
 }

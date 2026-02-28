@@ -46,6 +46,7 @@ flutter:
 
   # Ensure these files exist in your 'assets' folder!
   assets:
+    - .env
     - assets/usafe_logo.png
     - assets/google.jpg
     - assets/models/yamnet.tflite

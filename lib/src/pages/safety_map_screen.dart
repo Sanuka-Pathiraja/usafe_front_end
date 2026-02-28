@@ -15,276 +15,64 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   late GoogleMapController _mapController;
   String _darkMapStyle = '';
 
-<<<<<<< HEAD
-  // Animation for pulsing danger zones.
-=======
-  // Animation for pulsing Red Zones
->>>>>>> master
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
-
+  
+  final AudioAnalysisService _audioService = AudioAnalysisService();
   bool _isSafetyModeActive = false;
-  bool _isDangerCountdownActive = false;
+  
   Timer? _dangerTimer;
-  int _dangerSeconds = 10;
-<<<<<<< HEAD
-  bool _audioReady = false;
   bool _isDangerDialogOpen = false;
   StateSetter? _dangerDialogSetState;
-  String _micStatusText = 'Safety Mode Off';
-  Color _micStatusColor = Colors.white70;
-=======
->>>>>>> master
-  final AudioAnalysisService _audioService = AudioAnalysisService();
 
-  // Initial Camera Position (San Francisco placeholder)
-  static final CameraPosition _kInitialPosition = const CameraPosition(
+  static const CameraPosition _kInitialPosition = CameraPosition(
     target: LatLng(37.7749, -122.4194),
-    zoom: 14.0,
+    zoom: 14.4746,
   );
+
+  Color _micStatusColor = Colors.grey;
+  String _micStatusText = "Mic Off";
 
   @override
   void initState() {
     super.initState();
-<<<<<<< HEAD
-    // Prepare the dark map styling.
     _loadMapStyle();
     
-    // Setup pulse animation for the high-risk circle.
-=======
-    _loadMapStyle();
-    
-    // Setup Pulse Animation for Danger Zones
->>>>>>> master
     _pulseController = AnimationController(
-      vsync: this,
       duration: const Duration(seconds: 2),
+      vsync: this,
     )..repeat(reverse: true);
-
-    _pulseAnimation = Tween<double>(begin: 100, end: 300).animate(
+    
+    _pulseAnimation = Tween<double>(begin: 300, end: 500).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
-    _initAudioService();
-  }
-
-  Future<void> _initAudioService() async {
-<<<<<<< HEAD
-    final ok = await _audioService.initialize();
-    if (!mounted) return;
-    setState(() {
-      _audioReady = ok;
-      if (!ok) {
-        _micStatusText = _audioService.lastError ?? 'Audio model unavailable.';
-        _micStatusColor = Colors.orangeAccent;
+    _audioService.initialize();
+    _audioService.onDistressDetected = (event, confidence) {
+      if (_isSafetyModeActive) {
+        _showDangerDialog(event);
       }
-    });
-    _audioService.onDistressDetected = (event, confidence) {
-      if (!mounted) return;
-      if (!_isSafetyModeActive) return;
-=======
-    await _audioService.initialize();
-    _audioService.onDistressDetected = (event, confidence) {
-      if (!mounted) return;
->>>>>>> master
-      _startDangerCountdown(reason: event);
     };
   }
 
-<<<<<<< HEAD
-  Future<void> _toggleSafetyMode() async {
-    if (_isSafetyModeActive) {
-      setState(() {
-        _isSafetyModeActive = false;
-        _micStatusText = 'Safety Mode Off';
-        _micStatusColor = Colors.white70;
-      });
-      await _audioService.stopListening();
-      _cancelDangerCountdown();
-      return;
-    }
-
-    if (!_audioReady) {
-      _showStatusSnack('Audio model is not ready.');
-      setState(() {
-        _micStatusText = _audioService.lastError ?? 'Audio model unavailable.';
-        _micStatusColor = Colors.orangeAccent;
-      });
-      return;
-    }
-
-    final started = await _audioService.startListening();
-    if (!started) {
-      final message = _audioService.lastError ?? 'Microphone permission required.';
-      _showStatusSnack(message);
-      setState(() {
-        _micStatusText = message;
-        _micStatusColor = Colors.orangeAccent;
-      });
-      return;
-    }
-
-    setState(() {
-      _isSafetyModeActive = true;
-      _micStatusText = 'Listening for distress signals';
-      _micStatusColor = Colors.redAccent;
-    });
-
-    _showStatusSnack('Safety Mode Activated: Listening for distress signals...');
-  }
-
-  void _startDangerCountdown({required String reason}) {
-    if (_isDangerCountdownActive || !_isSafetyModeActive) return;
-=======
   void _toggleSafetyMode() {
     setState(() {
       _isSafetyModeActive = !_isSafetyModeActive;
-    });
-
-    if (_isSafetyModeActive) {
-      _audioService.startListening();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content:
-              Text('Safety Mode Activated: Listening for distress signals...'),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
-    } else {
-      _audioService.stopListening();
-      _cancelDangerCountdown();
-    }
-  }
-
-  void _startDangerCountdown({required String reason}) {
-    if (_isDangerCountdownActive) return;
->>>>>>> master
-
-    setState(() {
-      _isDangerCountdownActive = true;
-      _dangerSeconds = 10;
-<<<<<<< HEAD
-      _micStatusText = 'Potential distress: $_dangerSeconds s';
-      _micStatusColor = Colors.orangeAccent;
-=======
->>>>>>> master
-    });
-
-    _dangerTimer?.cancel();
-    _dangerTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) return;
-      if (_dangerSeconds <= 1) {
-        timer.cancel();
-        setState(() {
-          _isDangerCountdownActive = false;
-          _dangerSeconds = 10;
-<<<<<<< HEAD
-          if (_isSafetyModeActive) {
-            _micStatusText = 'Listening for distress signals';
-            _micStatusColor = Colors.redAccent;
-          }
-        });
-        _closeDangerDialog();
-=======
-        });
->>>>>>> master
-        _triggerAlarm(reason: reason);
-        return;
-      }
-      setState(() {
-        _dangerSeconds -= 1;
-<<<<<<< HEAD
-        _micStatusText = 'Potential distress: $_dangerSeconds s';
-      });
-      _dangerDialogSetState?.call(() {});
-    });
-
-    _isDangerDialogOpen = true;
-=======
-      });
-    });
-
->>>>>>> master
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-<<<<<<< HEAD
-            _dangerDialogSetState = setDialogState;
-=======
->>>>>>> master
-            return AlertDialog(
-              backgroundColor: const Color(0xFF1E1E1E),
-              title: const Text(
-                'Suspicious Noise Detected',
-                style: TextStyle(color: Colors.white),
-              ),
-              content: Text(
-<<<<<<< HEAD
-                'Detected: $reason\n\nSOS will trigger in $_dangerSeconds seconds.\nAre you safe?',
-=======
-                'SOS will trigger in $_dangerSeconds seconds.\nAre you safe?',
->>>>>>> master
-                style: const TextStyle(color: Colors.white70),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-<<<<<<< HEAD
-=======
-                    Navigator.pop(context);
->>>>>>> master
-                    _cancelDangerCountdown();
-                  },
-                  child: const Text("I'M SAFE",
-                      style: TextStyle(color: Colors.white)),
-                ),
-              ],
-            );
-          },
-        );
-      },
-<<<<<<< HEAD
-    ).then((_) {
-      _isDangerDialogOpen = false;
-      _dangerDialogSetState = null;
-    });
-=======
-    );
->>>>>>> master
-  }
-
-  void _cancelDangerCountdown() {
-    _dangerTimer?.cancel();
-    if (!mounted) return;
-    setState(() {
-      _isDangerCountdownActive = false;
-      _dangerSeconds = 10;
-<<<<<<< HEAD
       if (_isSafetyModeActive) {
-        _micStatusText = 'Listening for distress signals';
+        _audioService.startListening();
         _micStatusColor = Colors.redAccent;
+        _micStatusText = "Listening...";
       } else {
-        _micStatusText = 'Safety Mode Off';
-        _micStatusColor = Colors.white70;
+        _audioService.stopListening();
+        _micStatusColor = Colors.grey;
+        _micStatusText = "Mic Off";
       }
     });
-    _closeDangerDialog();
   }
 
-  void _triggerAlarm({required String reason}) {
-    setState(() {
-      _micStatusText = 'Distress detected';
-      _micStatusColor = Colors.redAccent;
-    });
-=======
-    });
-  }
-
-  void _triggerAlarm({required String reason}) {
->>>>>>> master
+  void _showDangerDialog(String reason) {
+    if (_isDangerDialogOpen) return;
+    _isDangerDialogOpen = true;
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -299,6 +87,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
         actions: [
           TextButton(
             onPressed: () {
+              _isDangerDialogOpen = false;
               Navigator.pop(context);
             },
             child: const Text('CANCEL ALARM',
@@ -307,6 +96,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.white),
             onPressed: () {
+              _isDangerDialogOpen = false;
               Navigator.pop(context);
             },
             child: const Text('CALL SOS', style: TextStyle(color: Colors.red)),
@@ -316,7 +106,6 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
     );
   }
 
-<<<<<<< HEAD
   void _closeDangerDialog() {
     if (!_isDangerDialogOpen || !mounted) return;
     Navigator.of(context, rootNavigator: true).pop();
@@ -324,234 +113,12 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
     _dangerDialogSetState = null;
   }
 
-<<<<<<< HEAD
-=======
-  void _openGuardianSheet() {
-    setState(() {
-      _isGuardianSheetOpen = !_isGuardianSheetOpen;
-    });
-  }
-
-  void _closeGuardianSheet() {
-    if (!_isGuardianSheetOpen) return;
-    setState(() {
-      _isGuardianSheetOpen = false;
-    });
-  }
-
-  Future<void> _handleGuardianMapTap(LatLng position) async {
-    if (!_isGuardianSheetOpen) return;
-    await _addGuardianCheckpoint(position);
-  }
-
-  Future<void> _addGuardianCheckpoint(LatLng position) async {
-    final index = _guardianCheckpoints.length + 1;
-    try {
-      final score = await ApiService.fetchGuardianSafetyScore(
-        lat: position.latitude,
-        lng: position.longitude,
-      );
-      if (!mounted) return;
-      final checkpoint = GuardianCheckpoint(
-        name: 'Checkpoint $index',
-        lat: position.latitude,
-        lng: position.longitude,
-        safetyScore: score,
-      );
-      setState(() {
-        _guardianCheckpoints.add(checkpoint);
-      });
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to fetch safety score: $e'),
-          backgroundColor: AppColors.alertRed,
-        ),
-      );
-    }
-  }
-
-  void _removeGuardianCheckpoint(GuardianCheckpoint checkpoint) {
-    setState(() {
-      _guardianCheckpoints.remove(checkpoint);
-    });
-  }
-
-  Future<void> _startGuardianMonitoring() async {
-    if (_guardianCheckpoints.length < 2) return;
-    
-    // Save route to backend first
-    try {
-      final routeId = await ApiService.saveGuardianRoute(
-        routeName: _guardianRouteController.text.isEmpty
-            ? 'Route ${DateTime.now().month}/${DateTime.now().day}'
-            : _guardianRouteController.text,
-        checkpoints: _guardianCheckpoints
-            .map((c) => {
-                  'name': c.name,
-                  'lat': c.lat,
-                  'lng': c.lng,
-                  'safety_score': c.safetyScore,
-                })
-            .toList(),
-      );
-      if (!mounted) return;
-      _guardianRouteId = routeId;
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to save route: $e'),
-          backgroundColor: AppColors.alertRed,
-        ),
-      );
-      return;
-    }
-
-    setState(() {
-      _isGuardianMonitoringActive = true;
-      _isGuardianSheetOpen = false;
-      _guardianCurrentCheckpointIndex = 0;
-      _guardianDistance = 0.0;
-    });
-
-    // Initialize real GPS tracking
-    _guardianLogic = GuardianLogic(
-      onDistanceUpdate: (double distance) {
-        if (mounted) {
-          setState(() {
-            _guardianDistance = distance;
-          });
-        }
-      },
-      onCheckpointReached: (int checkpointIndex) {
-        if (!mounted) return;
-        
-        // Send alert to backend
-        final checkpoint = _guardianCheckpoints[checkpointIndex];
-        ApiService.sendGuardianAlert(
-          routeId: _guardianRouteId ?? 'unknown',
-          checkpointIndex: checkpointIndex,
-          lat: checkpoint.lat,
-          lng: checkpoint.lng,
-        ).catchError((e) {
-          print('Alert send failed: $e');
-        });
-
-        // Show notification for reached checkpoint
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '✅ ${checkpoint.name} Reached!',
-            ),
-            backgroundColor: AppColors.successGreen,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-
-        setState(() {
-          _guardianCurrentCheckpointIndex++;
-        });
-
-        // Check if all checkpoints reached (arrived at destination)
-        if (_guardianCurrentCheckpointIndex >= _guardianCheckpoints.length) {
-          _guardianLogic?.stopTracking();
-          setState(() {
-            _isGuardianMonitoringActive = false;
-          });
-          _showArrivalDialog();
-        }
-      },
-    );
-
-    // Start real GPS tracking
-    try {
-      _guardianLogic!.startTracking(
-        _guardianCheckpoints
-            .asMap()
-            .entries
-            .map((e) => {
-                  'lat': e.value.lat,
-                  'lng': e.value.lng,
-                  'name': e.value.name,
-                })
-            .toList(),
-        0,
-        routeId: _guardianRouteId,
-      );
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('🚀 Real GPS Tracking Started - Guardian Mode Active'),
-          backgroundColor: AppColors.successGreen,
-          duration: Duration(seconds: 2),
-        ),
-      );
-    } catch (e) {
-      // Handle permission denied or other errors
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('⚠️ Error: $e'),
-            backgroundColor: AppColors.alertRed,
-          ),
-        );
-        setState(() {
-          _isGuardianMonitoringActive = false;
-        });
-      }
-    }
-  }
-
-  void _stopGuardianMonitoring() {
-    _guardianLogic?.stopTracking();
-    setState(() {
-      _isGuardianMonitoringActive = false;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('⏹️ Monitoring Stopped'),
-        backgroundColor: Colors.orange,
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
-
-  /// Shows arrival dialog when child reaches final destination
-  void _showArrivalDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surfaceCard,
-        title: const Text(
-          '🎉 Safe Arrival',
-          style: TextStyle(color: AppColors.successGreen, fontWeight: FontWeight.bold),
-        ),
-        content: const Text(
-          'Your child has safely reached the destination. All checkpoints completed!',
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Got It', style: TextStyle(color: AppColors.successGreen)),
-          ),
-        ],
-      ),
-    );
-  }
-
->>>>>>> 5a5962c (Fix: Allow checkpoint selection when Guardian setup panel is open)
   void _showStatusSnack(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
     );
   }
-
-=======
->>>>>>> master
   // Load custom JSON for Dark Mode map
   Future<void> _loadMapStyle() async {
     // You can paste a full JSON style here or load from assets/map_style.json
@@ -604,10 +171,6 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   }
 
   Set<Circle> _buildCircles(double pulseRadius) {
-<<<<<<< HEAD
-    // Static + animated overlays representing risk zones.
-=======
->>>>>>> master
     return {
       // 🔴 HIGH RISK (Pulsing Animation)
       Circle(
@@ -709,15 +272,11 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
             ),
           ),
 
-<<<<<<< HEAD
           Positioned(
             top: 120,
             left: 20,
             child: _buildMicStatusPill(),
           ),
-
-=======
->>>>>>> master
           // --- Bottom Floating Action Buttons ---
           Positioned(
             bottom: 30,
@@ -728,11 +287,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                   heroTag: "recenter",
                   backgroundColor: const Color(0xFF1E1E1E),
                   onPressed: () {
-<<<<<<< HEAD
-                    // TODO: implement re-center to current location.
-=======
                     // Logic to re-center on user
->>>>>>> master
                   },
                   child: const Icon(Icons.my_location, color: Colors.white),
                 ),
@@ -753,11 +308,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                   heroTag: "report",
                   backgroundColor: const Color(0xFFE53935),
                   onPressed: () {
-<<<<<<< HEAD
-                    // TODO: navigate to a report flow.
-=======
                     // Navigate to Report Screen
->>>>>>> master
                   },
                   icon: const Icon(Icons.warning_amber_rounded, color: Colors.white),
                   label: const Text("Report Incident", style: TextStyle(color: Colors.white)),
@@ -783,7 +334,6 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
       ],
     );
   }
-<<<<<<< HEAD
 
   Widget _buildMicStatusPill() {
     return Container(
@@ -809,6 +359,4 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
       ),
     );
   }
-=======
->>>>>>> master
 }

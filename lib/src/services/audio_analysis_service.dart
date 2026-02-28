@@ -21,6 +21,10 @@ class AudioAnalysisService {
   final List<double> _audioBuffer = [];
   bool _isRecording = false;
   List<String> _labels = [];
+  String? _lastError;
+
+  bool get isReady => _interpreter != null;
+  String? get lastError => _lastError;
 
   Function(String event, double confidence)? onDistressDetected;
 
@@ -52,8 +56,8 @@ class AudioAnalysisService {
     }
   }
 
-  Future<void> startListening() async {
-    if (_isRecording) return;
+  Future<bool> startListening() async {
+    if (_isRecording) return true;
     if (!isReady) {
       _lastError = 'Audio model not ready.';
       return false;

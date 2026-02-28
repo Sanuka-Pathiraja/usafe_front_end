@@ -40,10 +40,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _toggleEdit() async {
-<<<<<<< HEAD
-    // Save edits to the mock profile store when leaving edit mode.
-=======
->>>>>>> master
     if (_isEditing) {
       await MockDatabase.updateUserProfile(
         _nameController.text,
@@ -53,7 +49,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _weightController.text,
       );
       if (!mounted) return;
-          // Save edits to the mock profile store when leaving edit mode.
+      // Save edits to the mock profile store when leaving edit mode.
+    }
+    setState(() {
       _isEditing = !_isEditing;
     });
   }
@@ -128,11 +126,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MedicalIDScreen()))
               ),
               
-<<<<<<< HEAD
-              // Quick link to emergency contacts management.
-=======
-              // NEW: Trusted Contacts Button
->>>>>>> master
               _buildMenuTile(
                 icon: Icons.contacts_outlined, 
                 title: "Trusted Contacts", 

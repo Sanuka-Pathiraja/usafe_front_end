@@ -1,22 +1,10 @@
 import 'package:flutter/material.dart';
-<<<<<<< HEAD
 import 'app.dart';
 import 'features/auth/auth_service.dart';
-
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await MockDatabase.loadUserSession();
-  runApp(const USafeApp());
-=======
-
-import 'app.dart';
-import 'features/auth/auth_service.dart';
-
 import 'core/services/tone_sos_bridge_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/services/diagnostics_service.dart';
-
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -38,5 +26,4 @@ Future<void> main() async {
   print('After ToneSOSBridgeService.startListening');
   runApp(const USafeApp());
   print('After runApp');
->>>>>>> master
 }
