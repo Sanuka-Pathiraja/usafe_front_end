@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 class SOSHoldButton extends StatefulWidget {
   final VoidCallback onSOSTriggered;
+
   const SOSHoldButton({super.key, required this.onSOSTriggered});
 
   @override
@@ -17,7 +18,7 @@ class _SOSHoldButtonState extends State<SOSHoldButton>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 2), // 2 seconds hold
+      duration: const Duration(seconds: 3),
     );
 
     _controller.addStatusListener((status) {
@@ -34,53 +35,85 @@ class _SOSHoldButtonState extends State<SOSHoldButton>
     super.dispose();
   }
 
+  void _startHolding() {
+    _controller.forward();
+  }
+
+  void _stopHolding() {
+    if (_controller.isAnimating) {
+      _controller.reverse();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    const Color sosRed = Color(0xFFE53935);
+    final Color sosRed = const Color(0xFFE53935);
 
     return GestureDetector(
-      onTapDown: (_) => _controller.forward(),
-      onTapUp: (_) => _controller.reverse(),
-      onTapCancel: () => _controller.reverse(),
+      onTapDown: (_) => _startHolding(),
+      onTapUp: (_) => _stopHolding(),
+      onTapCancel: _stopHolding,
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Outer Glow
           Container(
-            width: 180,
-            height: 180,
+            width: 200,
+            height: 200,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: sosRed.withOpacity(0.05),
+              color: sosRed.withOpacity(0.1),
+              boxShadow: [
+                BoxShadow(
+                  color: sosRed.withOpacity(0.2),
+                  blurRadius: 30,
+                  spreadRadius: 10,
+                )
+              ],
             ),
           ),
-          // Progress Ring
           SizedBox(
-            width: 170,
-            height: 170,
+            width: 190,
+            height: 190,
             child: AnimatedBuilder(
               animation: _controller,
               builder: (context, child) {
                 return CircularProgressIndicator(
                   value: _controller.value,
-                  strokeWidth: 6,
+                  strokeWidth: 8,
                   backgroundColor: sosRed.withOpacity(0.2),
-                  valueColor: const AlwaysStoppedAnimation<Color>(sosRed),
+                  valueColor: AlwaysStoppedAnimation<Color>(sosRed),
                 );
               },
             ),
           ),
-          // Inner Button
-          CircleAvatar(
-            radius: 70,
-            backgroundColor: sosRed,
-            child: const Column(
+          Container(
+            width: 160,
+            height: 160,
+            decoration: BoxDecoration(
+              color: sosRed,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.4),
+                  blurRadius: 15,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.touch_app, color: Colors.white, size: 40),
-                Text('HOLD SOS',
-                    style: TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.bold)),
+              children: const [
+                Icon(Icons.touch_app, color: Colors.white, size: 48),
+                SizedBox(height: 8),
+                Text(
+                  'HOLD SOS',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 20,
+                    letterSpacing: 1.2,
+                  ),
+                ),
               ],
             ),
           ),

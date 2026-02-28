@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
 
@@ -12,172 +11,174 @@ class ContactsScreen extends StatefulWidget {
 }
 
 class ContactsScreenState extends State<ContactsScreen> {
+  // Min/max constraints for trusted contacts.
   static const int _minContacts = 3;
   static const int _maxContacts = 5;
-  List<Map<String, dynamic>> _contacts = [];
+  static const double _footerHeight = 70;
+  static const double _footerBottom = 30;
+  static const double _fabSize = 56;
+
+  final List<Map<String, String>> _contacts = [];
   bool _loading = true;
 
   @override
   void initState() {
     super.initState();
+    // Load persisted contacts on startup.
     _loadContacts();
   }
 
   Future<void> _loadContacts() async {
-    try {
-      final data = await AuthService.getContacts();
-      if (mounted) {
-        setState(() {
-          _contacts = data;
-          _loading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        _showSnack("Error: ${e.toString()}");
-        setState(() => _loading = false);
-      }
-    }
+    await MockDatabase.loadTrustedContacts();
+    setState(() {
+      _contacts
+        ..clear()
+        ..addAll(MockDatabase.trustedContacts);
+      _loading = false;
+    });
   }
 
-  /* ================= ADD LOGIC ================= */
-  Future<void> addContactFromPhone() async {
+  Future<void> _addContactFromPhone() async {
+    // Enforce limits and request phonebook permission.
     if (_contacts.length >= _maxContacts) {
-      _showSnack("Max $_maxContacts contacts allowed");
+      _showSnack('You can add up to $_maxContacts contacts only.');
       return;
     }
 
-    if (!await Permission.contacts.request().isGranted) {
-      _showPermissionDialog();
+    final bool granted = await FlutterContacts.requestPermission();
+    if (!granted) {
+      _showSnack('Contacts permission is required to add a contact.');
       return;
     }
 
-    final picked = await FlutterContacts.openExternalPick();
+    final Contact? picked = await FlutterContacts.openExternalPick();
     if (picked == null) return;
-    final fullContact =
-        await FlutterContacts.getContact(picked.id, withProperties: true);
 
+    // Fetch full details and let the user pick a number + relation.
+    final Contact? fullContact =
+        await FlutterContacts.getContact(picked.id, withProperties: true);
     if (fullContact == null || fullContact.phones.isEmpty) {
-      _showSnack("No phone number found");
+      _showSnack('This contact does not have a phone number.');
       return;
     }
 
-    final phone = await _pickPhoneNumber(fullContact.phones);
-    final relationship = await _promptRelation();
-    if (phone == null || relationship == null) return;
+    final String? phone = await _pickPhoneNumber(fullContact.phones);
+    if (phone == null) return;
 
-    try {
-      await AuthService.addContact(
-        name: fullContact.displayName.isNotEmpty
-            ? fullContact.displayName
-            : "Unknown",
-        phone: phone.replaceAll(RegExp(r'[^\d+]'), ''),
-        relationship: relationship,
-      );
-      _showSnack("Contact saved!");
-      _loadContacts();
-    } catch (e) {
-      _showSnack("Save failed: $e");
-    }
+    final String? relation = await _promptRelation();
+    if (relation == null) return;
+
+    final String name = fullContact.displayName.trim().isNotEmpty
+        ? fullContact.displayName
+        : 'Unknown';
+
+    setState(() {
+      _contacts.add({
+        'name': name,
+        'relation': relation,
+        'phone': phone,
+      });
+    });
+
+    await MockDatabase.saveTrustedContacts(_contacts);
   }
 
-  /* ================= EDIT LOGIC ================= */
-  Future<void> _editContact(Map<String, dynamic> contact) async {
-    final newRelation = await _promptRelation();
-    if (newRelation == null) return;
-
-    try {
-      setState(() => _loading = true);
-      await AuthService.updateContact(
-        contactId: contact["contactId"],
-        relationship: newRelation,
-      );
-      _showSnack("Updated successfully");
-      _loadContacts();
-    } catch (e) {
-      _showSnack("Update failed");
-      setState(() => _loading = false);
-    }
-  }
-
-  /* ================= DELETE LOGIC ================= */
-  Future<void> _deleteContact(int contactId) async {
-    try {
-      await AuthService.deleteContact(contactId);
-      _loadContacts();
-    } catch (e) {
-      _showSnack("Delete failed");
-    }
-  }
-
-  /* ================= UI HELPERS ================= */
-
-  void _showSnack(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  Future<void> openAddContact() async {
+  // Public entry point used by the Home FAB.
+    await _addContactFromPhone();
   }
 
   Future<String?> _pickPhoneNumber(List<Phone> phones) async {
-    if (phones.length == 1) return phones.first.number;
+    // If multiple numbers exist, show a sheet to choose one.
+    if (phones.length == 1) {
+      return phones.first.number;
+    }
+
     return showModalBottomSheet<String>(
       context: context,
       backgroundColor: const Color(0xFF1B2026),
-      builder: (context) => ListView(
-        shrinkWrap: true,
-        children: phones
-            .map((p) => ListTile(
-                  title: Text(p.number,
-                      style: const TextStyle(color: Colors.white)),
-                  onTap: () => Navigator.pop(context, p.number),
-                ))
-            .toList(),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
+      builder: (context) {
+        return SafeArea(
+          child: ListView.separated(
+            shrinkWrap: true,
+            itemCount: phones.length,
+            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemBuilder: (context, index) {
+              final phone = phones[index].number;
+              return ListTile(
+                title: Text(phone, style: const TextStyle(color: Colors.white)),
+                onTap: () => Navigator.pop(context, phone),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 
   Future<String?> _promptRelation() async {
-    final relations = [
-      "Mother",
-      "Father",
-      "Partner",
-      "Sibling",
-      "Friend",
-      "Other"
-    ];
-    return showDialog<String>(
+    // Ask the user how this contact is related.
+    final controller = TextEditingController();
+
+    final result = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1B2026),
-        title:
-            const Text("Relationship", style: TextStyle(color: Colors.white)),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView(
-            shrinkWrap: true,
-            children: relations
-                .map((r) => ListTile(
-                      title: Text(r,
-                          style: const TextStyle(color: Colors.white70)),
-                      onTap: () => Navigator.pop(ctx, r),
-                    ))
-                .toList(),
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1B2026),
+          title: const Text('Relationship',
+              style: TextStyle(color: Colors.white)),
+          content: TextField(
+            controller: controller,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              hintText: 'e.g. Mother, Partner',
+              hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+              enabledBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: Colors.white.withOpacity(0.2)),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: Colors.white.withOpacity(0.5)),
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
           ),
-        ),
-      ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+            ),
+            TextButton(
+              onPressed: () {
+                final relation = controller.text.trim();
+                Navigator.pop(context, relation.isEmpty ? 'Contact' : relation);
+              },
+              child: const Text('Save', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
     );
+
+    controller.dispose();
+    return result;
   }
 
-  void _showPermissionDialog() {
-    // Re-implemented standard permission dialog
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Permission Required"),
-        content: const Text("Please enable contacts permission in settings."),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text("OK")),
-        ],
-      ),
+  Future<void> _removeContact(int index) async {
+    // Persist removals immediately.
+    setState(() {
+      _contacts.removeAt(index);
+    });
+    await MockDatabase.saveTrustedContacts(_contacts);
+  }
+
+  void _showSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
     );
   }
 
@@ -187,87 +188,195 @@ class ContactsScreenState extends State<ContactsScreen> {
       backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: AppColors.background,
-        title: const Text("Emergency Contacts"),
-        centerTitle: true,
         elevation: 0,
+        leading: Navigator.canPop(context)
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+                onPressed: () => Navigator.pop(context),
+              )
+            : null,
+        title: const Text(
+          'Emergency Contacts',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+        ),
+        centerTitle: true,
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // Single Add Button aligned to Top Right
-                Align(
-                  alignment: Alignment.topRight,
-                  child: Padding(
-                    padding: const EdgeInsets.only(right: 16.0, top: 8.0),
-                    child: GestureDetector(
-                      onTap: addContactFromPhone,
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF2D3748),
-                          borderRadius: BorderRadius.circular(12),
+                const SizedBox(height: 10),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Add ${_minContacts}-$_maxContacts trusted contacts',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.6),
+                            fontSize: 12,
+                          ),
                         ),
-                        child: const Icon(
-                          Icons.person_add_alt_1_rounded,
-                          size: 28,
-                          color: Colors.white,
+                      ),
+                      Text(
+                        '${_contacts.length}/$_maxContacts',
+                        style: TextStyle(
+                          color: _contacts.length < _minContacts
+                              ? Colors.orangeAccent
+                              : Colors.white70,
+                          fontSize: 12,
                         ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (_contacts.length < _minContacts)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 6, 20, 6),
+                    child: Text(
+                      'Add at least $_minContacts contacts to enable alerts.',
+                      style: TextStyle(
+                        color: Colors.orange.withOpacity(0.9),
+                        fontSize: 12,
                       ),
                     ),
                   ),
-                ),
-
-                const SizedBox(height: 12),
-
-                // Contact List
+                const SizedBox(height: 10),
                 Expanded(
-                  child: _contacts.isEmpty
-                      ? const Center(
-                          child: Text(
-                            "Add at least 3 emergency contacts",
-                            style: TextStyle(color: Colors.white54),
-                          ),
-                        )
-                      : ListView.builder(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          itemCount: _contacts.length,
-                          itemBuilder: (ctx, i) =>
-                              _buildContactCard(_contacts[i]),
-                        ),
+                  child: ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 140),
+                    itemCount: _contacts.length,
+                    itemBuilder: (context, index) {
+                      final contact = _contacts[index];
+                      return _buildContactCard(contact, index);
+                    },
+                  ),
                 ),
               ],
             ),
     );
   }
 
-  Widget _buildContactCard(Map<String, dynamic> contact) {
-    return Card(
-      color: const Color(0xFF1E2530),
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: ListTile(
-        title: Text(contact["name"],
-            style: const TextStyle(
-                color: Colors.white, fontWeight: FontWeight.w500)),
-        subtitle: Text(contact["relationship"],
-            style: const TextStyle(color: Colors.white60)),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.edit_outlined,
-                  color: Colors.blueAccent, size: 22),
-              onPressed: () => _editContact(contact),
-            ),
-            IconButton(
-              icon: const Icon(Icons.delete_outline,
-                  color: Colors.redAccent, size: 22),
-              onPressed: () => _deleteContact(contact["contactId"]),
-            ),
-          ],
-        ),
+  Widget _buildContactCard(Map<String, String> contact, int index) {
+    final String name = contact['name'] ?? 'Unknown';
+    final String relation = contact['relation'] ?? 'Contact';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A2128),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 24,
+                backgroundColor: const Color(0xFF2B3440),
+                child: Text(
+                  name.isNotEmpty ? name[0] : '?',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      relation,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.6),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.more_horiz, color: Colors.white54),
+                onPressed: () => _showContactActions(index),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () {},
+                  icon: const Icon(Icons.call, size: 18),
+                  label: const Text('Call'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white70,
+                    side: BorderSide(color: Colors.white.withOpacity(0.1)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () {},
+                  icon: const Icon(Icons.warning_amber_rounded,
+                      size: 18, color: Colors.white),
+                  label: const Text('Alert'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFE53935),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showContactActions(int index) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF1B2026),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: ListTile(
+            leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
+            title: const Text('Remove Contact',
+                style: TextStyle(color: Colors.white)),
+            onTap: () {
+              Navigator.pop(context);
+              _removeContact(index);
+            },
+          ),
+        );
+      },
     );
   }
 }

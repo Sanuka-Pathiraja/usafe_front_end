@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:usafe_front_end/src/services/audio_analysis_service.dart';
 
 class SafetyMapScreen extends StatefulWidget {
   const SafetyMapScreen({Key? key}) : super(key: key);
@@ -13,35 +15,110 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   late GoogleMapController _mapController;
   String _darkMapStyle = '';
 
-  // Animation for pulsing danger zones.
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
+  
+  final AudioAnalysisService _audioService = AudioAnalysisService();
+  bool _isSafetyModeActive = false;
+  
+  Timer? _dangerTimer;
+  bool _isDangerDialogOpen = false;
+  StateSetter? _dangerDialogSetState;
 
-  // Initial Camera Position (San Francisco placeholder)
-  static final CameraPosition _kInitialPosition = const CameraPosition(
+  static const CameraPosition _kInitialPosition = CameraPosition(
     target: LatLng(37.7749, -122.4194),
-    zoom: 14.0,
+    zoom: 14.4746,
   );
 
+  Color _micStatusColor = Colors.grey;
+  String _micStatusText = "Mic Off";
 
   @override
   void initState() {
     super.initState();
-    // Prepare the dark map styling.
     _loadMapStyle();
     
-    // Setup pulse animation for the high-risk circle.
     _pulseController = AnimationController(
-      vsync: this,
       duration: const Duration(seconds: 2),
+      vsync: this,
     )..repeat(reverse: true);
-
-    _pulseAnimation = Tween<double>(begin: 100, end: 300).animate(
+    
+    _pulseAnimation = Tween<double>(begin: 300, end: 500).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
+    _audioService.initialize();
+    _audioService.onDistressDetected = (event, confidence) {
+      if (_isSafetyModeActive) {
+        _showDangerDialog(event);
+      }
+    };
   }
 
+  void _toggleSafetyMode() {
+    setState(() {
+      _isSafetyModeActive = !_isSafetyModeActive;
+      if (_isSafetyModeActive) {
+        _audioService.startListening();
+        _micStatusColor = Colors.redAccent;
+        _micStatusText = "Listening...";
+      } else {
+        _audioService.stopListening();
+        _micStatusColor = Colors.grey;
+        _micStatusText = "Mic Off";
+      }
+    });
+  }
+
+  void _showDangerDialog(String reason) {
+    if (_isDangerDialogOpen) return;
+    _isDangerDialogOpen = true;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.red.shade900,
+        title: const Text('DISTRESS DETECTED!',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: Text(
+          'Detected signal: $reason\n\nTriggering Emergency Protocol...',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              _isDangerDialogOpen = false;
+              Navigator.pop(context);
+            },
+            child: const Text('CANCEL ALARM',
+                style: TextStyle(color: Colors.white)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.white),
+            onPressed: () {
+              _isDangerDialogOpen = false;
+              Navigator.pop(context);
+            },
+            child: const Text('CALL SOS', style: TextStyle(color: Colors.red)),
+          )
+        ],
+      ),
+    );
+  }
+
+  void _closeDangerDialog() {
+    if (!_isDangerDialogOpen || !mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+    _isDangerDialogOpen = false;
+    _dangerDialogSetState = null;
+  }
+
+  void _showStatusSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
+    );
+  }
   // Load custom JSON for Dark Mode map
   Future<void> _loadMapStyle() async {
     // You can paste a full JSON style here or load from assets/map_style.json
@@ -94,7 +171,6 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   }
 
   Set<Circle> _buildCircles(double pulseRadius) {
-    // Static + animated overlays representing risk zones.
     return {
       // 🔴 HIGH RISK (Pulsing Animation)
       Circle(
@@ -129,6 +205,10 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   @override
   void dispose() {
     _pulseController.dispose();
+    _dangerTimer?.cancel();
+    if (_isSafetyModeActive) {
+      _audioService.stopListening();
+    }
     super.dispose();
   }
 
@@ -136,6 +216,14 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
       body: Stack(
         children: [
           // --- The Map ---
@@ -184,6 +272,11 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
             ),
           ),
 
+          Positioned(
+            top: 120,
+            left: 20,
+            child: _buildMicStatusPill(),
+          ),
           // --- Bottom Floating Action Buttons ---
           Positioned(
             bottom: 30,
@@ -194,16 +287,28 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                   heroTag: "recenter",
                   backgroundColor: const Color(0xFF1E1E1E),
                   onPressed: () {
-                    // TODO: implement re-center to current location.
+                    // Logic to re-center on user
                   },
                   child: const Icon(Icons.my_location, color: Colors.white),
+                ),
+                const SizedBox(height: 16),
+                FloatingActionButton(
+                  heroTag: "safety_mode",
+                  backgroundColor: _isSafetyModeActive
+                      ? Colors.redAccent
+                      : const Color(0xFF1E1E1E),
+                  onPressed: _toggleSafetyMode,
+                  child: Icon(
+                    _isSafetyModeActive ? Icons.mic : Icons.mic_none,
+                    color: Colors.white,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 FloatingActionButton.extended(
                   heroTag: "report",
                   backgroundColor: const Color(0xFFE53935),
                   onPressed: () {
-                    // TODO: navigate to a report flow.
+                    // Navigate to Report Screen
                   },
                   icon: const Icon(Icons.warning_amber_rounded, color: Colors.white),
                   label: const Text("Report Incident", style: TextStyle(color: Colors.white)),
@@ -227,6 +332,31 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
         const SizedBox(width: 8),
         Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
       ],
+    );
+  }
+
+  Widget _buildMicStatusPill() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E).withOpacity(0.9),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _micStatusColor.withOpacity(0.5)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            _isSafetyModeActive ? Icons.hearing : Icons.mic_off,
+            size: 14,
+            color: _micStatusColor,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            _micStatusText,
+            style: TextStyle(color: _micStatusColor, fontSize: 12),
+          ),
+        ],
+      ),
     );
   }
 }

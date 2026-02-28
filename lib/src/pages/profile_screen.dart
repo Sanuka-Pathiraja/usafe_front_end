@@ -1,71 +1,59 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
 import 'package:usafe_front_end/features/auth/screens/login_screen.dart';
-
 import 'medical_id_screen.dart';
-import 'contacts_screen.dart';
-import 'settings_screen.dart';
+import 'notifications_screen.dart';
+import 'privacy_screen.dart';
+import 'help_support_screen.dart';
+import 'contacts_screen.dart'; // NEW: Import the contacts screen
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
-
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  bool _isEditing = false;
-
-  final _nameController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _bloodController = TextEditingController();
-  final _ageController = TextEditingController();
-  final _weightController = TextEditingController();
+  bool _isEditing = false; 
+  late TextEditingController _nameController;
+  late TextEditingController _emailController;
+  late TextEditingController _bloodController;
+  late TextEditingController _ageController;
+  late TextEditingController _weightController;
 
   @override
   void initState() {
     super.initState();
-    _loadProfile();
+    final user = MockDatabase.currentUser ?? {
+      'name': 'Guest User',
+      'email': 'No Email',
+      'blood': '--',
+      'age': '--',
+      'weight': '--'
+    };
+    _nameController = TextEditingController(text: user['name']);
+    _emailController = TextEditingController(text: user['email']);
+    _bloodController = TextEditingController(text: user['blood']);
+    _ageController = TextEditingController(text: user['age']);
+    _weightController = TextEditingController(text: user['weight']);
   }
 
-  Future<void> _loadProfile() async {
-    final prefs = await SharedPreferences.getInstance();
-    final userString = prefs.getString("user");
-
-    if (userString != null) {
-      final user = jsonDecode(userString);
-      _nameController.text =
-          "${user['firstName'] ?? ''} ${user['lastName'] ?? ''}";
-      _emailController.text = user['email'] ?? "No email";
-      _ageController.text = user['age']?.toString() ?? "";
-    }
-
-    _bloodController.text = prefs.getString("blood") ?? "";
-    _weightController.text = prefs.getString("weight") ?? "";
-
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _toggleEdit() async {
+  void _toggleEdit() async {
     if (_isEditing) {
-      final prefs = await SharedPreferences.getInstance();
-
-      await prefs.setString("blood", _bloodController.text);
-      await prefs.setString("weight", _weightController.text);
-
-      final names = _nameController.text.split(" ");
-      await AuthService.updateUser(
-        firstName: names.first,
-        lastName: names.length > 1 ? names.sublist(1).join(" ") : "",
-        age: int.tryParse(_ageController.text),
+      await MockDatabase.updateUserProfile(
+        _nameController.text,
+        _emailController.text,
+        _bloodController.text,
+        _ageController.text,
+        _weightController.text,
       );
+      if (!mounted) return;
+      // Save edits to the mock profile store when leaving edit mode.
     }
-
-    setState(() => _isEditing = !_isEditing);
+    setState(() {
+      _isEditing = !_isEditing;
+    });
   }
 
   @override
@@ -81,93 +69,100 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.background, 
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              /// Avatar
               Stack(
                 alignment: Alignment.bottomRight,
                 children: [
-                  const CircleAvatar(
-                    radius: 50,
-                    backgroundColor: AppColors.surfaceCard,
-                    child: Icon(Icons.person, size: 50, color: Colors.white38),
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: AppColors.primarySky, width: 2)),
+                    child: const CircleAvatar(
+                      radius: 50,
+                      backgroundColor: AppColors.surfaceCard,
+                      backgroundImage: AssetImage('assets/usafe_logo.png'),
+                    ),
                   ),
-                  InkWell(
+                  GestureDetector(
                     onTap: _toggleEdit,
-                    child: CircleAvatar(
-                      radius: 16,
-                      backgroundColor: AppColors.primarySky,
-                      child: Icon(
-                        _isEditing ? Icons.check : Icons.edit,
-                        size: 16,
-                        color: Colors.white,
-                      ),
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: _isEditing ? AppColors.safetyTeal : AppColors.primarySky, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 5, offset: const Offset(0, 3))]),
+                      child: Icon(_isEditing ? Icons.check : Icons.edit, color: Colors.white, size: 20),
                     ),
                   ),
                 ],
               ),
-
               const SizedBox(height: 20),
-              _editableText(_nameController, 20, true),
-              const SizedBox(height: 6),
-              _editableText(_emailController, 14, false),
-
+              _buildEditableField(controller: _nameController, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold), isTitle: true),
+              const SizedBox(height: 8),
+              _buildEditableField(controller: _emailController, style: const TextStyle(color: AppColors.textGrey, fontSize: 14), isTitle: false),
               const SizedBox(height: 30),
-
-              /// Medical Vitals
-              _vitalsCard(),
-
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(color: AppColors.primaryNavy, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10, offset: const Offset(0, 5))]),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _buildVitalInput("Blood", _bloodController),
+                    _buildDivider(),
+                    _buildVitalInput("Age", _ageController),
+                    _buildDivider(),
+                    _buildVitalInput("Weight", _weightController),
+                  ],
+                ),
+              ),
               const SizedBox(height: 30),
-
-              /// ONLY ALLOWED MENU ITEMS
-              _menuTile(
-                Icons.medical_services_outlined,
-                "Medical ID",
-                () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const MedicalIDScreen()),
-                ),
+              
+              // --- MENU ITEMS ---
+              _buildMenuTile(
+                icon: Icons.medical_services_outlined, 
+                title: "Medical ID & Allergies", 
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MedicalIDScreen()))
               ),
-              _menuTile(
-                Icons.contacts_outlined,
-                "Trusted Contacts",
-                () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const ContactsScreen()),
-                ),
-              ),
-              _menuTile(
-                Icons.settings_outlined,
-                "Settings",
-                () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const SettingsPage()),
-                ),
+              
+              _buildMenuTile(
+                icon: Icons.contacts_outlined, 
+                title: "Trusted Contacts", 
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ContactsScreen()))
               ),
 
+              _buildMenuTile(
+                icon: Icons.notifications_outlined, 
+                title: "Notifications", 
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen()))
+              ),
+              _buildMenuTile(
+                icon: Icons.lock_outline, 
+                title: "Privacy & Security", 
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacyScreen()))
+              ),
+              _buildMenuTile(
+                icon: Icons.help_outline, 
+                title: "Help & Support", 
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HelpSupportScreen()))
+              ),
+              
               const SizedBox(height: 20),
-
-              /// Logout
-              TextButton.icon(
-                onPressed: () async {
-                  await AuthService.logout();
-                  if (!mounted) return;
-                  Navigator.pushAndRemoveUntil(
-                    context,
-                    MaterialPageRoute(builder: (_) => const LoginScreen()),
-                    (_) => false,
-                  );
-                },
-                icon: const Icon(Icons.logout, color: AppColors.alertRed),
-                label: const Text(
-                  "Logout",
-                  style: TextStyle(color: AppColors.alertRed),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton.icon(
+                  onPressed: () async {
+                    await MockDatabase.logout();
+                    if (!mounted) return;
+                    Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const LoginScreen()), (route) => false);
+                  },
+                  icon: const Icon(Icons.logout, color: AppColors.alertRed),
+                  label: const Text("Logout", style: TextStyle(color: AppColors.alertRed, fontSize: 16, fontWeight: FontWeight.bold)),
+                  style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 15), backgroundColor: AppColors.surfaceCard.withOpacity(0.5), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
                 ),
               ),
+              const SizedBox(height: 100), 
             ],
           ),
         ),
@@ -175,80 +170,49 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _editableText(TextEditingController c, double size, bool bold) {
+  Widget _buildEditableField({required TextEditingController controller, required TextStyle style, required bool isTitle}) {
     if (_isEditing) {
-      return SizedBox(
-        width: 250,
-        child: TextField(
-          controller: c,
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: size),
-          decoration: const InputDecoration(border: InputBorder.none),
-        ),
+      return Container(
+        width: isTitle ? 250 : 300,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(color: AppColors.surfaceCard, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.primarySky.withOpacity(0.5))),
+        child: TextField(controller: controller, textAlign: TextAlign.center, style: style.copyWith(fontSize: isTitle ? 18 : 14), decoration: const InputDecoration(border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 8))),
       );
+    } else {
+      return Text(controller.text, style: style);
     }
-    return Text(
-      c.text,
-      style: TextStyle(
-        fontSize: size,
-        fontWeight: bold ? FontWeight.bold : FontWeight.normal,
-        color: Colors.white,
-      ),
-    );
   }
 
-  Widget _vitalsCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.primaryNavy,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _vital("Blood", _bloodController),
-          _vital("Age", _ageController),
-          _vital("Weight", _weightController),
-        ],
-      ),
-    );
-  }
-
-  Widget _vital(String label, TextEditingController c) {
+  Widget _buildVitalInput(String label, TextEditingController controller) {
     return Column(
       children: [
-        _isEditing
-            ? SizedBox(
-                width: 50,
-                child: TextField(
-                  controller: c,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white),
-                ),
-              )
-            : Text(c.text,
-                style: const TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.bold)),
+        _isEditing 
+        ? SizedBox(
+            width: 60,
+            child: TextField(controller: controller, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold), decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.zero, border: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white)), enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white38)), focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white)))),
+          )
+        : Text(controller.text, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),
-        Text(label,
-            style: const TextStyle(color: Colors.white60, fontSize: 12)),
+        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
       ],
     );
   }
 
-  Widget _menuTile(IconData icon, String title, VoidCallback onTap) {
+  Widget _buildDivider() {
+    return Container(height: 30, width: 1, color: Colors.white24);
+  }
+
+  Widget _buildMenuTile({required IconData icon, required String title, required VoidCallback onTap}) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceCard,
-        borderRadius: BorderRadius.circular(16),
-      ),
+      decoration: BoxDecoration(color: AppColors.surfaceCard, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white.withOpacity(0.05))),
       child: ListTile(
         onTap: onTap,
-        leading: Icon(icon, color: AppColors.primarySky),
-        title: Text(title, style: const TextStyle(color: Colors.white)),
-        trailing: const Icon(Icons.chevron_right, color: Colors.white38),
+        leading: Container(padding: const EdgeInsets.all(8), decoration: const BoxDecoration(color: AppColors.background, shape: BoxShape.circle), child: Icon(icon, color: AppColors.primarySky, size: 20)),
+        title: Text(title, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500)),
+        trailing: const Icon(Icons.chevron_right, color: Colors.white38, size: 20),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );
   }
