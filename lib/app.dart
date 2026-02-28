@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'core/constants/app_colors.dart';
+import 'core/theme/app_theme.dart';
 import 'features/auth/screens/login_screen.dart';
 
 class USafeApp extends StatelessWidget {
@@ -10,11 +10,7 @@ class USafeApp extends StatelessWidget {
     return MaterialApp(
       title: 'USafe',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: AppColors.background,
-        useMaterial3: true,
-      ),
+      theme: AppTheme.darkTheme,
       home: const SplashScreen(),
     );
   }

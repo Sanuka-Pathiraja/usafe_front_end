@@ -2,7 +2,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  static const String backendUrl = "http://localhost:5000";
+  // Use 10.0.2.2 for Android emulator to connect to local backend
+  static const String backendUrl = "http://10.0.2.2:5000";
 
   // Simulate backend login
   static Future<String> login(String email, String password) async {
