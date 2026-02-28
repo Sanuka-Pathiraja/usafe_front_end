@@ -14,10 +14,10 @@ dependencies:
 
   # Core Functionality
   flutter_contacts: ^1.1.9
-  geolocator: ^11.0.0
+  geolocator: ^13.0.2
   url_launcher: ^6.3.1
   intl: ^0.19.0
-  permission_handler: ^11.0.0
+  permission_handler: ^11.3.1
   shared_preferences: ^2.3.5
 
   # Maps & Payment
@@ -35,7 +35,6 @@ dependencies:
 
   # Environment Variables
   flutter_dotenv: ^5.1.0
-  battery_plus: ^6.0.2
 
 dev_dependencies:
   flutter_test:
