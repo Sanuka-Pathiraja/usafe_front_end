@@ -18,6 +18,12 @@
 @import audio_session;
 #endif
 
+#if __has_include(<battery_plus/FPPBatteryPlusPlugin.h>)
+#import <battery_plus/FPPBatteryPlusPlugin.h>
+#else
+@import battery_plus;
+#endif
+
 #if __has_include(<flutter_contacts/FlutterContactsPlugin.h>)
 #import <flutter_contacts/FlutterContactsPlugin.h>
 #else
@@ -89,6 +95,7 @@
 + (void)registerWithRegistry:(NSObject<FlutterPluginRegistry>*)registry {
   [AppLinksPlugin registerWithRegistrar:[registry registrarForPlugin:@"AppLinksPlugin"]];
   [AudioSessionPlugin registerWithRegistrar:[registry registrarForPlugin:@"AudioSessionPlugin"]];
+  [FPPBatteryPlusPlugin registerWithRegistrar:[registry registrarForPlugin:@"FPPBatteryPlusPlugin"]];
   [FlutterContactsPlugin registerWithRegistrar:[registry registrarForPlugin:@"FlutterContactsPlugin"]];
   [GeolocatorPlugin registerWithRegistrar:[registry registrarForPlugin:@"GeolocatorPlugin"]];
   [FLTGoogleMapsPlugin registerWithRegistrar:[registry registrarForPlugin:@"FLTGoogleMapsPlugin"]];
