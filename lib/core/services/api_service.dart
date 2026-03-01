@@ -48,4 +48,44 @@ class ApiService {
     );
     // Optionally handle response, show UI, etc.
   }
+
+  // Fetch Live Safety Score
+  static Future<Map<String, dynamic>> fetchSafetyScore({
+    required double latitude,
+    required double longitude,
+    required int batteryLevel,
+    bool isLocationEnabled = true,
+    bool isMicrophoneEnabled = true,
+    bool isToneSosActive = false,
+    bool isSafePathActive = false,
+    String? jwt,
+  }) async {
+    final Map<String, String> headers = {
+      'Content-Type': 'application/json',
+    };
+    if (jwt != null && jwt.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $jwt';
+    }
+
+    final resp = await http.post(
+      Uri.parse('$backendUrl/safety-score'),
+      headers: headers,
+      body: jsonEncode({
+        'latitude': latitude,
+        'longitude': longitude,
+        'batteryLevel': batteryLevel,
+        'localTime': DateTime.now().toIso8601String(),
+        'isLocationEnabled': isLocationEnabled,
+        'isMicrophoneEnabled': isMicrophoneEnabled,
+        'isToneSosActive': isToneSosActive,
+        'isSafePathActive': isSafePathActive,
+      }),
+    );
+
+    if (resp.statusCode == 200) {
+      return jsonDecode(resp.body);
+    } else {
+      throw Exception("Failed to fetch safety score: HTTP ${resp.statusCode} - ${resp.body}");
+    }
+  }
 }
