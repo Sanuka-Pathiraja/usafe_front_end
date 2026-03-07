@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'core/theme/app_theme.dart';
-import 'features/auth/screens/login_screen.dart';
+import 'src/pages/splash_screen.dart';
 
 class USafeApp extends StatelessWidget {
   const USafeApp({super.key});

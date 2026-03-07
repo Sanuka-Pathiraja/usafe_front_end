@@ -8,22 +8,41 @@ import 'core/services/diagnostics_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  print('Before dotenv.load');
-  await dotenv.load();
-  print('After dotenv.load');
+  await _loadEnvironment();
   await Supabase.initialize(
-    url: dotenv.env['SUPABASE_URL']!,
-    anonKey: dotenv.env['SUPABASE_KEY']!,
+    url: _readRequiredConfig('SUPABASE_URL'),
+    anonKey: _readRequiredConfig('SUPABASE_KEY'),
   );
-  print('After Supabase.initialize');
   await DiagnosticsService.runStartupDiagnostics();
-  print('After DiagnosticsService');
   await MockDatabase.loadUserSession();
-  print('After MockDatabase.loadUserSession');
   await ToneSOSBridgeService().initialize();
-  print('After ToneSOSBridgeService.initialize');
   ToneSOSBridgeService().startListening();
-  print('After ToneSOSBridgeService.startListening');
   runApp(const USafeApp());
-  print('After runApp');
+}
+
+Future<void> _loadEnvironment() async {
+  try {
+    await dotenv.load(fileName: '.env');
+  } catch (_) {
+    // Fallback for CI/dev workflows that pass secrets via --dart-define.
+    dotenv.testLoad(
+      mergeWith: <String, String>{
+        'SUPABASE_URL':
+            const String.fromEnvironment('SUPABASE_URL', defaultValue: ''),
+        'SUPABASE_KEY':
+            const String.fromEnvironment('SUPABASE_KEY', defaultValue: ''),
+      },
+    );
+  }
+}
+
+String _readRequiredConfig(String key) {
+  final value = dotenv.env[key]?.trim() ?? '';
+  if (value.isEmpty) {
+    throw StateError(
+      'Missing required config "$key". Create a .env file (based on .env.example) '
+      'or pass it with --dart-define.',
+    );
+  }
+  return value;
 }

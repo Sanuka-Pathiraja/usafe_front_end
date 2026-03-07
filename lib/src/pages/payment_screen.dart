@@ -1,133 +1,155 @@
 import 'package:flutter/material.dart';
+import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'checkout_webview.dart';
 
 class PaymentScreen extends StatelessWidget {
   const PaymentScreen({super.key});
 
-  Future<void> _startPayment(BuildContext context, int amount) async {
-    final result = await Navigator.push(
+  void _openCheckout(BuildContext context, int amount) async {
+    final success = await Navigator.push<bool>(
       context,
-      MaterialPageRoute(
-        builder: (_) => CheckoutWebView(amount: amount),
-      ),
+      MaterialPageRoute(builder: (_) => CheckoutWebView(amount: amount)),
     );
 
-    if (result == true) {
+    if (context.mounted && success != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text("✅ Payment successful"),
-            backgroundColor: Colors.green),
+        SnackBar(
+          content: Text(success ? "Payment Successful!" : "Payment Cancelled"),
+          backgroundColor: success ? Colors.green : Colors.red,
+        ),
       );
     }
+  }
+
+  Widget _planCard(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required int price,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceCard,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: AppColors.primarySky.withOpacity(0.15),
+        ),
+      ),
+      child: Column(
+        children: [
+          /// ICON + TITLE + PRICE
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: const BoxDecoration(
+                  color: AppColors.background,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: AppColors.primarySky, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              Text(
+                "LKR $price",
+                style: const TextStyle(
+                  color: AppColors.primarySky,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              )
+            ],
+          ),
+
+          const SizedBox(height: 10),
+
+          /// SUBTITLE
+          Text(
+            subtitle,
+            style: const TextStyle(
+              fontSize: 14,
+              color: AppColors.textGrey,
+            ),
+          ),
+
+          const SizedBox(height: 18),
+
+          /// BUTTON
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => _openCheckout(context, price),
+              icon: const Icon(Icons.lock_open),
+              label: const Text("Activate Plan"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.safetyTeal,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                textStyle: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          )
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C5364)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              children: [
-                const SizedBox(height: 10),
-                const Text(
-                  "Premium Features",
-                  style: TextStyle(
-                      color: Colors.amber,
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 30),
-                _premiumFeatureCard(
-                  context,
-                  icon: Icons.route,
-                  title: "Safe Path Navigation",
-                  description:
-                      "Reroutes you through the safest areas automatically.",
-                  price: "LKR 160", // Increased to meet Stripe minimum
-                  accentColor: Colors.amber,
-                  onSubscribe: () => _startPayment(context, 160),
-                ),
-                const SizedBox(height: 20),
-                _premiumFeatureCard(
-                  context,
-                  icon: Icons.cloud_off,
-                  title: "Offline Protection Mode",
-                  description:
-                      "Emergency features work without internet access.",
-                  price: "LKR 210", // Increased
-                  accentColor: Colors.cyanAccent,
-                  onSubscribe: () => _startPayment(context, 210),
-                ),
-                const Spacer(),
-                const Text("🔒 Secure payments • Cancel anytime",
-                    style: TextStyle(color: Colors.white38)),
-                const SizedBox(height: 16),
-              ],
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        title: const Text("Safety Plans"),
+        backgroundColor: AppColors.background,
+        elevation: 0,
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+        child: Column(
+          children: [
+            _planCard(
+              context,
+              icon: Icons.route,
+              title: "Safe Path AI",
+              subtitle: "Real-time rerouting through safer streets.",
+              price: 160,
             ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _premiumFeatureCard(BuildContext context,
-      {required IconData icon,
-      required String title,
-      required String description,
-      required String price,
-      required Color accentColor,
-      required VoidCallback onSubscribe}) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.06),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: accentColor.withOpacity(0.6)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: accentColor, size: 26),
-              const SizedBox(width: 12),
-              Text(title,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold)),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(description, style: const TextStyle(color: Colors.white70)),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(price,
-                  style: TextStyle(
-                      color: accentColor,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold)),
-              ElevatedButton(
-                onPressed: onSubscribe,
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: accentColor,
-                    foregroundColor: Colors.black),
-                child: const Text("Subscribe"),
+            _planCard(
+              context,
+              icon: Icons.shield_outlined,
+              title: "Offline Guard",
+              subtitle: "Emergency SOS protection even without internet.",
+              price: 210,
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              "🔒 Secure & encrypted payment",
+              style: TextStyle(
+                color: AppColors.textGrey,
+                fontSize: 13,
               ),
-            ],
-          ),
-        ],
+            ),
+            const SizedBox(height: 80),
+          ],
+        ),
       ),
     );
   }

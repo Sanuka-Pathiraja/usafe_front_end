@@ -5,6 +5,7 @@ import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
+import 'package:usafe_front_end/features/auth/google_auth_service.dart';
 import 'package:usafe_front_end/src/pages/home_screen.dart';
 
 // --- 1. THEME GRADIENT ---
@@ -210,8 +211,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _handleLogin() async {
     setState(() => _isLoading = true);
-    // Validate credentials against the local mock store.
-    bool success = await MockDatabase.validateLogin(_emailController.text.trim(), _passwordController.text.trim());
+    final success = await AuthService.login(
+      _emailController.text.trim(),
+      _passwordController.text.trim(),
+    );
     
     if (!mounted) return;
     setState(() => _isLoading = false);
@@ -290,7 +293,32 @@ class _LoginScreenState extends State<LoginScreen> {
                   SizedBox(
                     height: 55,
                     child: OutlinedButton(
-                      onPressed: () {},
+                      onPressed: _isLoading
+                          ? null
+                          : () async {
+                              setState(() => _isLoading = true);
+                              final account = await GoogleAuthService.signIn();
+                              final auth = await account?.authentication;
+                              final idToken = auth?.idToken;
+                              final success = idToken != null &&
+                                  await AuthService.googleLogin(idToken);
+                              if (!mounted) return;
+                              setState(() => _isLoading = false);
+                              if (success) {
+                                Navigator.pushReplacement(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (_) => const HomeScreen()),
+                                );
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Google login failed.'),
+                                    backgroundColor: AppColors.alertRed,
+                                  ),
+                                );
+                              }
+                            },
                       style: OutlinedButton.styleFrom(side: BorderSide(color: Colors.white.withOpacity(0.1)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), backgroundColor: AppColors.surfaceCard.withOpacity(0.5)),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -382,6 +410,8 @@ class _SignupScreenState extends State<SignupScreen> {
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)],
                   ),
                   const SizedBox(height: 20),
+                  _buildModernInput(_emailCtrl, "Email", Icons.email_outlined),
+                  const SizedBox(height: 20),
                   _buildModernInput(_passCtrl, "Password", Icons.lock_outline, isPassword: true),
                   const SizedBox(height: 40),
                   Container(
@@ -396,11 +426,38 @@ class _SignupScreenState extends State<SignupScreen> {
                         final isPhoneValid = RegExp(r'^\d{10}$').hasMatch(phone);
                         if (_nameCtrl.text.isNotEmpty && _emailCtrl.text.isNotEmpty && _passCtrl.text.isNotEmpty && isPhoneValid) {
                           setState(() => _isLoading = true);
-                          await MockDatabase.registerUser(_nameCtrl.text, _emailCtrl.text, phone, _passCtrl.text);
+                          final parts =
+                              _nameCtrl.text.trim().split(RegExp(r'\s+'));
+                          final firstName =
+                              parts.isNotEmpty ? parts.first : _nameCtrl.text;
+                          final lastName = parts.length > 1
+                              ? parts.sublist(1).join(' ')
+                              : '-';
+                          final success = await AuthService.signup(
+                            firstName: firstName,
+                            lastName: lastName,
+                            age: 18,
+                            phone: phone,
+                            email: _emailCtrl.text.trim(),
+                            password: _passCtrl.text,
+                          );
                           if (!mounted) return;
                           setState(() => _isLoading = false);
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Account Created! You can Login now."), behavior: SnackBarBehavior.floating, backgroundColor: AppColors.safetyTeal));
-                          Navigator.pop(context);
+                          if (success) {
+                            Navigator.pushAndRemoveUntil(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const HomeScreen()),
+                              (_) => false,
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text("Signup failed."),
+                                backgroundColor: AppColors.alertRed,
+                              ),
+                            );
+                          }
                         } else {
                            final message = !isPhoneValid
                                ? "Phone number must be 10 digits."

@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:usafe_front_end/core/services/api_service.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:usafe_front_end/features/auth/auth_service.dart';
 import 'safety_map_screen.dart';
 
 class SafetyScoreScreen extends StatefulWidget {
@@ -56,17 +57,17 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
         throw Exception('Location permissions are permanently denied.');
       }
 
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
-
-      final jwt = Supabase.instance.client.auth.currentSession?.accessToken ?? "mock-testing-token";
+      final position =
+          await _getSafePosition() ?? await Geolocator.getLastKnownPosition();
+      final latitude = position?.latitude ?? 37.7749;
+      final longitude = position?.longitude ?? -122.4194;
+      final jwt = await AuthService.getToken();
 
       final response = await ApiService.fetchSafetyScore(
-        latitude: position.latitude,
-        longitude: position.longitude,
+        latitude: latitude,
+        longitude: longitude,
         batteryLevel: batteryLevel,
-        jwt: jwt,
+        jwt: jwt.isNotEmpty ? jwt : null,
       );
 
       if (mounted) {
@@ -87,6 +88,22 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  Future<Position?> _getSafePosition() async {
+    try {
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        // Avoid known emulator GNSS/NMEA crash path from live updates.
+        return Geolocator.getLastKnownPosition();
+      }
+
+      return Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
+        timeLimit: const Duration(seconds: 8),
+      );
+    } catch (_) {
+      return null;
     }
   }
 

@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
 import 'package:usafe_front_end/features/auth/screens/login_screen.dart';
@@ -49,7 +49,8 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _handleNavigation() async {
-    bool isEmergency = widget.launchedFromSOSWidget;
+    final prefEmergency = await _consumeSOSTriggerFlag();
+    bool isEmergency = widget.launchedFromSOSWidget || prefEmergency;
 
     if (isEmergency) {
       await Future.delayed(const Duration(milliseconds: 500));
@@ -63,10 +64,10 @@ class _SplashScreenState extends State<SplashScreen>
 
     await Future.delayed(const Duration(milliseconds: 2500));
 
-    final token = await AuthService.getToken();
+    final loggedIn = await AuthService.validateSession();
     if (!mounted) return;
 
-    if (token.isNotEmpty) {
+    if (loggedIn) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const HomeScreen()),
@@ -76,6 +77,22 @@ class _SplashScreenState extends State<SplashScreen>
         context,
         MaterialPageRoute(builder: (_) => const LoginScreen()),
       );
+    }
+  }
+
+  Future<bool> _consumeSOSTriggerFlag() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final triggered = prefs.getBool('SOS_TRIGGERED') ??
+          prefs.getBool('flutter.SOS_TRIGGERED') ??
+          false;
+      if (triggered) {
+        await prefs.setBool('SOS_TRIGGERED', false);
+        await prefs.setBool('flutter.SOS_TRIGGERED', false);
+      }
+      return triggered;
+    } catch (_) {
+      return false;
     }
   }
 

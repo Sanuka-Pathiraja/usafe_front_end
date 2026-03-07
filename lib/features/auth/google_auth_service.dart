@@ -2,11 +2,13 @@ import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 class GoogleAuthService {
+  static const String _webClientId =
+      "1089719886153-2rrhjocigvsep8p62qrks9fger3e37ee.apps.googleusercontent.com";
+
   // Initialize GoogleSignIn
   static final GoogleSignIn googleSignIn = GoogleSignIn(
-    clientId: kIsWeb
-        ? "1089719886153-2rrhjocigvsep8p62qrks9fger3e37ee.apps.googleusercontent.com" // only if you use web
-        : null,
+    clientId: kIsWeb ? _webClientId : null,
+    serverClientId: _webClientId,
     scopes: ['email', 'profile'],
   );
 

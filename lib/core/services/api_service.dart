@@ -5,24 +5,28 @@ class ApiService {
   // Use 10.0.2.2 for Android emulator to connect to local backend
   static const String backendUrl = "http://10.0.2.2:5000";
 
-  // Simulate backend login
+  // Backend login (email/password)
   static Future<String> login(String email, String password) async {
-    final resp = await http.post(Uri.parse('$backendUrl/login'),
+    final resp = await http.post(Uri.parse('$backendUrl/user/login'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'email': email, 'password': password}));
 
     if (resp.statusCode == 200) {
-      final data = jsonDecode(resp.body);
-      return data['token'];
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      final token = (data['token'] ?? data['jwt'] ?? '').toString();
+      if (token.isEmpty) {
+        throw Exception('Missing token in login response');
+      }
+      return token;
     } else {
       throw Exception("Invalid credentials");
     }
   }
 
-  // Create PaymentIntent
+  // Create Stripe Checkout session
   static Future<Map<String, dynamic>> createPaymentIntent(
       int amount, String jwt) async {
-    final resp = await http.post(Uri.parse('$backendUrl/payment/create'),
+    final resp = await http.post(Uri.parse('$backendUrl/payment/checkout'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $jwt',

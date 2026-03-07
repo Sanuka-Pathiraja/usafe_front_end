@@ -4,16 +4,16 @@ import 'dart:io';
 import 'dart:async';
 import 'package:usafe_front_end/features/auth/community_report_service.dart';
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+class CommunityReportScreen extends StatefulWidget {
+  const CommunityReportScreen({super.key, this.title = 'Community Reports'});
 
   final String title;
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<CommunityReportScreen> createState() => _CommunityReportScreenState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
+class _CommunityReportScreenState extends State<CommunityReportScreen> {
   Set<int> selectedIndices = {};
   final TextEditingController _descriptionController = TextEditingController();
   final ImagePicker _picker = ImagePicker();
@@ -229,6 +229,10 @@ class _MyHomePageState extends State<MyHomePage> {
       final result = await CommunityReportService.submitReport(
         reportContent: _descriptionController.text,
         images: _selectedImages,
+        location: 'User submitted via mobile app',
+        issueTypes: selectedIndices
+            .map((index) => issueTypes[index]['title'].toString())
+            .toList(),
       );
 
       if (result['success']) {
@@ -642,6 +646,11 @@ class _MyHomePageState extends State<MyHomePage> {
       ),
     );
   }
+}
+
+// Backward compatibility for old routes/imports.
+class MyHomePage extends CommunityReportScreen {
+  const MyHomePage({super.key, required super.title});
 }
 
 /* ================= MODERN PHOTO BUTTON WIDGET ================= */

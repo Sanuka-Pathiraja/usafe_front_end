@@ -29,13 +29,23 @@ class ContactsScreenState extends State<ContactsScreen> {
   }
 
   Future<void> _loadContacts() async {
-    await MockDatabase.loadTrustedContacts();
-    setState(() {
-      _contacts
-        ..clear()
-        ..addAll(MockDatabase.trustedContacts);
-      _loading = false;
-    });
+    try {
+      final remote = await AuthService.fetchContacts();
+      setState(() {
+        _contacts
+          ..clear()
+          ..addAll(remote.map((e) => <String, String>{
+                'contactId': (e['contactId'] ?? '').toString(),
+                'name': (e['name'] ?? '').toString(),
+                'relationship': (e['relationship'] ?? 'Contact').toString(),
+                'phone': (e['phone'] ?? '').toString(),
+              }));
+        _loading = false;
+      });
+    } catch (e) {
+      _showSnack(e.toString().replaceFirst('Exception: ', ''));
+      setState(() => _loading = false);
+    }
   }
 
   Future<void> _addContactFromPhone() async {
@@ -72,15 +82,23 @@ class ContactsScreenState extends State<ContactsScreen> {
         ? fullContact.displayName
         : 'Unknown';
 
-    setState(() {
-      _contacts.add({
-        'name': name,
-        'relation': relation,
-        'phone': phone,
+    try {
+      final created = await AuthService.createContact(
+        name: name,
+        phone: phone,
+        relationship: relation,
+      );
+      setState(() {
+        _contacts.add({
+          'contactId': (created['contactId'] ?? '').toString(),
+          'name': (created['name'] ?? name).toString(),
+          'relationship': (created['relationship'] ?? relation).toString(),
+          'phone': (created['phone'] ?? phone).toString(),
+        });
       });
-    });
-
-    await MockDatabase.saveTrustedContacts(_contacts);
+    } catch (e) {
+      _showSnack(e.toString().replaceFirst('Exception: ', ''));
+    }
   }
 
   Future<void> openAddContact() async {
@@ -168,11 +186,19 @@ class ContactsScreenState extends State<ContactsScreen> {
   }
 
   Future<void> _removeContact(int index) async {
-    // Persist removals immediately.
-    setState(() {
-      _contacts.removeAt(index);
-    });
-    await MockDatabase.saveTrustedContacts(_contacts);
+    final contactId = _contacts[index]['contactId'] ?? '';
+    if (contactId.isEmpty) {
+      _showSnack('Invalid contact id.');
+      return;
+    }
+    try {
+      await AuthService.deleteContact(contactId);
+      setState(() {
+        _contacts.removeAt(index);
+      });
+    } catch (e) {
+      _showSnack(e.toString().replaceFirst('Exception: ', ''));
+    }
   }
 
   void _showSnack(String message) {
@@ -260,7 +286,8 @@ class ContactsScreenState extends State<ContactsScreen> {
 
   Widget _buildContactCard(Map<String, String> contact, int index) {
     final String name = contact['name'] ?? 'Unknown';
-    final String relation = contact['relation'] ?? 'Contact';
+    final String relation =
+        contact['relationship'] ?? contact['relation'] ?? 'Contact';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),

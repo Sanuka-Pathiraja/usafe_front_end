@@ -10,9 +10,17 @@ class CommunityReportService {
   static Future<Map<String, dynamic>> submitReport({
     required String reportContent,
     required List<File> images,
+    String? location,
+    List<String>? issueTypes,
   }) async {
     try {
       final token = await AuthService.getToken();
+      if (token.isEmpty) {
+        return {
+          'success': false,
+          'error': 'Session expired. Please login again.',
+        };
+      }
 
       var request = http.MultipartRequest(
         'POST',
@@ -25,6 +33,12 @@ class CommunityReportService {
       // Add text fields
       request.fields['reportContent'] = reportContent;
       request.fields['reportDate_time'] = DateTime.now().toIso8601String();
+      request.fields['location'] = (location == null || location.trim().isEmpty)
+          ? 'Unknown'
+          : location.trim();
+      if (issueTypes != null && issueTypes.isNotEmpty) {
+        request.fields['issueTypes'] = jsonEncode(issueTypes);
+      }
 
       // Add images
       for (var image in images) {
@@ -40,15 +54,32 @@ class CommunityReportService {
 
       var response = await http.Response.fromStream(streamedResponse);
 
-      if (response.statusCode == 201) {
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        dynamic parsed;
+        try {
+          parsed = jsonDecode(response.body);
+        } catch (_) {
+          parsed = {'message': response.body};
+        }
         return {
           'success': true,
-          'data': jsonDecode(response.body),
+          'data': parsed,
         };
       } else {
+        if (response.statusCode == 401) {
+          await AuthService.logout();
+        }
+        String backendError = 'Failed with status: ${response.statusCode}';
+        try {
+          final body = jsonDecode(response.body);
+          if (body is Map<String, dynamic>) {
+            backendError = (body['message'] ?? body['error'] ?? backendError)
+                .toString();
+          }
+        } catch (_) {}
         return {
           'success': false,
-          'error': 'Failed with status: ${response.statusCode}',
+          'error': backendError,
         };
       }
     } catch (e) {

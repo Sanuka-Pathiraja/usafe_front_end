@@ -1,4 +1,4 @@
-package com.example.usafe_front_end
+package com.example.usafe_fresh
 
 import android.app.PendingIntent
 import android.content.Intent

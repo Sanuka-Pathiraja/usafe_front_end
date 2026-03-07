@@ -7,6 +7,7 @@ import 'contacts_screen.dart';
 import 'profile_screen.dart';
 import 'safety_score_screen.dart';
 import 'safepath_scheduler_screen.dart';
+import 'settings_screen.dart'; // ← SettingsPage lives here
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -22,7 +23,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Main tab pages rendered via the bottom navigation.
     final pages = [
       const SOSDashboard(),
       const SafetyScoreScreen(showBottomNav: false),
@@ -39,27 +39,28 @@ class _HomeScreenState extends State<HomeScreen> {
             index: _currentIndex,
             children: pages,
           ),
-          // Custom modern floating bottom navigation overlay.
           Positioned(
             bottom: 32,
             left: 24,
             right: 24,
             child: _buildBottomNavBar(),
           ),
-          // Show the add-contact FAB only on the Contacts tab.
-          if (_currentIndex == 3) // Adjusted index for Contacts
+          if (_currentIndex == 3)
             Positioned(
               left: 0,
               right: 0,
-              bottom: 32 + 76 + 16, // Above nav bar with spacing
+              bottom: 32 + 76 + 16,
               child: Center(
                 child: FloatingActionButton.extended(
                   backgroundColor: AppColors.primary,
                   elevation: 4,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
                   onPressed: () => _contactsKey.currentState?.openAddContact(),
                   icon: const Icon(Icons.person_add, color: Colors.white),
-                  label: const Text('Add Contact', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  label: const Text('Add Contact',
+                      style: TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.bold)),
                 ),
               ),
             ),
@@ -114,7 +115,9 @@ class _HomeScreenState extends State<HomeScreen> {
               duration: const Duration(milliseconds: 200),
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: isActive ? AppColors.primary.withOpacity(0.15) : Colors.transparent,
+                color: isActive
+                    ? AppColors.primary.withOpacity(0.15)
+                    : Colors.transparent,
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Icon(
@@ -141,6 +144,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
+// ─────────────────────────────────────────────
+//  SOS DASHBOARD  (settings button → SettingsPage)
+// ─────────────────────────────────────────────
 class SOSDashboard extends StatefulWidget {
   const SOSDashboard({super.key});
 
@@ -152,7 +158,6 @@ class _SOSDashboardState extends State<SOSDashboard>
     with TickerProviderStateMixin {
   bool isSOSActive = false;
 
-  // 3-minute countdown before auto alert.
   static const Duration _sosDuration = Duration(minutes: 3);
   Timer? _sosTimer;
   Duration _remaining = _sosDuration;
@@ -173,14 +178,20 @@ class _SOSDashboardState extends State<SOSDashboard>
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             const SizedBox(height: 16),
-            // Header Row
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 _buildStatusPill(),
+                // ── Settings button ──────────────────────────────────────
                 IconButton(
-                  icon: const Icon(Icons.settings_outlined, color: AppColors.textSecondary),
-                  onPressed: () {},
+                  icon: const Icon(Icons.settings_outlined,
+                      color: AppColors.textSecondary),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const SettingsPage()),
+                    );
+                  },
                   tooltip: 'Settings',
                 ),
               ],
@@ -197,7 +208,7 @@ class _SOSDashboardState extends State<SOSDashboard>
               child: isSOSActive ? _buildSOSActiveView() : _buildHoldButton(),
             ),
             const Spacer(),
-            const SizedBox(height: 120), // Compensate for floating nav bar
+            const SizedBox(height: 120),
           ],
         ),
       ),
@@ -260,7 +271,8 @@ class _SOSDashboardState extends State<SOSDashboard>
           ),
           child: const Text(
             'Dispatching alerts...',
-            style: TextStyle(color: AppColors.alert, fontWeight: FontWeight.bold),
+            style:
+                TextStyle(color: AppColors.alert, fontWeight: FontWeight.bold),
           ),
         ),
       ],
@@ -271,10 +283,7 @@ class _SOSDashboardState extends State<SOSDashboard>
     return SOSHoldInteraction(
       accentColor: AppColors.alert,
       onComplete: () {
-        setState(() {
-          isSOSActive = true;
-        });
-        // Start the visible countdown once SOS is activated.
+        setState(() => isSOSActive = true);
         _startSosCountdown();
       },
     );
@@ -294,7 +303,8 @@ class _SOSDashboardState extends State<SOSDashboard>
                 value: _remaining.inSeconds / _sosDuration.inSeconds,
                 strokeWidth: 12,
                 backgroundColor: AppColors.surfaceElevated,
-                valueColor: const AlwaysStoppedAnimation<Color>(AppColors.alert),
+                valueColor:
+                    const AlwaysStoppedAnimation<Color>(AppColors.alert),
                 strokeCap: StrokeCap.round,
               ),
             ),
@@ -312,7 +322,8 @@ class _SOSDashboardState extends State<SOSDashboard>
                 ),
                 const Text(
                   'Auto-dispatch in',
-                  style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
+                  style:
+                      TextStyle(color: AppColors.textSecondary, fontSize: 14),
                 ),
               ],
             ),
@@ -324,9 +335,7 @@ class _SOSDashboardState extends State<SOSDashboard>
           bg: AppColors.alert,
           text: Colors.white,
           icon: Icons.flash_on_rounded,
-          onTap: () {
-            _triggerSOS();
-          },
+          onTap: _triggerSOS,
         ),
         const SizedBox(height: 16),
         _buildActionButton(
@@ -336,9 +345,7 @@ class _SOSDashboardState extends State<SOSDashboard>
           icon: Icons.close_rounded,
           onTap: () {
             _resetSosCountdown();
-            setState(() {
-              isSOSActive = false;
-            });
+            setState(() => isSOSActive = false);
           },
         ),
       ],
@@ -354,14 +361,15 @@ class _SOSDashboardState extends State<SOSDashboard>
   }) {
     return SizedBox(
       width: double.infinity,
-      height: 64, // Massive touch target
+      height: 64,
       child: ElevatedButton(
         onPressed: onTap,
         style: ElevatedButton.styleFrom(
           backgroundColor: bg,
           foregroundColor: text,
           elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -390,14 +398,10 @@ class _SOSDashboardState extends State<SOSDashboard>
       if (_remaining.inSeconds <= 1) {
         timer.cancel();
         _triggerSOS();
-        setState(() {
-          _remaining = Duration.zero;
-        });
+        setState(() => _remaining = Duration.zero);
         return;
       }
-      setState(() {
-        _remaining = Duration(seconds: _remaining.inSeconds - 1);
-      });
+      setState(() => _remaining = Duration(seconds: _remaining.inSeconds - 1));
     });
   }
 
@@ -408,7 +412,8 @@ class _SOSDashboardState extends State<SOSDashboard>
 
   Future<void> _triggerSOS() async {
     try {
-      final jwt = Supabase.instance.client.auth.currentSession?.accessToken ?? "mock-testing-token";
+      final jwt = Supabase.instance.client.auth.currentSession?.accessToken ??
+          "mock-testing-token";
       await ApiService.sendDistressSignal("Manual SOS", 1.0, jwt);
       debugPrint("✅ SOS signal sent successfully");
     } catch (e) {
@@ -423,6 +428,9 @@ class _SOSDashboardState extends State<SOSDashboard>
   }
 }
 
+// ─────────────────────────────────────────────
+//  SOS HOLD INTERACTION  (unchanged)
+// ─────────────────────────────────────────────
 class SOSHoldInteraction extends StatefulWidget {
   final Color accentColor;
   final VoidCallback onComplete;
@@ -471,7 +479,6 @@ class _SOSHoldInteractionState extends State<SOSHoldInteraction>
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Massive container base for Fitts's Law
           Container(
             width: 280,
             height: 280,
@@ -480,7 +487,6 @@ class _SOSHoldInteractionState extends State<SOSHoldInteraction>
               color: widget.accentColor.withOpacity(0.05),
             ),
           ),
-          // Inner static ring
           Container(
             width: 240,
             height: 240,
@@ -500,7 +506,6 @@ class _SOSHoldInteractionState extends State<SOSHoldInteraction>
               ],
             ),
           ),
-          // Animated progress ring
           SizedBox(
             width: 240,
             height: 240,
@@ -517,7 +522,6 @@ class _SOSHoldInteractionState extends State<SOSHoldInteraction>
               },
             ),
           ),
-          // Center Icon & Text
           Column(
             mainAxisSize: MainAxisSize.min,
             children: [
