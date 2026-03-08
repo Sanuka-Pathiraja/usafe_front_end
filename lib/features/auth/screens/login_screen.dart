@@ -297,23 +297,60 @@ class _LoginScreenState extends State<LoginScreen> {
                           ? null
                           : () async {
                               setState(() => _isLoading = true);
-                              final account = await GoogleAuthService.signIn();
-                              final auth = await account?.authentication;
-                              final idToken = auth?.idToken;
-                              final success = idToken != null &&
-                                  await AuthService.googleLogin(idToken);
+                              final googleResult =
+                                  await GoogleAuthService.signInForBackend();
+                              if (!googleResult.success ||
+                                  (googleResult.idToken ?? '').isEmpty) {
+                                if (!mounted) return;
+                                setState(() => _isLoading = false);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      googleResult.message ??
+                                          'Google sign-in failed.',
+                                    ),
+                                    backgroundColor: AppColors.alertRed,
+                                  ),
+                                );
+                                return;
+                              }
+
+                              final result = await AuthService.googleLoginDetailed(
+                                googleResult.idToken!,
+                                accessToken: googleResult.accessToken,
+                              );
+                              final success = result['success'] == true;
                               if (!mounted) return;
                               setState(() => _isLoading = false);
                               if (success) {
-                                Navigator.pushReplacement(
-                                  context,
-                                  MaterialPageRoute(
-                                      builder: (_) => const HomeScreen()),
-                                );
+                                final prefs =
+                                    await SharedPreferences.getInstance();
+                                final bool authorized =
+                                    prefs.getBool('authorization_seen') ?? false;
+                                if (!mounted) return;
+                                if (!authorized) {
+                                  Navigator.pushReplacement(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          const AuthorizationScreen(),
+                                    ),
+                                  );
+                                } else {
+                                  Navigator.pushReplacement(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => const HomeScreen(),
+                                    ),
+                                  );
+                                }
                               } else {
+                                final message = (result['message'] ??
+                                        'Google login failed.')
+                                    .toString();
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Google login failed.'),
+                                  SnackBar(
+                                    content: Text(message),
                                     backgroundColor: AppColors.alertRed,
                                   ),
                                 );

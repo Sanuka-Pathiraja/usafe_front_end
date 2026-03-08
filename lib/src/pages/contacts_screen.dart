@@ -31,6 +31,16 @@ class ContactsScreenState extends State<ContactsScreen> {
   }
 
   Future<void> _loadContacts() async {
+    final isLoggedIn = await AuthService.isLoggedIn();
+    if (!isLoggedIn) {
+      if (!mounted) return;
+      setState(() {
+        _contacts.clear();
+        _loading = false;
+      });
+      return;
+    }
+
     try {
       final remote = await AuthService.fetchContacts();
       setState(() {
@@ -45,8 +55,15 @@ class ContactsScreenState extends State<ContactsScreen> {
         _loading = false;
       });
     } catch (e) {
-      _showSnack(e.toString().replaceFirst('Exception: ', ''));
-      setState(() => _loading = false);
+      if (!mounted) return;
+      setState(() {
+        _contacts.clear();
+        _loading = false;
+      });
+      final error = e.toString().replaceFirst('Exception: ', '');
+      if (!error.toLowerCase().contains('not authenticated')) {
+        _showSnack(error);
+      }
     }
   }
 
@@ -281,14 +298,21 @@ class ContactsScreenState extends State<ContactsScreen> {
                   ),
                 const SizedBox(height: 10),
                 Expanded(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 140),
-                    itemCount: _contacts.length,
-                    itemBuilder: (context, index) {
-                      final contact = _contacts[index];
-                      return _buildContactCard(contact, index);
-                    },
-                  ),
+                  child: _contacts.isEmpty
+                      ? const Center(
+                          child: Text(
+                            'No trusted contacts found.',
+                            style: TextStyle(color: Colors.white70),
+                          ),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 140),
+                          itemCount: _contacts.length,
+                          itemBuilder: (context, index) {
+                            final contact = _contacts[index];
+                            return _buildContactCard(contact, index);
+                          },
+                        ),
                 ),
               ],
             ),

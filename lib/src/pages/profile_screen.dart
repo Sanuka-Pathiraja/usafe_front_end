@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
+import 'package:usafe_front_end/features/auth/screens/login_screen.dart';
 import 'package:usafe_front_end/src/pages/contacts_screen.dart';
 import 'package:usafe_front_end/src/pages/my_reports_screen.dart';
 
@@ -112,6 +113,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   String _asText(dynamic value) => value?.toString().trim() ?? '';
 
+  String _pickFirstText(List<String> keys, {String fallback = ''}) {
+    for (final key in keys) {
+      final value = _asText(_userData?[key]);
+      if (value.isNotEmpty) return value;
+    }
+    return fallback;
+  }
+
   String _firstName() {
     final fromFirst = _asText(_userData?['firstName']);
     if (fromFirst.isNotEmpty) return fromFirst;
@@ -156,10 +165,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       'picture',
       'photoUrl',
       'photoURL',
+      'photo',
+      'avatarUrl',
       'profileImage',
       'avatar',
       'imageUrl',
       'image',
+      'googlePhotoUrl',
+      'googlePicture',
     ];
     for (final key in keys) {
       final value = _asText(_userData?[key]);
@@ -437,6 +450,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildInfoCard() {
+    final phone = _pickFirstText(
+      const ['phone', 'phoneNumber', 'mobile', 'contactNumber'],
+      fallback: 'Not set',
+    );
+    final birthday = _pickFirstText(
+      const ['birthday', 'birthDate', 'dob', 'dateOfBirth'],
+      fallback: _pickFirstText(const ['age'], fallback: 'Not set'),
+    );
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -449,12 +471,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _buildInfoRow(
               Icons.email_outlined, "Email", _userData?['email'] ?? 'Not set'),
           const Divider(color: Colors.white10, height: 24),
-          _buildInfoRow(
-              Icons.phone_android, "Phone", _userData?['phone'] ?? 'Not set'),
+          _buildInfoRow(Icons.phone_android, "Phone", phone),
           const Divider(color: Colors.white10, height: 24),
-          // Clean replacement of Blood Group with Age
-          _buildInfoRow(Icons.cake_outlined, "Age",
-              _userData?['age']?.toString() ?? 'Not set'),
+          _buildInfoRow(Icons.cake_outlined, "Birthday", birthday),
         ],
       ),
     );
@@ -483,7 +502,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return InkWell(
       onTap: () async {
         await AuthService.logout();
-        if (mounted) Navigator.pushReplacementNamed(context, '/login');
+        if (!mounted) return;
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (_) => false,
+        );
       },
       borderRadius: BorderRadius.circular(15),
       child: Container(

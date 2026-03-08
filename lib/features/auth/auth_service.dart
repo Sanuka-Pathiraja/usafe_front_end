@@ -47,6 +47,9 @@ class AuthService {
     await prefs.setString('token', token); // Backward compatibility.
     if (user != null) {
       await prefs.setString(_userKey, jsonEncode(user));
+    } else {
+      // Prevent stale profile data from previous sessions.
+      await prefs.remove(_userKey);
     }
   }
 
@@ -228,8 +231,12 @@ class AuthService {
         ? Map<String, dynamic>.from(body['user'] as Map)
         : (body is Map<String, dynamic> ? body : null);
     if (user != null) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_userKey, jsonEncode(user));
+      // Preserve previously cached fields (e.g., avatar/birthday/phone from
+      // googleLogin) if /user/get does not return them yet.
+      final current = await getCurrentUser() ?? <String, dynamic>{};
+      final merged = <String, dynamic>{...current, ...user};
+      await _saveCurrentUser(merged);
+      MockDatabase.currentUser = merged;
     }
     return true;
   }
@@ -255,25 +262,74 @@ class AuthService {
     return true;
   }
 
-  static Future<bool> googleLogin(String idToken) async {
+  static Future<bool> googleLogin(String idToken, {String? accessToken}) async {
+    final result = await googleLoginDetailed(
+      idToken,
+      accessToken: accessToken,
+    );
+    return result['success'] == true;
+  }
+
+  static Future<Map<String, dynamic>> googleLoginDetailed(
+    String idToken, {
+    String? accessToken,
+  }) async {
+    if (idToken.trim().isEmpty) {
+      return <String, dynamic>{
+        'success': false,
+        'statusCode': 400,
+        'message': 'Google idToken is empty.',
+      };
+    }
+
     final resp = await http.post(
       Uri.parse('$baseUrl/user/googleLogin'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'idToken': idToken}),
+      body: jsonEncode({
+        'idToken': idToken,
+        if ((accessToken ?? '').trim().isNotEmpty)
+          'accessToken': accessToken!.trim(),
+      }),
     );
 
+    Map<String, dynamic> body = <String, dynamic>{};
+    try {
+      final decoded = jsonDecode(resp.body);
+      if (decoded is Map<String, dynamic>) {
+        body = decoded;
+      }
+    } catch (_) {}
+
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      return false;
+      final message = (body['message'] ?? body['error'] ?? 'Google login failed')
+          .toString();
+      return <String, dynamic>{
+        'success': false,
+        'statusCode': resp.statusCode,
+        'message': message,
+      };
     }
 
-    final body = jsonDecode(resp.body) as Map<String, dynamic>;
     final token = (body['token'] ?? body['jwt'] ?? '').toString();
-    if (token.isEmpty) return false;
+    if (token.isEmpty) {
+      return <String, dynamic>{
+        'success': false,
+        'statusCode': resp.statusCode,
+        'message': 'Backend returned success but token is missing.',
+      };
+    }
+
     final user = body['user'] is Map<String, dynamic>
         ? body['user'] as Map<String, dynamic>
         : null;
     await _saveSession(token: token, user: user);
-    return true;
+    // Pull freshest server-side profile (phone, birthday, image, etc).
+    await validateSession();
+    return <String, dynamic>{
+      'success': true,
+      'statusCode': resp.statusCode,
+      'message': (body['message'] ?? 'Google login successful').toString(),
+    };
   }
 
   static Future<bool> signup({
@@ -319,6 +375,9 @@ class AuthService {
     await prefs.remove(_tokenKey);
     await prefs.remove('token');
     await prefs.remove(_userKey);
+    await prefs.remove(_contactsKey);
+    MockDatabase.currentUser = null;
+    MockDatabase.trustedContacts = <Map<String, String>>[];
   }
 
   static Future<List<Map<String, dynamic>>> fetchContacts() async {
