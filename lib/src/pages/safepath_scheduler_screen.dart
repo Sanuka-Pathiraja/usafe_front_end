@@ -3,7 +3,9 @@ import 'package:flutter/cupertino.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 
 class SafePathSchedulerScreen extends StatefulWidget {
-  const SafePathSchedulerScreen({super.key});
+  final VoidCallback? onBack;
+
+  const SafePathSchedulerScreen({super.key, this.onBack});
 
   @override
   State<SafePathSchedulerScreen> createState() => _SafePathSchedulerScreenState();
@@ -14,6 +16,14 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
   final Set<int> _selectedDays = {};
   
   TimeOfDay _selectedTime = TimeOfDay.now();
+
+  Future<void> _handleBack() async {
+    if (widget.onBack != null) {
+      widget.onBack!();
+      return;
+    }
+    await Navigator.of(context).maybePop();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +43,7 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
         ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.textPrimary),
-          onPressed: () => Navigator.pop(context),
+          onPressed: _handleBack,
         ),
       ),
       body: SafeArea(

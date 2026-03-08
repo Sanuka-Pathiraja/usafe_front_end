@@ -6,7 +6,6 @@ import 'package:record/record.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:http/http.dart' as http;
 import 'api_service.dart';
 
 class ToneSOSBridgeService {
@@ -17,10 +16,14 @@ class ToneSOSBridgeService {
 
   Interpreter? _interpreter;
   AudioRecorder? _audioRecorder;
-  StreamSubscription? _audioSubscription;
+  StreamSubscription<Uint8List>? _audioSubscription;
   bool _isRecording = false;
   List<double> _audioBuffer = [];
   List<String> _labels = [];
+  int _consecutiveAudioErrors = 0;
+  static const int _maxConsecutiveAudioErrors = 3;
+
+  bool get isReady => _interpreter != null && _labels.isNotEmpty;
 
   Future<void> initialize() async {
     try {
@@ -62,6 +65,10 @@ class ToneSOSBridgeService {
 
   Future<void> startListening() async {
     if (_isRecording) return;
+    if (!isReady) {
+      // Model unavailable: do not start microphone stream.
+      return;
+    }
     try {
       final session = await AudioSession.instance;
       await session.configure(AudioSessionConfiguration.speech());
@@ -80,10 +87,21 @@ class ToneSOSBridgeService {
       );
 
       _isRecording = true;
+      _consecutiveAudioErrors = 0;
       _audioBuffer.clear();
-      _audioSubscription = stream.listen(_processAudioData);
+      _audioSubscription = stream.listen(
+        _processAudioData,
+        onError: (Object error, StackTrace stackTrace) async {
+          _consecutiveAudioErrors++;
+          if (_consecutiveAudioErrors >= _maxConsecutiveAudioErrors) {
+            await stopListening();
+          }
+        },
+        cancelOnError: true,
+      );
     } catch (e) {
       // Fail gracefully, do not crash app
+      await stopListening();
     }
   }
 
@@ -157,7 +175,9 @@ class ToneSOSBridgeService {
 
   Future<void> stopListening() async {
     _isRecording = false;
+    _audioBuffer.clear();
     await _audioSubscription?.cancel();
+    _audioSubscription = null;
     await _audioRecorder?.stop();
     await _audioRecorder?.dispose();
     _audioRecorder = null;

@@ -15,8 +15,11 @@ Future<void> main() async {
   );
   await DiagnosticsService.runStartupDiagnostics();
   await MockDatabase.loadUserSession();
-  await ToneSOSBridgeService().initialize();
-  ToneSOSBridgeService().startListening();
+  final toneSosBridge = ToneSOSBridgeService();
+  await toneSosBridge.initialize();
+  if (toneSosBridge.isReady) {
+    toneSosBridge.startListening();
+  }
   runApp(const USafeApp());
 }
 

@@ -27,7 +27,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final pages = [
       const SOSDashboard(),
       const SafetyScoreScreen(showBottomNav: false),
-      const SafePathSchedulerScreen(),
+      SafePathSchedulerScreen(
+        onBack: () => setState(() => _currentIndex = 0),
+      ),
       ContactsScreen(key: _contactsKey),
       const ProfileScreen(),
     ];
