@@ -55,7 +55,9 @@ class ContactsScreenState extends State<ContactsScreen> {
       return;
     }
 
-    final bool granted = await FlutterContacts.requestPermission();
+    // Read-only is enough for picking a contact; requesting write can be denied
+    // on some devices even when contact access is already allowed.
+    final bool granted = await FlutterContacts.requestPermission(readonly: true);
     if (!granted) {
       _showSnack('Contacts permission is required to add a contact.');
       return;
@@ -139,7 +141,7 @@ class ContactsScreenState extends State<ContactsScreen> {
 
   Future<String?> _promptRelation() async {
     // Ask the user how this contact is related.
-    final controller = TextEditingController();
+    String relationInput = '';
 
     final result = await showDialog<String>(
       context: context,
@@ -149,7 +151,7 @@ class ContactsScreenState extends State<ContactsScreen> {
           title: const Text('Relationship',
               style: TextStyle(color: Colors.white)),
           content: TextField(
-            controller: controller,
+            onChanged: (value) => relationInput = value,
             style: const TextStyle(color: Colors.white),
             decoration: InputDecoration(
               hintText: 'e.g. Mother, Partner',
@@ -171,7 +173,7 @@ class ContactsScreenState extends State<ContactsScreen> {
             ),
             TextButton(
               onPressed: () {
-                final relation = controller.text.trim();
+                final relation = relationInput.trim();
                 Navigator.pop(context, relation.isEmpty ? 'Contact' : relation);
               },
               child: const Text('Save', style: TextStyle(color: Colors.white)),
@@ -181,7 +183,6 @@ class ContactsScreenState extends State<ContactsScreen> {
       },
     );
 
-    controller.dispose();
     return result;
   }
 

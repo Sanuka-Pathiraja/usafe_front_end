@@ -112,7 +112,7 @@ class AuthorizationScreen extends StatelessWidget {
 
   Future<void> _handleContinue(BuildContext context) async {
   // Request contacts permission and mark the step as completed.
-    await FlutterContacts.requestPermission();
+    await FlutterContacts.requestPermission(readonly: true);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('authorization_seen', true);
 
