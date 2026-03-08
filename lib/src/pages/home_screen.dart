@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../core/services/api_service.dart';
 import '../../core/constants/app_colors.dart';
+import '../../features/auth/auth_service.dart';
+import '../../features/auth/screens/login_screen.dart';
 import 'contacts_screen.dart';
+import 'emergency_process_screen.dart';
 import 'profile_screen.dart';
 import 'safety_score_screen.dart';
 import 'safepath_scheduler_screen.dart';
@@ -157,14 +158,21 @@ class SOSDashboard extends StatefulWidget {
 class _SOSDashboardState extends State<SOSDashboard>
     with TickerProviderStateMixin {
   bool isSOSActive = false;
+  bool _openingEmergencyProcess = false;
+  String? _emergencySessionId;
+  Timer? _statusPollTimer;
+  bool _sessionAnswered = false;
+  Map<String, dynamic>? _latestSessionStatus;
 
   static const Duration _sosDuration = Duration(minutes: 3);
+  static const Duration _statusPollInterval = Duration(seconds: 3);
   Timer? _sosTimer;
   Duration _remaining = _sosDuration;
 
   @override
   void dispose() {
     _sosTimer?.cancel();
+    _statusPollTimer?.cancel();
     super.dispose();
   }
 
@@ -335,7 +343,7 @@ class _SOSDashboardState extends State<SOSDashboard>
           bg: AppColors.alert,
           text: Colors.white,
           icon: Icons.flash_on_rounded,
-          onTap: _triggerSOS,
+          onTap: _openEmergencyProcess,
         ),
         const SizedBox(height: 16),
         _buildActionButton(
@@ -393,12 +401,12 @@ class _SOSDashboardState extends State<SOSDashboard>
   void _startSosCountdown() {
     _sosTimer?.cancel();
     _remaining = _sosDuration;
-    _sosTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+    _sosTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
       if (!mounted) return;
       if (_remaining.inSeconds <= 1) {
         timer.cancel();
-        _triggerSOS();
         setState(() => _remaining = Duration.zero);
+        await _openEmergencyProcess();
         return;
       }
       setState(() => _remaining = Duration(seconds: _remaining.inSeconds - 1));
@@ -410,17 +418,264 @@ class _SOSDashboardState extends State<SOSDashboard>
     _remaining = _sosDuration;
   }
 
-  Future<void> _triggerSOS() async {
+  Future<void> _openEmergencyProcess() async {
+    if (_openingEmergencyProcess) return;
+    _openingEmergencyProcess = true;
+    _sosTimer?.cancel();
+    _emergencySessionId = null;
+    _sessionAnswered = false;
+    _latestSessionStatus = null;
+    _statusPollTimer?.cancel();
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EmergencyProcessScreen(
+          onMessageAllContacts: _onMessageAllContacts,
+          onCallContact: _onCallContact,
+          onCall119: _onCall119,
+          onCancelEmergency: _onCancelEmergency,
+        ),
+      ),
+    );
+
+    _statusPollTimer?.cancel();
+    _statusPollTimer = null;
+    _emergencySessionId = null;
+    _sessionAnswered = false;
+    _latestSessionStatus = null;
+    _openingEmergencyProcess = false;
+    if (!mounted) return;
+    _resetSosCountdown();
+    setState(() => isSOSActive = false);
+  }
+
+  String? _extractSessionId(Map<String, dynamic> response) {
+    final dynamic id =
+        response['sessionId'] ?? response['sessionID'] ?? response['id'];
+    if (id is String && id.isNotEmpty) return id;
+    return null;
+  }
+
+  Future<void> _startStatusPolling() async {
+    _statusPollTimer?.cancel();
+    await _pollEmergencyStatus();
+    _statusPollTimer = Timer.periodic(_statusPollInterval, (_) {
+      _pollEmergencyStatus();
+    });
+  }
+
+  Future<void> _pollEmergencyStatus() async {
+    final sessionId = _emergencySessionId;
+    if (sessionId == null || sessionId.isEmpty) return;
+
     try {
-      final jwt = Supabase.instance.client.auth.currentSession?.accessToken ??
-          "mock-testing-token";
-      await ApiService.sendDistressSignal("Manual SOS", 1.0, jwt);
-      debugPrint("✅ SOS signal sent successfully");
+      final response = await AuthService.getEmergencyStatus(sessionId: sessionId);
+      _latestSessionStatus = response;
+      final status = (response['status'] ?? response['finalStatus'] ?? '')
+          .toString()
+          .toUpperCase();
+      if (status == 'ANSWERED' ||
+          (response['answeredBy'] != null &&
+              response['answeredBy'].toString().isNotEmpty)) {
+        _sessionAnswered = true;
+      }
+      if (status == 'CANCELLED' ||
+          status == 'FAILED' ||
+          status == 'COMPLETED' ||
+          status == 'ANSWERED') {
+        _statusPollTimer?.cancel();
+      }
     } catch (e) {
-      debugPrint("❌ Failed to send SOS signal: $e");
+      await _handleUnauthorizedError(e);
     }
   }
 
+  Future<EmergencyActionResult> _onMessageAllContacts() async {
+    Map<String, dynamic> response;
+    try {
+      response = await AuthService.startEmergency();
+    } catch (e) {
+      if (await _handleUnauthorizedError(e)) {
+        return const EmergencyActionResult(
+          success: false,
+          message: 'Session expired. Please re-login.',
+        );
+      }
+      return EmergencyActionResult(success: false, message: e.toString());
+    }
+
+    final sessionId = _extractSessionId(response);
+    if (sessionId == null || sessionId.isEmpty) {
+      return const EmergencyActionResult(
+        success: false,
+        message: 'Emergency session id missing in response',
+      );
+    }
+
+    _emergencySessionId = sessionId;
+    await _startStatusPolling();
+    final assessment = AuthService.assessEmergencyStartResponse(response);
+    return EmergencyActionResult(success: true, message: assessment.message);
+  }
+
+  Future<EmergencyCallResult> _onCallContact(int contactIndex) async {
+    if (_sessionAnswered) {
+      return const EmergencyCallResult(success: true, answered: true);
+    }
+
+    final sessionId = _emergencySessionId;
+    if (sessionId == null || sessionId.isEmpty) {
+      return const EmergencyCallResult(
+        success: false,
+        answered: false,
+        message: 'Emergency session not initialized',
+        finalStatus: 'session-missing',
+      );
+    }
+
+    Map<String, dynamic> response;
+    try {
+      response = await AuthService.attemptEmergencyContactCall(
+        sessionId: sessionId,
+        contactIndex: contactIndex,
+        timeoutSec: 30,
+      );
+    } catch (e) {
+      if (await _handleUnauthorizedError(e)) {
+        return const EmergencyCallResult(
+          success: false,
+          answered: false,
+          message: 'Session expired. Please re-login.',
+          finalStatus: 'unauthorized',
+        );
+      }
+      return EmergencyCallResult(
+        success: false,
+        answered: false,
+        message: e.toString(),
+        finalStatus: 'failed',
+      );
+    }
+
+    final finalStatus = (response['finalStatus'] ?? response['status'] ?? '')
+        .toString()
+        .toUpperCase();
+    final latestStatus = (_latestSessionStatus?['status'] ?? '')
+        .toString()
+        .toUpperCase();
+    final answered = response['answered'] == true ||
+        finalStatus == 'ANSWERED' ||
+        latestStatus == 'ANSWERED' ||
+        (response['answeredBy'] != null &&
+            response['answeredBy'].toString().isNotEmpty);
+    if (answered) _sessionAnswered = true;
+
+    final explicitFail = response['success'] == false || response['ok'] == false;
+    final providerFailed =
+        finalStatus == 'FAILED' || finalStatus == 'NO_ANSWER' || finalStatus == 'BUSY';
+    final success = answered ? true : !(explicitFail || providerFailed);
+
+    return EmergencyCallResult(
+      success: success,
+      answered: answered,
+      message: response['message']?.toString(),
+      finalStatus: finalStatus.isEmpty ? null : finalStatus,
+    );
+  }
+
+  Future<EmergencyActionResult> _onCall119() async {
+    final sessionId = _emergencySessionId;
+    if (sessionId == null || sessionId.isEmpty) {
+      return const EmergencyActionResult(
+        success: false,
+        message: 'Emergency session not initialized',
+      );
+    }
+
+    Map<String, dynamic> response;
+    try {
+      response = await AuthService.callEmergency119(sessionId: sessionId);
+    } catch (e) {
+      if (await _handleUnauthorizedError(e)) {
+        return const EmergencyActionResult(
+          success: false,
+          message: 'Session expired. Please re-login.',
+        );
+      }
+      return EmergencyActionResult(success: false, message: e.toString());
+    }
+
+    final explicitFail = response['success'] == false || response['ok'] == false;
+    final called = response['emergencyServicesCalled'];
+    final callFlagFailed = called is bool && called == false;
+    return EmergencyActionResult(
+      success: !(explicitFail || callFlagFailed),
+      message: response['message']?.toString(),
+    );
+  }
+
+  Future<EmergencyActionResult> _onCancelEmergency() async {
+    final sessionId = _emergencySessionId;
+    if (sessionId == null || sessionId.isEmpty) {
+      return const EmergencyActionResult(
+        success: true,
+        message: 'Emergency process stopped',
+      );
+    }
+
+    Map<String, dynamic> response;
+    try {
+      response = await AuthService.cancelEmergency(sessionId: sessionId);
+    } catch (e) {
+      if (await _handleUnauthorizedError(e)) {
+        return const EmergencyActionResult(
+          success: false,
+          message: 'Session expired. Please re-login.',
+        );
+      }
+      return const EmergencyActionResult(
+        success: false,
+        message:
+            'Emergency was stopped. We could not confirm contact notifications.',
+      );
+    } finally {
+      _statusPollTimer?.cancel();
+    }
+
+    final ok = response['ok'] != false && response['success'] != false;
+    return EmergencyActionResult(
+      success: ok,
+      message: response['message']?.toString() ?? 'Emergency process cancelled.',
+    );
+  }
+
+  Future<bool> _handleUnauthorizedError(Object error) async {
+    if (error is EmergencyApiException && error.statusCode == 401) {
+      await AuthService.logout();
+      if (!mounted) return true;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (_) => false,
+      );
+      return true;
+    }
+
+    final normalized = error.toString().toUpperCase();
+    final unauthorized = normalized.contains('UNAUTHORIZED') ||
+        normalized.contains('HTTP 401') ||
+        normalized.contains('INVALID OR EXPIRED TOKEN') ||
+        normalized.contains('NO TOKEN PROVIDED');
+    if (!unauthorized) return false;
+
+    await AuthService.logout();
+    if (!mounted) return true;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (_) => false,
+    );
+    return true;
+  }
   String _formatDuration(Duration duration) {
     final int minutes = duration.inMinutes;
     final int seconds = duration.inSeconds % 60;
@@ -560,3 +815,4 @@ class _SOSHoldInteractionState extends State<SOSHoldInteraction>
     );
   }
 }
+

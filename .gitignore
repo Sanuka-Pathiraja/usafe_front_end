@@ -46,3 +46,4 @@ app.*.map.json
 
 # Ignore environment variable files
 .env
+android/gradle.properties

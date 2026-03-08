@@ -2,6 +2,36 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+class EmergencyApiException implements Exception {
+  final int statusCode;
+  final String? code;
+  final String message;
+  final Map<String, dynamic>? payload;
+
+  const EmergencyApiException({
+    required this.statusCode,
+    required this.message,
+    this.code,
+    this.payload,
+  });
+
+  @override
+  String toString() {
+    final codePart = (code == null || code!.isEmpty) ? '' : ' [$code]';
+    return 'EmergencyApiException($statusCode)$codePart: $message';
+  }
+}
+
+class EmergencyStartAssessment {
+  final bool messagingSuccessful;
+  final String message;
+
+  const EmergencyStartAssessment({
+    required this.messagingSuccessful,
+    required this.message,
+  });
+}
+
 class AuthService {
   static const String baseUrl = 'http://10.0.2.2:5000';
   static const String _tokenKey = 'auth_token';
@@ -243,6 +273,157 @@ class AuthService {
     return decoded
         .map((e) => Map<String, String>.from(e as Map<String, dynamic>))
         .toList();
+  }
+
+  static Map<String, dynamic> _decodeJsonMap(String body) {
+    if (body.trim().isEmpty) return <String, dynamic>{};
+    final decoded = jsonDecode(body);
+    if (decoded is Map<String, dynamic>) return decoded;
+    if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    return <String, dynamic>{'data': decoded};
+  }
+
+  static Future<Map<String, dynamic>> _authorizedRequest({
+    required String method,
+    required String path,
+    Map<String, dynamic>? body,
+  }) async {
+    final token = await getToken();
+    if (token.isEmpty) {
+      throw const EmergencyApiException(
+        statusCode: 401,
+        code: 'UNAUTHORIZED',
+        message: 'No token provided',
+      );
+    }
+
+    final uri = Uri.parse('$baseUrl$path');
+    final headers = <String, String>{
+      'Authorization': 'Bearer $token',
+      'Content-Type': 'application/json',
+    };
+
+    late http.Response resp;
+    switch (method.toUpperCase()) {
+      case 'GET':
+        resp = await http.get(uri, headers: headers);
+        break;
+      case 'POST':
+        resp = await http.post(
+          uri,
+          headers: headers,
+          body: body == null ? null : jsonEncode(body),
+        );
+        break;
+      default:
+        throw ArgumentError('Unsupported method: $method');
+    }
+
+    final parsed = _decodeJsonMap(resp.body);
+    if (resp.statusCode == 401) {
+      throw EmergencyApiException(
+        statusCode: 401,
+        code: (parsed['code'] ?? 'UNAUTHORIZED').toString(),
+        message: (parsed['message'] ?? 'Invalid or expired token').toString(),
+        payload: parsed,
+      );
+    }
+
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      throw EmergencyApiException(
+        statusCode: resp.statusCode,
+        code: parsed['code']?.toString(),
+        message: (parsed['message'] ?? 'Request failed').toString(),
+        payload: parsed,
+      );
+    }
+
+    return parsed;
+  }
+
+  static Future<Map<String, dynamic>> startEmergency() async {
+    return _authorizedRequest(method: 'POST', path: '/emergency/start');
+  }
+
+  static EmergencyStartAssessment assessEmergencyStartResponse(
+    Map<String, dynamic> response,
+  ) {
+    final messaging = response['messaging'];
+    if (messaging is Map) {
+      final sent = int.tryParse(messaging['sent']?.toString() ?? '') ?? 0;
+      final attempted =
+          int.tryParse(messaging['attempted']?.toString() ?? '') ?? 0;
+      final failed = int.tryParse(messaging['failed']?.toString() ?? '') ?? 0;
+
+      if (attempted > 0 && sent == 0) {
+        return const EmergencyStartAssessment(
+          messagingSuccessful: false,
+          message: 'Could not message emergency contacts',
+        );
+      }
+      if (failed > 0) {
+        return EmergencyStartAssessment(
+          messagingSuccessful: true,
+          message: 'Emergency started with partial contact messaging',
+        );
+      }
+    }
+
+    return EmergencyStartAssessment(
+      messagingSuccessful: response['ok'] == false
+          ? true
+          : (response['success'] != false),
+      message: (response['message'] ?? 'Emergency started').toString(),
+    );
+  }
+
+  static Future<Map<String, dynamic>> attemptEmergencyContactCall({
+    required String sessionId,
+    required int contactIndex,
+    int? timeoutSec,
+  }) async {
+    return _authorizedRequest(
+      method: 'POST',
+      path: '/emergency/$sessionId/call/$contactIndex/attempt',
+      body: timeoutSec == null ? null : {'timeoutSec': timeoutSec},
+    );
+  }
+
+  static Future<Map<String, dynamic>> getEmergencyStatus({
+    required String sessionId,
+  }) async {
+    return _authorizedRequest(
+      method: 'GET',
+      path: '/emergency/$sessionId/status',
+    );
+  }
+
+  static Future<Map<String, dynamic>> getEmergencyCallStatus({
+    required String sessionId,
+    required String callId,
+  }) async {
+    return _authorizedRequest(
+      method: 'GET',
+      path: '/emergency/$sessionId/call/$callId/status',
+    );
+  }
+
+  static Future<Map<String, dynamic>> callEmergency119({
+    required String sessionId,
+  }) async {
+    return _authorizedRequest(
+      method: 'POST',
+      path: '/emergency/$sessionId/call-119',
+    );
+  }
+
+  static Future<Map<String, dynamic>> cancelEmergency({
+    required String sessionId,
+  }) async {
+    return _authorizedRequest(
+      method: 'POST',
+      path: '/emergency/$sessionId/cancel',
+    );
   }
 }
 
