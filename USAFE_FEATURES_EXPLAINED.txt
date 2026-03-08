@@ -1,0 +1,73 @@
+USafe App Feature and Page-by-Page Explanation
+
+---
+
+1. Home Screen
+- Features: Bottom navigation (SOS Dashboard, Safety Score, Contacts, Profile), custom floating action button for adding contacts, persistent state for each tab.
+- How it works: Uses IndexedStack for tab navigation, floating action button appears only on Contacts tab, navigation between main app sections.
+- Front End: Flutter widgets, custom colors, GlobalKey for ContactsScreen.
+- Back End: No direct backend calls, but navigates to pages that do.
+
+2. Contacts Screen
+- Features: List and manage trusted contacts (min 3, max 5), add from phonebook, permission handling, persistent storage.
+- How it works: Loads contacts on init, allows adding from phonebook (with permission), enforces contact limits, shows snackbars for feedback.
+- Front End: FlutterContacts package, custom UI, floating action button for adding.
+- Back End: Uses a mock database for loading/saving contacts (replace with real backend for production).
+
+3. Profile Screen
+- Features: View and edit user profile (name, email, blood type, age, weight), navigation to Medical ID, Notifications, Privacy, Help & Support, and Contacts.
+- How it works: Loads user data from mock database, allows editing and saving, navigates to other settings and info screens.
+- Front End: Text fields for editing, buttons for navigation, state management for edit mode.
+- Back End: MockDatabase for profile data (replace with real backend for production).
+
+4. Safety Score Screen
+- Features: Displays user's safety score, visual score card, navigation to Safety Map, info cards for improving safety.
+- How it works: Shows score, provides tips, allows navigation to map for more details.
+- Front End: Custom cards, progress indicators, navigation buttons.
+- Back End: Static data in UI (can be connected to backend for real analytics).
+
+5. Safety Map Screen
+- Features: Google Maps integration, safety mode toggle, real-time audio analysis for distress detection, danger dialog, animated UI.
+- How it works: Loads custom map style, listens for distress via audio, shows dialog if danger detected, toggles safety mode.
+- Front End: Google Maps Flutter, animation controllers, custom dialogs.
+- Back End: AudioAnalysisService (can be connected to backend for real-time alerts).
+
+6. Community Page
+- Features: Community reports, back navigation, gradient background, snackbars for feedback.
+- How it works: Displays community safety info, allows user to go back, shows messages.
+- Front End: Custom UI, gradient backgrounds, snackbars.
+- Back End: Static content (can be extended for real community data).
+
+7. Notifications Screen
+- Features: Toggle push, SMS, email, and marketing notifications.
+- How it works: Switches for each notification type, saves state locally.
+- Front End: Switch tiles, custom card backgrounds.
+- Back End: No backend (can be extended to sync preferences).
+
+8. Medical ID Screen
+- Features: Enter and save allergies, conditions, medications, emergency notes.
+- How it works: Text fields for each section, save button shows confirmation and returns to previous screen.
+- Front End: Text fields, section headers, save button.
+- Back End: No backend (can be extended to sync with user profile).
+
+9. Help & Support Screen
+- Features: FAQ section, contact support info, styled cards.
+- How it works: Shows common questions/answers, displays support email.
+- Front End: ListView, custom cards, icons.
+- Back End: Static content.
+
+10. Settings Screen
+- Features: Toggle location sharing and push notifications, profile card, bottom navigation.
+- How it works: Switches for each setting, saves state locally.
+- Front End: Toggle tiles, profile card, navigation bar.
+- Back End: No backend (can be extended for real settings sync).
+
+11. Privacy Screen
+- Features: Privacy policy sections (data collection, security, location services).
+- How it works: Shows info in styled cards.
+- Front End: Custom cards, section headers.
+- Back End: Static content.
+
+---
+
+This file covers the main features and flows of each page in the USafe app, describing both front end and back end (where applicable). For more detail on any specific feature or code, let me know!
