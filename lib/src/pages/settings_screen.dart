@@ -130,15 +130,34 @@ class _SettingsPageState extends State<SettingsPage>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Center(
-                child: Text(
-                  "Settings",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
+              Row(
+                children: [
+                  Container(
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceCard,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: IconButton(
+                      onPressed: () => Navigator.of(context).maybePop(),
+                      icon: const Icon(Icons.arrow_back_ios_new,
+                          color: Colors.white, size: 18),
+                      tooltip: 'Back',
+                    ),
                   ),
-                ),
+                  const Expanded(
+                    child: Center(
+                      child: Text(
+                        "Settings",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 48),
+                ],
               ),
               const SizedBox(height: 30),
               _sectionTitle("Privacy & Permissions"),
