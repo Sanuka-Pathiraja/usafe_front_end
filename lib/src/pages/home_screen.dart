@@ -5,7 +5,7 @@ import '../../features/auth/auth_service.dart';
 import '../../features/auth/screens/login_screen.dart';
 import 'contacts_screen.dart';
 import 'emergency_process_screen.dart';
-import 'profile_screen.dart';
+import 'package:usafe_front_end/src/pages/profile_screen.dart'; // Adjust path
 import 'safety_score_screen.dart';
 import 'safepath_scheduler_screen.dart';
 import 'settings_screen.dart'; // ← SettingsPage lives here
@@ -19,19 +19,36 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
+  final Set<int> _loadedTabs = {0};
   final GlobalKey<ContactsScreenState> _contactsKey =
       GlobalKey<ContactsScreenState>();
+
+  void _switchTab(int index) {
+    setState(() {
+      _currentIndex = index;
+      _loadedTabs.add(index);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final pages = [
       const SOSDashboard(),
-      const SafetyScoreScreen(showBottomNav: false),
-      SafePathSchedulerScreen(
-        onBack: () => setState(() => _currentIndex = 0),
+      SafetyScoreScreen(
+        showBottomNav: false,
+        onBackHome: () => _switchTab(0),
       ),
-      ContactsScreen(key: _contactsKey),
-      const ProfileScreen(),
+      SafePathSchedulerScreen(
+        onBack: () => _switchTab(0),
+      ),
+      ContactsScreen(
+        key: _contactsKey,
+        onBackHome: () => _switchTab(0),
+      ),
+      ProfileScreen(
+        onBackHome: () => _switchTab(0),
+        onOpenContacts: () => _switchTab(3),
+      ),
     ];
 
     return Scaffold(
@@ -40,7 +57,12 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           IndexedStack(
             index: _currentIndex,
-            children: pages,
+            children: List.generate(
+              pages.length,
+              (index) => _loadedTabs.contains(index)
+                  ? pages[index]
+                  : const SizedBox.shrink(),
+            ),
           ),
           Positioned(
             bottom: 32,
@@ -107,7 +129,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _navItem(IconData icon, String label, int index) {
     final bool isActive = _currentIndex == index;
     return GestureDetector(
-      onTap: () => setState(() => _currentIndex = index),
+      onTap: () => _switchTab(index),
       behavior: HitTestBehavior.opaque,
       child: SizedBox(
         width: 64,

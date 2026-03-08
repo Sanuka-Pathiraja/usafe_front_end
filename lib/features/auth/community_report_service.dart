@@ -61,6 +61,7 @@ class CommunityReportService {
         } catch (_) {
           parsed = {'message': response.body};
         }
+        await AuthService.incrementLocalCommunityReportCount();
         return {
           'success': true,
           'data': parsed,
@@ -88,5 +89,77 @@ class CommunityReportService {
         'error': e.toString(),
       };
     }
+  }
+
+  static Future<int> getMyReportCount() async {
+    return AuthService.fetchCommunityReportCount();
+  }
+
+  static Future<List<Map<String, dynamic>>> getMyReports() async {
+    final token = await AuthService.getToken();
+    if (token.isEmpty) {
+      throw Exception('Session expired. Please login again.');
+    }
+
+    final response = await http.get(
+      Uri.parse('$baseUrl/report/my-reports'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+
+    if (response.statusCode == 401) {
+      await AuthService.logout();
+      throw Exception('Invalid or expired token. Please re-login.');
+    }
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Failed to load reports (${response.statusCode})');
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is Map<String, dynamic> && decoded['reports'] is List) {
+      return (decoded['reports'] as List)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+    }
+    if (decoded is List) {
+      return decoded
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+    }
+    return <Map<String, dynamic>>[];
+  }
+
+  static Future<Map<String, dynamic>> getReportDetails(int reportId) async {
+    final token = await AuthService.getToken();
+    if (token.isEmpty) {
+      throw Exception('Session expired. Please login again.');
+    }
+
+    final response = await http.get(
+      Uri.parse('$baseUrl/report/$reportId'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+
+    if (response.statusCode == 401) {
+      await AuthService.logout();
+      throw Exception('Invalid or expired token. Please re-login.');
+    }
+
+    if (response.statusCode == 404) {
+      throw Exception('Report not found.');
+    }
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Failed to load report details (${response.statusCode})');
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is Map<String, dynamic> && decoded['report'] is Map) {
+      return Map<String, dynamic>.from(decoded['report'] as Map);
+    }
+    if (decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+    throw Exception('Invalid report details response.');
   }
 }

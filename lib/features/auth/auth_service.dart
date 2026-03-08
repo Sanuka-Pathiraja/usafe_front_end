@@ -62,6 +62,148 @@ class AuthService {
     return jsonDecode(raw) as Map<String, dynamic>;
   }
 
+  static int communityReportCountFromUser(Map<String, dynamic>? user) {
+    if (user == null) return 0;
+    final dynamic raw = user['communityReportCount'];
+    if (raw is int) return raw;
+    return int.tryParse(raw?.toString() ?? '') ?? 0;
+  }
+
+  static Future<int> fetchCommunityReportCount() async {
+    final token = await getToken();
+    if (token.isEmpty) {
+      return communityReportCountFromUser(await getCurrentUser());
+    }
+
+    final resp = await http.get(
+      Uri.parse('$baseUrl/user/community-report-count'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+
+    if (resp.statusCode == 401) {
+      await logout();
+      throw Exception('Invalid or expired token. Please re-login.');
+    }
+
+    if (resp.statusCode >= 200 && resp.statusCode < 300) {
+      final body = _decodeJsonMap(resp.body);
+      final count = body['communityReportCount'];
+      final parsedCount = count is int ? count : int.tryParse('$count') ?? 0;
+      final user = await getCurrentUser() ?? <String, dynamic>{};
+      user['communityReportCount'] = parsedCount;
+      await _saveCurrentUser(user);
+      MockDatabase.currentUser = user;
+      return parsedCount;
+    }
+
+    // Fallback to /user/get payload cache if backend count endpoint fails.
+    final cached = await getCurrentUser();
+    return communityReportCountFromUser(cached);
+  }
+
+  static Future<void> incrementLocalCommunityReportCount([int by = 1]) async {
+    final user = await getCurrentUser() ?? <String, dynamic>{};
+    final current = communityReportCountFromUser(user);
+    user['communityReportCount'] = current + by;
+    await _saveCurrentUser(user);
+    MockDatabase.currentUser = user;
+  }
+
+  static Future<void> _saveCurrentUser(Map<String, dynamic> user) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_userKey, jsonEncode(user));
+  }
+
+  static Map<String, dynamic>? _extractUserFromResponse(dynamic decoded) {
+    if (decoded is! Map) return null;
+    final map = Map<String, dynamic>.from(decoded as Map);
+    final userNode = map['user'];
+    if (userNode is Map) return Map<String, dynamic>.from(userNode);
+
+    final dataNode = map['data'];
+    if (dataNode is Map) {
+      final dataMap = Map<String, dynamic>.from(dataNode);
+      final nestedUser = dataMap['user'];
+      if (nestedUser is Map) return Map<String, dynamic>.from(nestedUser);
+      return dataMap;
+    }
+
+    return map;
+  }
+
+  static Future<Map<String, dynamic>> updateUserProfile({
+    String? firstName,
+    String? lastName,
+    String? email,
+    String? phone,
+    int? age,
+  }) async {
+    final payload = <String, dynamic>{};
+    if (firstName != null) payload['firstName'] = firstName.trim();
+    if (lastName != null) payload['lastName'] = lastName.trim();
+    if (email != null) payload['email'] = email.trim();
+    if (phone != null) payload['phone'] = phone.trim();
+    if (age != null) payload['age'] = age;
+
+    payload.removeWhere((_, value) => value == null || '$value'.isEmpty);
+    if (payload.isEmpty) {
+      throw Exception('No profile fields to update.');
+    }
+
+    final token = await getToken();
+    if (token.isEmpty) throw Exception('Not authenticated');
+
+    final endpoints = <String>[
+      '/user/update',
+      '/user/edit',
+      '/user/profile',
+      '/user/updateProfile',
+    ];
+    final methods = <String>['PUT', 'PATCH', 'POST'];
+
+    http.Response? lastResp;
+
+    for (final path in endpoints) {
+      for (final method in methods) {
+        final resp = await _sendAuthorizedJson(
+          method: method,
+          path: path,
+          body: payload,
+          token: token,
+        );
+        lastResp = resp;
+
+        if (resp.statusCode == 401) {
+          await logout();
+          throw Exception('Invalid or expired token. Please re-login.');
+        }
+
+        if (resp.statusCode == 404 || resp.statusCode == 405) {
+          continue;
+        }
+
+        if (resp.statusCode >= 200 && resp.statusCode < 300) {
+          final decoded = _decodeJsonMap(resp.body);
+          final serverUser = _extractUserFromResponse(decoded);
+          final current = await getCurrentUser() ?? <String, dynamic>{};
+          final merged = <String, dynamic>{...current, ...payload};
+          if (serverUser != null) merged.addAll(serverUser);
+          await _saveCurrentUser(merged);
+          MockDatabase.currentUser = merged;
+          return merged;
+        }
+
+        final errorMap = _decodeJsonMap(resp.body);
+        final message = (errorMap['message'] ?? 'Profile update failed').toString();
+        throw Exception(message);
+      }
+    }
+
+    throw Exception(
+      'Profile update endpoint not found (${lastResp?.statusCode ?? 'no-response'}).',
+    );
+  }
+
   static Future<bool> isLoggedIn() async => (await getToken()).isNotEmpty;
 
   static Future<bool> validateSession() async {
@@ -339,6 +481,30 @@ class AuthService {
     }
 
     return parsed;
+  }
+
+  static Future<http.Response> _sendAuthorizedJson({
+    required String method,
+    required String path,
+    required Map<String, dynamic> body,
+    required String token,
+  }) async {
+    final uri = Uri.parse('$baseUrl$path');
+    final headers = <String, String>{
+      'Authorization': 'Bearer $token',
+      'Content-Type': 'application/json',
+    };
+
+    switch (method.toUpperCase()) {
+      case 'PUT':
+        return http.put(uri, headers: headers, body: jsonEncode(body));
+      case 'PATCH':
+        return http.patch(uri, headers: headers, body: jsonEncode(body));
+      case 'POST':
+        return http.post(uri, headers: headers, body: jsonEncode(body));
+      default:
+        throw ArgumentError('Unsupported method: $method');
+    }
   }
 
   static Future<Map<String, dynamic>> startEmergency() async {

@@ -4,7 +4,9 @@ import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
 
 class ContactsScreen extends StatefulWidget {
-  const ContactsScreen({super.key});
+  final VoidCallback? onBackHome;
+
+  const ContactsScreen({super.key, this.onBackHome});
 
   @override
   State<ContactsScreen> createState() => ContactsScreenState();
@@ -57,7 +59,8 @@ class ContactsScreenState extends State<ContactsScreen> {
 
     // Read-only is enough for picking a contact; requesting write can be denied
     // on some devices even when contact access is already allowed.
-    final bool granted = await FlutterContacts.requestPermission(readonly: true);
+    final bool granted =
+        await FlutterContacts.requestPermission(readonly: true);
     if (!granted) {
       _showSnack('Contacts permission is required to add a contact.');
       return;
@@ -104,7 +107,7 @@ class ContactsScreenState extends State<ContactsScreen> {
   }
 
   Future<void> openAddContact() async {
-  // Public entry point used by the Home FAB.
+    // Public entry point used by the Home FAB.
     await _addContactFromPhone();
   }
 
@@ -148,8 +151,8 @@ class ContactsScreenState extends State<ContactsScreen> {
       builder: (context) {
         return AlertDialog(
           backgroundColor: const Color(0xFF1B2026),
-          title: const Text('Relationship',
-              style: TextStyle(color: Colors.white)),
+          title:
+              const Text('Relationship', style: TextStyle(color: Colors.white)),
           content: TextField(
             onChanged: (value) => relationInput = value,
             style: const TextStyle(color: Colors.white),
@@ -169,7 +172,8 @@ class ContactsScreenState extends State<ContactsScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+              child:
+                  const Text('Cancel', style: TextStyle(color: Colors.white70)),
             ),
             TextButton(
               onPressed: () {
@@ -216,12 +220,18 @@ class ContactsScreenState extends State<ContactsScreen> {
       appBar: AppBar(
         backgroundColor: AppColors.background,
         elevation: 0,
-        leading: Navigator.canPop(context)
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
-                onPressed: () => Navigator.pop(context),
-              )
-            : null,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+          onPressed: () {
+            if (widget.onBackHome != null) {
+              widget.onBackHome!();
+              return;
+            }
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            }
+          },
+        ),
         title: const Text(
           'Emergency Contacts',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),

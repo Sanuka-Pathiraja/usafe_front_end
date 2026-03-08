@@ -9,10 +9,12 @@ import 'safety_map_screen.dart';
 
 class SafetyScoreScreen extends StatefulWidget {
   final bool showBottomNav;
+  final VoidCallback? onBackHome;
 
   const SafetyScoreScreen({
     super.key,
     this.showBottomNav = true,
+    this.onBackHome,
   });
 
   @override
@@ -129,7 +131,15 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.textPrimary, size: 20),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+            if (widget.onBackHome != null) {
+              widget.onBackHome!();
+              return;
+            }
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            }
+          },
         ),
         title: const Text(
           'My Safety Score',
