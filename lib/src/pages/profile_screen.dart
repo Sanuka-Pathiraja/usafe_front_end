@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
+import 'package:usafe_front_end/features/auth/google_auth_service.dart';
 import 'package:usafe_front_end/features/auth/screens/login_screen.dart';
 import 'package:usafe_front_end/src/pages/contacts_screen.dart';
 import 'package:usafe_front_end/src/pages/my_reports_screen.dart';
@@ -20,6 +21,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _contactCount = 0;
   int _reportCount = 0;
   bool _isRefreshing = false;
+  bool _isAddingAccount = false;
 
   @override
   void initState() {
@@ -102,6 +104,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildStatsRow(),
             const SizedBox(height: 25),
             _buildInfoCard(),
+            const SizedBox(height: 25),
+            _buildAccountsSection(),
             const SizedBox(height: 25),
             _buildLogoutButton(),
             const SizedBox(height: 40),
@@ -532,5 +536,136 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildAccountsSection() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A2128),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Accounts',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 14),
+          InkWell(
+            onTap: _isAddingAccount ? null : _handleAddAnotherAccount,
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.03),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white.withOpacity(0.06)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withOpacity(0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.person_add_alt_1_rounded,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Add another account',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          _isAddingAccount
+                              ? 'Opening Google sign-in...'
+                              : 'Sign in with another Google account',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.6),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (_isAddingAccount)
+                    const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  else
+                    const Icon(Icons.chevron_right, color: Colors.white54),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleAddAnotherAccount() async {
+    if (_isAddingAccount) return;
+    setState(() => _isAddingAccount = true);
+    try {
+      final googleResult = await GoogleAuthService.signInForBackend();
+      if (!googleResult.success || (googleResult.idToken ?? '').isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(googleResult.message ?? 'Google sign-in failed.'),
+            backgroundColor: AppColors.alertRed,
+          ),
+        );
+        return;
+      }
+
+      final result = await AuthService.googleLoginDetailed(
+        googleResult.idToken!,
+        accessToken: googleResult.accessToken,
+      );
+      if (!mounted) return;
+      if (result['success'] == true) {
+        await _loadData();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Account switched successfully.')),
+        );
+      } else {
+        final message =
+            (result['message'] ?? 'Google login failed.').toString();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message), backgroundColor: AppColors.alertRed),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    } finally {
+      if (mounted) setState(() => _isAddingAccount = false);
+    }
   }
 }
