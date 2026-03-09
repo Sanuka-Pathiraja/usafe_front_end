@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:usafe_front_end/core/constants/app_colors.dart';
+import 'package:usafe_front_end/features/auth/auth_service.dart';
 
 import './payment_screen.dart';
 import './communityReport_screen.dart';
@@ -24,6 +25,9 @@ class _SettingsPageState extends State<SettingsPage>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   bool shareLocation = true;
   bool notificationsEnabled = false;
+  bool _loadingTestContacts = false;
+  List<Map<String, dynamic>> _testContacts = [];
+  final Map<String, String> _callStates = <String, String>{};
 
   @override
   void initState() {
@@ -54,6 +58,36 @@ class _SettingsPageState extends State<SettingsPage>
       shareLocation = prefs.getBool("share_location") ?? true;
       notificationsEnabled = notificationStatus.isGranted;
     });
+
+    await _loadTestContacts();
+  }
+
+  Future<void> _loadTestContacts() async {
+    if (_loadingTestContacts) return;
+    setState(() => _loadingTestContacts = true);
+
+    try {
+      final contacts = await AuthService.fetchContacts();
+      if (!mounted) return;
+      setState(() {
+        _testContacts = contacts;
+        for (var i = 0; i < _testContacts.length; i++) {
+          final key = _contactKey(_testContacts[i], i);
+          _callStates.putIfAbsent(key, () => 'idle');
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      final error = e.toString().replaceFirst('Exception: ', '');
+      if (!error.toLowerCase().contains('not authenticated')) {
+        _showSnack(error);
+      }
+      setState(() => _testContacts = []);
+    } finally {
+      if (mounted) {
+        setState(() => _loadingTestContacts = false);
+      }
+    }
   }
 
   // ================= LOCATION =================
@@ -117,6 +151,137 @@ class _SettingsPageState extends State<SettingsPage>
         duration: const Duration(seconds: 1),
       ),
     );
+  }
+
+  String _contactKey(Map<String, dynamic> contact, int index) {
+    final id = (contact['contactId'] ?? contact['_id'] ?? '').toString();
+    if (id.isNotEmpty) return id;
+    final phone = (contact['phone'] ?? '').toString();
+    if (phone.isNotEmpty) return phone;
+    return 'idx_$index';
+  }
+
+  String _displayName(Map<String, dynamic> contact) {
+    final name = (contact['name'] ?? contact['fullName'] ?? '').toString().trim();
+    return name.isEmpty ? 'Unknown' : name;
+  }
+
+  String _displayRelationship(Map<String, dynamic> contact) {
+    final relation =
+        (contact['relationship'] ?? contact['relation'] ?? 'Contact').toString();
+    return relation.trim().isEmpty ? 'Contact' : relation;
+  }
+
+  String _contactPhone(Map<String, dynamic> contact) {
+    const phoneKeys = ['phone', 'phoneNumber', 'mobile', 'contactNumber'];
+    for (final key in phoneKeys) {
+      final value = (contact[key] ?? '').toString().trim();
+      if (value.isNotEmpty) return value;
+    }
+    return '';
+  }
+
+  String _normalizePhoneTo94(String input) {
+    var digits = input.replaceAll(RegExp(r'\D'), '');
+    if (digits.startsWith('0094')) {
+      digits = digits.substring(2);
+    }
+    if (digits.startsWith('94') && digits.length == 11) return digits;
+    if (digits.startsWith('0') && digits.length == 10) {
+      return '94${digits.substring(1)}';
+    }
+    if (digits.length == 9) {
+      return '94$digits';
+    }
+    throw Exception('Invalid contact phone number for test call.');
+  }
+
+  String _maskedPhone(String phone) {
+    final digits = phone.replaceAll(RegExp(r'\D'), '');
+    if (digits.length <= 4) return '****';
+    final visible = digits.substring(digits.length - 4);
+    return '${'*' * (digits.length - 4)}$visible';
+  }
+
+  String _callStateLabel(String state) {
+    switch (state) {
+      case 'calling':
+        return 'Calling...';
+      case 'success':
+        return 'Call success';
+      case 'failed':
+        return 'Call failed';
+      case 'idle':
+      default:
+        return 'Idle';
+    }
+  }
+
+  Color _callStateColor(String state) {
+    switch (state) {
+      case 'calling':
+        return Colors.orangeAccent;
+      case 'success':
+        return Colors.greenAccent;
+      case 'failed':
+        return Colors.redAccent;
+      case 'idle':
+      default:
+        return Colors.white60;
+    }
+  }
+
+  Future<void> _onTestCallPressed(Map<String, dynamic> contact, int index) async {
+    final key = _contactKey(contact, index);
+    if ((_callStates[key] ?? 'idle') == 'calling') return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1B2026),
+          title: const Text('Confirm', style: TextStyle(color: Colors.white)),
+          content: const Text(
+            'Place a test call to this contact?',
+            style: TextStyle(color: Colors.white70),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Call'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    final rawPhone = _contactPhone(contact);
+    String normalizedPhone;
+    try {
+      normalizedPhone = _normalizePhoneTo94(rawPhone);
+    } catch (_) {
+      setState(() => _callStates[key] = 'failed');
+      _showSnack('Invalid phone number for this contact.');
+      return;
+    }
+
+    setState(() => _callStates[key] = 'calling');
+    try {
+      await AuthService.triggerTestCall(to: normalizedPhone);
+      if (!mounted) return;
+      setState(() => _callStates[key] = 'success');
+      _showSnack('Test call placed.');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _callStates[key] = 'failed');
+      _showSnack(e.toString().replaceFirst('Exception: ', ''));
+    }
   }
 
   // ================= UI =================
@@ -190,7 +355,7 @@ class _SettingsPageState extends State<SettingsPage>
               _sectionTitle("Safety"),
               _actionTile(
                 icon: Icons.security,
-                title: "Test Emergency System",
+                title: "Community Report Test",
                 subtitle: "Send a test alert",
                 onTap: () => Navigator.push(
                   context,
@@ -200,6 +365,9 @@ class _SettingsPageState extends State<SettingsPage>
                   ),
                 ),
               ),
+              const SizedBox(height: 12),
+              _sectionTitle("Emergency Contacts Test Call"),
+              _buildEmergencyContactsTestCallSection(),
               const SizedBox(height: 30),
               _sectionTitle("Support"),
               _actionTile(
@@ -347,6 +515,112 @@ class _SettingsPageState extends State<SettingsPage>
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildEmergencyContactsTestCallSection() {
+    if (_loadingTestContacts) {
+      return Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 14),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceCard,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_testContacts.isEmpty) {
+      return Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 14),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceCard,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: const Text(
+          "No emergency contacts found.",
+          style: TextStyle(color: Colors.white70),
+        ),
+      );
+    }
+
+    return Column(
+      children: List.generate(_testContacts.length, (index) {
+        final contact = _testContacts[index];
+        final key = _contactKey(contact, index);
+        final state = _callStates[key] ?? 'idle';
+        final isCalling = state == 'calling';
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 14),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceCard,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _displayName(contact),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _displayRelationship(contact),
+                      style: const TextStyle(color: Colors.white70, fontSize: 12),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _maskedPhone(_contactPhone(contact)),
+                      style: const TextStyle(color: Colors.white60, fontSize: 12),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _callStateLabel(state),
+                      style: TextStyle(
+                        color: _callStateColor(state),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              SizedBox(
+                width: 108,
+                height: 40,
+                child: ElevatedButton(
+                  onPressed:
+                      isCalling ? null : () => _onTestCallPressed(contact, index),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primarySky,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: Colors.white24,
+                    disabledForegroundColor: Colors.white70,
+                    minimumSize: const Size(108, 40),
+                    maximumSize: const Size(108, 40),
+                    fixedSize: const Size(108, 40),
+                    padding: EdgeInsets.zero,
+                  ),
+                  child: Text(isCalling ? 'Calling...' : 'Test Call'),
+                ),
+              ),
+            ],
+          ),
+        );
+      }),
     );
   }
 }

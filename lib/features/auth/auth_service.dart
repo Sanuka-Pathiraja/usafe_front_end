@@ -460,6 +460,24 @@ class AuthService {
     }
   }
 
+  static Future<Map<String, dynamic>> triggerTestCall({
+    required String to,
+  }) async {
+    final resp = await http.post(
+      Uri.parse('$baseUrl/call'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'to': to}),
+    );
+
+    final parsed = _decodeJsonMap(resp.body);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      final message = (parsed['message'] ?? 'Failed to place test call').toString();
+      throw Exception('$message (${resp.statusCode}).');
+    }
+
+    return parsed;
+  }
+
   static Future<void> saveTrustedContacts(
       List<Map<String, String>> contacts) async {
     final prefs = await SharedPreferences.getInstance();
