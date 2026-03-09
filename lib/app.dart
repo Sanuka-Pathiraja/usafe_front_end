@@ -10,7 +10,13 @@ class USafeApp extends StatelessWidget {
     return MaterialApp(
       title: 'USafe',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.darkTheme,
+
+      // Injecting the new Design System
+      theme: AppTheme.darkTheme, // 👉 Locks in the new Master Theme
+      darkTheme: AppTheme.darkTheme,
+      themeMode: ThemeMode.dark,
+
+      // Keeping the original skeleton logic
       home: const SplashScreen(),
     );
   }

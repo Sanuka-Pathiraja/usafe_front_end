@@ -1,86 +1,164 @@
 import 'package:flutter/material.dart';
-import '../constants/app_colors.dart';
 
 class AppTheme {
+  // ── Core Palette ──
+  static const Color backgroundColor = Color(0xFF0A1128); // Deep Navy
+  static const Color surfaceColor = Color(0xFF162244); // Elevated Navy
+  static const Color primaryAccent = Color(0xFF00B47D); // Emerald / Safe Color
+  static const Color emergencyAccent = Color(0xFFFF4B4B); // Action Color / SOS
+
+  // ── Text Colors ──
+  static const Color textPrimary = Color(0xFFFFFFFF); // Pure White
+  static const Color textSecondary = Color(0xFFB0B5C1); // Light Grey
+
+  /// Master Dark Theme Configuration
   static ThemeData get darkTheme {
-    return ThemeData(
-      brightness: Brightness.dark,
-      scaffoldBackgroundColor: AppColors.background,
-      primaryColor: AppColors.primary,
-      useMaterial3: true,
+    return ThemeData.dark(useMaterial3: true).copyWith(
+      scaffoldBackgroundColor: backgroundColor,
+      primaryColor: primaryAccent,
 
-      // Typography
-      fontFamily:
-          'Roboto', // System default fallback with clean sans-serif look
-      textTheme: const TextTheme(
-        displayLarge: TextStyle(
-            fontSize: 32,
-            fontWeight: FontWeight.bold,
-            color: AppColors.textPrimary,
-            letterSpacing: -1),
-        displayMedium: TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.w700,
-            color: AppColors.textPrimary),
-        displaySmall: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary),
-        headlineMedium: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary),
-        titleLarge: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary),
-        bodyLarge: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w400,
-            color: AppColors.textPrimary),
-        bodyMedium: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w400,
-            color: AppColors.textSecondary),
-        labelLarge: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary),
+      // ── Color Scheme ──
+      colorScheme: const ColorScheme.dark(
+        primary: primaryAccent,
+        onPrimary: textPrimary,
+        secondary: primaryAccent, // fallback for accents
+        error: emergencyAccent,
+        onError: textPrimary,
+        surface: surfaceColor,
+        onSurface: textPrimary,
+        background: backgroundColor,
+        onBackground: textPrimary,
       ),
 
-      // Cards
-      cardTheme: CardThemeData(
-        color: AppColors.surface,
+      // ── AppBar Theme ──
+      appBarTheme: const AppBarTheme(
+        backgroundColor: backgroundColor,
+        foregroundColor: textPrimary,
         elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
-          side: const BorderSide(color: AppColors.border, width: 1),
-        ),
-        margin: const EdgeInsets.symmetric(vertical: 8),
+        centerTitle: true,
+        iconTheme: IconThemeData(color: textPrimary),
       ),
 
-      // Buttons
+      // ── Card Theme (Flat Navy Cards) ──
+      cardTheme: CardTheme(
+        color: surfaceColor,
+        elevation: 0, // Flat surface
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+      ),
+
+      // ── Bottom Navigation Bar Theme ──
+      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+        backgroundColor: backgroundColor,
+        elevation: 0,
+        type: BottomNavigationBarType.fixed,
+        selectedItemColor: primaryAccent, // Emerald Green
+        unselectedItemColor: textSecondary, // Muted Grey
+        showSelectedLabels: true,
+        showUnselectedLabels: true,
+        selectedLabelStyle: TextStyle(
+          color: primaryAccent,
+          fontWeight: FontWeight.w600,
+          fontSize: 12,
+        ),
+        unselectedLabelStyle: TextStyle(
+          color: textSecondary,
+          fontWeight: FontWeight.w500,
+          fontSize: 12,
+        ),
+        selectedIconTheme: IconThemeData(color: primaryAccent, size: 26),
+        unselectedIconTheme: IconThemeData(color: textSecondary, size: 24),
+      ),
+
+      // ── Text Field Theme (Input Decoration) ──
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: surfaceColor,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        labelStyle: const TextStyle(color: textSecondary, fontSize: 16),
+        hintStyle: const TextStyle(color: textSecondary, fontSize: 16),
+
+        // No harsh borders, just subtle un-bordered feel
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+        // When focused, subtle emerald hint
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: primaryAccent, width: 1.5),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: emergencyAccent, width: 1.5),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: emergencyAccent, width: 2.0),
+        ),
+      ),
+
+      // ── Elevated Button Theme ──
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primary,
-          foregroundColor: Colors.white,
-          minimumSize: const Size(double.infinity, 56),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          backgroundColor: primaryAccent,
+          foregroundColor: textPrimary,
           elevation: 0,
+          minimumSize: const Size(double.infinity, 48), // 48dp minimum height
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           textStyle: const TextStyle(
-              fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: 0.5),
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 0.5,
+          ),
         ),
       ),
 
-      // Bottom Navigation
-      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-        backgroundColor: AppColors.surface,
-        selectedItemColor: AppColors.primary,
-        unselectedItemColor: AppColors.textSecondary,
-        type: BottomNavigationBarType.fixed,
-        elevation: 8,
+      // ── Global Typography Configurations ──
+      textTheme: const TextTheme(
+        displayLarge:
+            TextStyle(color: textPrimary, fontWeight: FontWeight.bold),
+        displayMedium:
+            TextStyle(color: textPrimary, fontWeight: FontWeight.bold),
+        displaySmall:
+            TextStyle(color: textPrimary, fontWeight: FontWeight.bold),
+        headlineLarge:
+            TextStyle(color: textPrimary, fontWeight: FontWeight.w700),
+        headlineMedium:
+            TextStyle(color: textPrimary, fontWeight: FontWeight.w700),
+        headlineSmall:
+            TextStyle(color: textPrimary, fontWeight: FontWeight.w700),
+        titleLarge: TextStyle(color: textPrimary, fontWeight: FontWeight.w600),
+        titleMedium: TextStyle(color: textPrimary, fontWeight: FontWeight.w600),
+        titleSmall: TextStyle(color: textPrimary, fontWeight: FontWeight.w600),
+        bodyLarge: TextStyle(color: textPrimary, fontWeight: FontWeight.w400),
+        bodyMedium: TextStyle(color: textPrimary, fontWeight: FontWeight.w400),
+        bodySmall: TextStyle(
+            color: textSecondary,
+            fontWeight: FontWeight.w400), // Grey subtitles
+        labelLarge: TextStyle(color: textPrimary, fontWeight: FontWeight.w600),
+        labelMedium:
+            TextStyle(color: textSecondary, fontWeight: FontWeight.w500),
+        labelSmall:
+            TextStyle(color: textSecondary, fontWeight: FontWeight.w500),
       ),
+
+      dividerTheme: DividerThemeData(
+        color: surfaceColor.withOpacity(0.5),
+        space: 1,
+        thickness: 1,
+      ),
+
+      iconTheme: const IconThemeData(color: textPrimary),
     );
   }
 }

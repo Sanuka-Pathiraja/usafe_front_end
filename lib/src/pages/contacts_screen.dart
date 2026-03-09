@@ -136,7 +136,7 @@ class ContactsScreenState extends State<ContactsScreen> {
 
     return showModalBottomSheet<String>(
       context: context,
-      backgroundColor: const Color(0xFF1B2026),
+      backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -167,7 +167,7 @@ class ContactsScreenState extends State<ContactsScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          backgroundColor: const Color(0xFF1B2026),
+          backgroundColor: AppColors.surface,
           title:
               const Text('Relationship', style: TextStyle(color: Colors.white)),
           content: TextField(
@@ -256,7 +256,8 @@ class ContactsScreenState extends State<ContactsScreen> {
         centerTitle: true,
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.primary))
           : Column(
               children: [
                 const SizedBox(height: 10),
@@ -267,8 +268,8 @@ class ContactsScreenState extends State<ContactsScreen> {
                       Expanded(
                         child: Text(
                           'Add ${_minContacts}-$_maxContacts trusted contacts',
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.6),
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
                             fontSize: 12,
                           ),
                         ),
@@ -277,8 +278,8 @@ class ContactsScreenState extends State<ContactsScreen> {
                         '${_contacts.length}/$_maxContacts',
                         style: TextStyle(
                           color: _contacts.length < _minContacts
-                              ? Colors.orangeAccent
-                              : Colors.white70,
+                              ? AppColors.alert
+                              : AppColors.textSecondary,
                           fontSize: 12,
                         ),
                       ),
@@ -291,7 +292,7 @@ class ContactsScreenState extends State<ContactsScreen> {
                     child: Text(
                       'Add at least $_minContacts contacts to enable alerts.',
                       style: TextStyle(
-                        color: Colors.orange.withOpacity(0.9),
+                        color: AppColors.alert.withOpacity(0.9),
                         fontSize: 12,
                       ),
                     ),
@@ -302,7 +303,7 @@ class ContactsScreenState extends State<ContactsScreen> {
                       ? const Center(
                           child: Text(
                             'No trusted contacts found.',
-                            style: TextStyle(color: Colors.white70),
+                            style: TextStyle(color: AppColors.textSecondary),
                           ),
                         )
                       : ListView.builder(
@@ -328,9 +329,10 @@ class ContactsScreenState extends State<ContactsScreen> {
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A2128),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        color: AppColors.primary.withOpacity(0.25),
+        borderRadius: BorderRadius.circular(24),
+        border:
+            Border.all(color: AppColors.primary.withOpacity(0.4), width: 1.5),
       ),
       child: Column(
         children: [
@@ -338,12 +340,13 @@ class ContactsScreenState extends State<ContactsScreen> {
             children: [
               CircleAvatar(
                 radius: 24,
-                backgroundColor: const Color(0xFF2B3440),
+                backgroundColor: AppColors.primary.withOpacity(0.2),
                 child: Text(
                   name.isNotEmpty ? name[0] : '?',
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: AppColors.primary,
                     fontWeight: FontWeight.bold,
+                    fontSize: 18,
                   ),
                 ),
               ),
@@ -355,7 +358,7 @@ class ContactsScreenState extends State<ContactsScreen> {
                     Text(
                       name,
                       style: const TextStyle(
-                        color: Colors.white,
+                        color: AppColors.textPrimary,
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
                       ),
@@ -363,8 +366,8 @@ class ContactsScreenState extends State<ContactsScreen> {
                     const SizedBox(height: 6),
                     Text(
                       relation,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.6),
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
                         fontSize: 12,
                       ),
                     ),
@@ -372,7 +375,8 @@ class ContactsScreenState extends State<ContactsScreen> {
                 ),
               ),
               IconButton(
-                icon: const Icon(Icons.more_horiz, color: Colors.white54),
+                icon: const Icon(Icons.more_horiz,
+                    color: AppColors.textSecondary),
                 onPressed: () => _showContactActions(index),
               ),
             ],
@@ -386,11 +390,11 @@ class ContactsScreenState extends State<ContactsScreen> {
                   icon: const Icon(Icons.call, size: 18),
                   label: const Text('Call'),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white70,
-                    side: BorderSide(color: Colors.white.withOpacity(0.1)),
+                    foregroundColor: AppColors.textPrimary,
+                    side: BorderSide(color: AppColors.primary.withOpacity(0.4)),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(16),
                     ),
                   ),
                 ),
@@ -403,11 +407,11 @@ class ContactsScreenState extends State<ContactsScreen> {
                       size: 18, color: Colors.white),
                   label: const Text('Alert'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFE53935),
+                    backgroundColor: AppColors.alert,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(16),
                     ),
                   ),
                 ),
@@ -422,7 +426,7 @@ class ContactsScreenState extends State<ContactsScreen> {
   void _showContactActions(int index) {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: const Color(0xFF1B2026),
+      backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),

@@ -38,16 +38,13 @@ class _HomeScreenState extends State<HomeScreen> {
         showBottomNav: false,
         onBackHome: () => _switchTab(0),
       ),
-      SafePathSchedulerScreen(
-        onBack: () => _switchTab(0),
-      ),
       ContactsScreen(
         key: _contactsKey,
         onBackHome: () => _switchTab(0),
       ),
       ProfileScreen(
         onBackHome: () => _switchTab(0),
-        onOpenContacts: () => _switchTab(3),
+        onOpenContacts: () => _switchTab(2),
       ),
     ];
 
@@ -70,7 +67,7 @@ class _HomeScreenState extends State<HomeScreen> {
             right: 24,
             child: _buildBottomNavBar(),
           ),
-          if (_currentIndex == 3)
+          if (_currentIndex == 2)
             Positioned(
               left: 0,
               right: 0,
@@ -118,9 +115,8 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           _navItem(Icons.shield_rounded, 'SOS', 0),
           _navItem(Icons.map_rounded, 'Score', 1),
-          _navItem(Icons.route_rounded, 'SafePath', 2),
-          _navItem(Icons.people_alt_rounded, 'Contacts', 3),
-          _navItem(Icons.person_rounded, 'Profile', 4),
+          _navItem(Icons.people_alt_rounded, 'Contacts', 2),
+          _navItem(Icons.person_rounded, 'Profile', 3),
         ],
       ),
     );
@@ -205,42 +201,40 @@ class _SOSDashboardState extends State<SOSDashboard>
     return SafeArea(
       child: Container(
         color: AppColors.background,
-        padding: const EdgeInsets.symmetric(horizontal: 24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
+        width: double.infinity,
+        height: double.infinity,
+        child: Stack(
           children: [
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _buildStatusPill(),
-                // ── Settings button ──────────────────────────────────────
-                IconButton(
-                  icon: const Icon(Icons.settings_outlined,
-                      color: AppColors.textSecondary),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const SettingsPage()),
-                    );
-                  },
-                  tooltip: 'Settings',
-                ),
-              ],
-            ),
-            const SizedBox(height: 32),
-            if (isSOSActive) _buildSOSHeader(),
-            if (!isSOSActive)
-              const Text(
-                'Hold button in emergency',
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 16),
-              ),
-            const Spacer(),
+            // ── SOS Button: True center of screen ──
             Center(
               child: isSOSActive ? _buildSOSActiveView() : _buildHoldButton(),
             ),
-            const Spacer(),
-            const SizedBox(height: 120),
+            // ── Top Bar: SAFE pill + Settings gear ──
+            Positioned(
+              top: 24,
+              left: 24,
+              right: 24,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  _buildStatusPill(),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(Icons.settings_outlined,
+                        color: AppColors.textSecondary, size: 28),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const SettingsPage()),
+                      );
+                    },
+                    tooltip: 'Settings',
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -249,11 +243,11 @@ class _SOSDashboardState extends State<SOSDashboard>
 
   Widget _buildStatusPill() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.border),
+        color: AppColors.surfaceElevated.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.border.withOpacity(0.5)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -262,17 +256,67 @@ class _SOSDashboardState extends State<SOSDashboard>
             width: 10,
             height: 10,
             decoration: const BoxDecoration(
-              color: AppColors.success,
+              color: AppColors.success, // High contrast safe green
               shape: BoxShape.circle,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
           const Text(
-            'Your Area: Safe',
+            'SAFE',
             style: TextStyle(
-              color: AppColors.textPrimary,
-              fontWeight: FontWeight.w600,
+              color: AppColors.success,
+              fontWeight: FontWeight.w900,
               fontSize: 14,
+              letterSpacing: 1.0,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSafetyTipCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withOpacity(0.20),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(Icons.lightbulb_outline,
+                    color: Colors.white, size: 24),
+              ),
+              const SizedBox(width: 16),
+              const Text(
+                'Safety Tip',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Share your live location with trusted contacts before walking alone at night. Stay on well-lit paths.',
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 14,
+              height: 1.5,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ],
@@ -288,23 +332,25 @@ class _SOSDashboardState extends State<SOSDashboard>
           textAlign: TextAlign.center,
           style: TextStyle(
             color: AppColors.alert,
-            fontSize: 28,
-            fontWeight: FontWeight.w800,
+            fontSize: 32,
+            fontWeight: FontWeight.w900,
             letterSpacing: 1.2,
             height: 1.2,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
           decoration: BoxDecoration(
             color: AppColors.alertBg,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(20),
           ),
           child: const Text(
             'Dispatching alerts...',
-            style:
-                TextStyle(color: AppColors.alert, fontWeight: FontWeight.bold),
+            style: TextStyle(
+                color: AppColors.alert,
+                fontSize: 16,
+                fontWeight: FontWeight.w800),
           ),
         ),
       ],
@@ -329,11 +375,11 @@ class _SOSDashboardState extends State<SOSDashboard>
           alignment: Alignment.center,
           children: [
             SizedBox(
-              width: 260,
-              height: 260,
+              width: 300,
+              height: 300,
               child: CircularProgressIndicator(
                 value: _remaining.inSeconds / _sosDuration.inSeconds,
-                strokeWidth: 12,
+                strokeWidth: 16,
                 backgroundColor: AppColors.surfaceElevated,
                 valueColor:
                     const AlwaysStoppedAnimation<Color>(AppColors.alert),
@@ -346,22 +392,24 @@ class _SOSDashboardState extends State<SOSDashboard>
                 Text(
                   _formatDuration(_remaining),
                   style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 56,
-                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    fontSize: 64,
+                    fontWeight: FontWeight.w900,
                     letterSpacing: -2,
                   ),
                 ),
                 const Text(
                   'Auto-dispatch in',
-                  style:
-                      TextStyle(color: AppColors.textSecondary, fontSize: 14),
+                  style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600),
                 ),
               ],
             ),
           ],
         ),
-        const SizedBox(height: 48),
+        const SizedBox(height: 56),
         _buildActionButton(
           label: 'SEND HELP NOW',
           bg: AppColors.alert,
@@ -373,7 +421,7 @@ class _SOSDashboardState extends State<SOSDashboard>
         _buildActionButton(
           label: 'CANCEL SOS',
           bg: AppColors.surfaceElevated,
-          text: AppColors.textPrimary,
+          text: Colors.white,
           icon: Icons.close_rounded,
           onTap: () {
             _resetSosCountdown();
@@ -391,29 +439,30 @@ class _SOSDashboardState extends State<SOSDashboard>
     required IconData icon,
     required VoidCallback onTap,
   }) {
+    // Massive touch targets for high stress
     return SizedBox(
       width: double.infinity,
-      height: 64,
+      height: 68,
       child: ElevatedButton(
         onPressed: onTap,
         style: ElevatedButton.styleFrom(
           backgroundColor: bg,
           foregroundColor: text,
-          elevation: 0,
+          elevation: 4,
           shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 24),
+            Icon(icon, size: 28),
             const SizedBox(width: 12),
             Text(
               label,
               style: const TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 16,
-                letterSpacing: 1.0,
+                fontWeight: FontWeight.w800,
+                fontSize: 18,
+                letterSpacing: 1.2,
               ),
             ),
           ],
@@ -494,7 +543,8 @@ class _SOSDashboardState extends State<SOSDashboard>
     if (sessionId == null || sessionId.isEmpty) return;
 
     try {
-      final response = await AuthService.getEmergencyStatus(sessionId: sessionId);
+      final response =
+          await AuthService.getEmergencyStatus(sessionId: sessionId);
       _latestSessionStatus = response;
       final status = (response['status'] ?? response['finalStatus'] ?? '')
           .toString()
@@ -585,9 +635,8 @@ class _SOSDashboardState extends State<SOSDashboard>
     final finalStatus = (response['finalStatus'] ?? response['status'] ?? '')
         .toString()
         .toUpperCase();
-    final latestStatus = (_latestSessionStatus?['status'] ?? '')
-        .toString()
-        .toUpperCase();
+    final latestStatus =
+        (_latestSessionStatus?['status'] ?? '').toString().toUpperCase();
     final answered = response['answered'] == true ||
         finalStatus == 'ANSWERED' ||
         latestStatus == 'ANSWERED' ||
@@ -595,9 +644,11 @@ class _SOSDashboardState extends State<SOSDashboard>
             response['answeredBy'].toString().isNotEmpty);
     if (answered) _sessionAnswered = true;
 
-    final explicitFail = response['success'] == false || response['ok'] == false;
-    final providerFailed =
-        finalStatus == 'FAILED' || finalStatus == 'NO_ANSWER' || finalStatus == 'BUSY';
+    final explicitFail =
+        response['success'] == false || response['ok'] == false;
+    final providerFailed = finalStatus == 'FAILED' ||
+        finalStatus == 'NO_ANSWER' ||
+        finalStatus == 'BUSY';
     final success = answered ? true : !(explicitFail || providerFailed);
 
     return EmergencyCallResult(
@@ -630,7 +681,8 @@ class _SOSDashboardState extends State<SOSDashboard>
       return EmergencyActionResult(success: false, message: e.toString());
     }
 
-    final explicitFail = response['success'] == false || response['ok'] == false;
+    final explicitFail =
+        response['success'] == false || response['ok'] == false;
     final called = response['emergencyServicesCalled'];
     final callFlagFailed = called is bool && called == false;
     return EmergencyActionResult(
@@ -670,7 +722,8 @@ class _SOSDashboardState extends State<SOSDashboard>
     final ok = response['ok'] != false && response['success'] != false;
     return EmergencyActionResult(
       success: ok,
-      message: response['message']?.toString() ?? 'Emergency process cancelled.',
+      message:
+          response['message']?.toString() ?? 'Emergency process cancelled.',
     );
   }
 
@@ -700,6 +753,7 @@ class _SOSDashboardState extends State<SOSDashboard>
     );
     return true;
   }
+
   String _formatDuration(Duration duration) {
     final int minutes = duration.inMinutes;
     final int seconds = duration.inSeconds % 60;
@@ -751,6 +805,8 @@ class _SOSHoldInteractionState extends State<SOSHoldInteraction>
 
   @override
   Widget build(BuildContext context) {
+    // Visibility of System Status: Shows a ring filling up during hold.
+    // Fitts's Law: Massive single touch element.
     return GestureDetector(
       onTapDown: (_) => _controller.forward(),
       onTapUp: (_) => _controller.reverse(),
@@ -758,36 +814,42 @@ class _SOSHoldInteractionState extends State<SOSHoldInteraction>
       child: Stack(
         alignment: Alignment.center,
         children: [
+          // Outer subtle pulse ring
           Container(
-            width: 280,
-            height: 280,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: widget.accentColor.withOpacity(0.05),
-            ),
-          ),
-          Container(
-            width: 240,
-            height: 240,
+            width: 290,
+            height: 290,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(
-                color: widget.accentColor.withOpacity(0.15),
+                color: widget.accentColor.withOpacity(0.3),
                 width: 2,
               ),
-              color: AppColors.surface,
               boxShadow: [
                 BoxShadow(
-                  color: widget.accentColor.withOpacity(0.1),
+                  color: widget.accentColor.withOpacity(0.15),
                   blurRadius: 40,
-                  spreadRadius: 10,
+                  spreadRadius: 20,
                 )
               ],
             ),
           ),
+
+          // Outer progress ring path (background line)
           SizedBox(
-            width: 240,
-            height: 240,
+            width: 290,
+            height: 290,
+            child: CircularProgressIndicator(
+              value: 1.0,
+              strokeWidth: 6,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                  AppColors.surfaceElevated.withOpacity(0.3)),
+            ),
+          ),
+
+          // Actual animated progress indicator that fills up
+          SizedBox(
+            width: 290,
+            height: 290,
             child: AnimatedBuilder(
               animation: _controller,
               builder: (context, child) {
@@ -801,42 +863,44 @@ class _SOSHoldInteractionState extends State<SOSHoldInteraction>
               },
             ),
           ),
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: widget.accentColor.withOpacity(0.1),
-                  shape: BoxShape.circle,
+
+          // Core Massive Button (Visual Hierarchy King)
+          Container(
+            width: 250,
+            height: 250,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: widget.accentColor, // Vibrant Red
+              boxShadow: [
+                BoxShadow(
+                  color: widget.accentColor.withOpacity(0.4),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
+                )
+              ],
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.touch_app,
+                    color: Colors.white, size: 56), // Signifier
+                const SizedBox(height: 12),
+                const Text(
+                  'HOLD TO\nSOS',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white, // High Contrast
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.5,
+                    height: 1.2,
+                  ),
                 ),
-                child: Icon(Icons.fingerprint_rounded,
-                    color: widget.accentColor, size: 48),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'SOS',
-                style: TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 32,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 2,
-                ),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'Press & Hold',
-                style: TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 }
-

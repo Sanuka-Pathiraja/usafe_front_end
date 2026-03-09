@@ -31,7 +31,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _loadData() async {
     if (mounted) setState(() => _isRefreshing = true);
-    await AuthService.validateSession(); // refreshes /user/get cache if available
+    await AuthService
+        .validateSession(); // refreshes /user/get cache if available
     final user = await AuthService.getCurrentUser();
 
     int contactsCount = _contactCount;
@@ -162,7 +163,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
     if (first.isNotEmpty) return first[0].toUpperCase();
     final full = _displayName();
-    final parts = full.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    final parts =
+        full.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
     if (parts.length >= 2) {
       return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
     }
@@ -201,8 +203,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          backgroundColor: const Color(0xFF1A2128),
-          title: const Text('Edit Profile', style: TextStyle(color: Colors.white)),
+          backgroundColor: AppColors.surface,
+          title:
+              const Text('Edit Profile', style: TextStyle(color: Colors.white)),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -226,7 +229,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+              child:
+                  const Text('Cancel', style: TextStyle(color: Colors.white70)),
             ),
             ElevatedButton(
               onPressed: () {
@@ -299,14 +303,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       style: const TextStyle(color: Colors.white),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: Colors.white70),
+        labelStyle: const TextStyle(color: AppColors.textSecondary),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.white.withOpacity(0.2)),
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: AppColors.border),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Colors.white70),
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AppColors.primary),
         ),
       ),
     );
@@ -324,16 +328,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Container(
               width: 84,
               height: 84,
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Color(0xFF2B3440),
+                color: AppColors.primary.withOpacity(0.2),
               ),
               child: ClipOval(
                 child: imageUrl != null && imageUrl.isNotEmpty
                     ? Image.network(
                         imageUrl,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => _buildInitialsAvatar(initials),
+                        errorBuilder: (_, __, ___) =>
+                            _buildInitialsAvatar(initials),
                       )
                     : _buildInitialsAvatar(initials),
               ),
@@ -354,7 +359,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       shape: BoxShape.circle,
                       border: Border.all(color: AppColors.background, width: 2),
                     ),
-                    child: const Icon(Icons.edit, color: Colors.white, size: 14),
+                    child:
+                        const Icon(Icons.edit, color: Colors.white, size: 14),
                   ),
                 ),
               ),
@@ -377,12 +383,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildInitialsAvatar(String initials) {
     return Container(
-      color: const Color(0xFF2B3440),
+      color: AppColors.primary.withOpacity(0.2),
       alignment: Alignment.center,
       child: Text(
         initials,
         style: const TextStyle(
-          color: Colors.white,
+          color: AppColors.primary,
           fontSize: 28,
           fontWeight: FontWeight.bold,
         ),
@@ -393,7 +399,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildStatsRow() {
     return Row(
       children: [
-        _buildStatCard("TRUSTED", _contactCount.toString(), Icons.people_outline,
+        _buildStatCard(
+            "TRUSTED", _contactCount.toString(), Icons.people_outline,
             onTap: () {
           if (widget.onOpenContacts != null) {
             widget.onOpenContacts!();
@@ -435,22 +442,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: const Color(0xFF1A2128), // Matches Contact Card color
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withOpacity(0.05)),
+            color: AppColors.primary.withOpacity(0.25),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+                color: AppColors.primary.withOpacity(0.4), width: 1.5),
           ),
           child: Column(
             children: [
-              Icon(icon, color: Colors.white70, size: 24),
+              Icon(icon, color: AppColors.textSecondary, size: 24),
               const SizedBox(height: 8),
               Text(value,
                   style: const TextStyle(
-                      color: Colors.white,
+                      color: AppColors.textPrimary,
                       fontSize: 20,
                       fontWeight: FontWeight.bold)),
               Text(label,
-                  style: TextStyle(
-                      color: Colors.white.withOpacity(0.5), fontSize: 11)),
+                  style: const TextStyle(
+                      color: AppColors.textSecondary, fontSize: 11)),
             ],
           ),
         ),
@@ -471,17 +479,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A2128), // Consistent surface color
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        color: AppColors.primary.withOpacity(0.25),
+        borderRadius: BorderRadius.circular(24),
+        border:
+            Border.all(color: AppColors.primary.withOpacity(0.4), width: 1.5),
       ),
       child: Column(
         children: [
           _buildInfoRow(
               Icons.email_outlined, "Email", _userData?['email'] ?? 'Not set'),
-          const Divider(color: Colors.white10, height: 24),
+          const Divider(color: AppColors.border, height: 24),
           _buildInfoRow(Icons.phone_android, "Phone", phone),
-          const Divider(color: Colors.white10, height: 24),
+          const Divider(color: AppColors.border, height: 24),
           _buildInfoRow(Icons.cake_outlined, "Birthday", birthday),
         ],
       ),
@@ -491,16 +500,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildInfoRow(IconData icon, String label, String value) {
     return Row(
       children: [
-        Icon(icon, color: Colors.white54, size: 20),
+        Icon(icon, color: AppColors.textSecondary, size: 20),
         const SizedBox(width: 15),
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(label,
-                style: TextStyle(
-                    color: Colors.white.withOpacity(0.4), fontSize: 11)),
+                style: const TextStyle(
+                    color: AppColors.textSecondary, fontSize: 11)),
             Text(value,
-                style: const TextStyle(color: Colors.white, fontSize: 15)),
+                style: const TextStyle(
+                    color: AppColors.textPrimary, fontSize: 15)),
           ],
         )
       ],
@@ -517,23 +527,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
           (_) => false,
         );
       },
-      borderRadius: BorderRadius.circular(15),
+      borderRadius: BorderRadius.circular(24),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 16),
         decoration: BoxDecoration(
-          color: Colors.redAccent.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(15),
-          border: Border.all(color: Colors.redAccent.withOpacity(0.2)),
+          color: AppColors.alert.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: AppColors.alert.withOpacity(0.3)),
         ),
         child: const Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.logout_rounded, color: Colors.redAccent, size: 20),
+            Icon(Icons.logout_rounded, color: AppColors.alert, size: 20),
             SizedBox(width: 12),
             Text(
               "LOG OUT",
               style: TextStyle(
-                  color: Colors.redAccent,
+                  color: AppColors.alert,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 1),
             ),
@@ -547,9 +557,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A2128),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        color: AppColors.primary.withOpacity(0.25),
+        borderRadius: BorderRadius.circular(24),
+        border:
+            Border.all(color: AppColors.primary.withOpacity(0.4), width: 1.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -569,9 +580,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.03),
+                color: AppColors.surface,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.white.withOpacity(0.06)),
+                border: Border.all(color: AppColors.border.withOpacity(0.5)),
               ),
               child: Row(
                 children: [
@@ -606,7 +617,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ? 'Opening Google sign-in...'
                               : 'Sign in with another Google account',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.6),
+                            color: AppColors.textSecondary,
                             fontSize: 12,
                           ),
                         ),
@@ -620,7 +631,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   else
-                    const Icon(Icons.chevron_right, color: Colors.white54),
+                    const Icon(Icons.chevron_right,
+                        color: AppColors.textSecondary),
                 ],
               ),
             ),
