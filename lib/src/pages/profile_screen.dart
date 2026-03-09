@@ -65,6 +65,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    // HomeScreen overlays a floating bottom nav (76px) at 32px from bottom.
+    // Reserve extra space so trailing actions (e.g. logout) stay reachable.
+    final bottomOverlaySpacing = 140.0 + bottomInset;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -90,7 +95,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         centerTitle: true,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
+        padding: EdgeInsets.fromLTRB(20, 0, 20, bottomOverlaySpacing),
         child: Column(
           children: [
             const SizedBox(height: 20),
@@ -108,7 +113,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildAccountsSection(),
             const SizedBox(height: 25),
             _buildLogoutButton(),
-            const SizedBox(height: 40),
+            const SizedBox(height: 12),
           ],
         ),
       ),
