@@ -5,9 +5,14 @@ import 'dart:async';
 import 'package:usafe_front_end/features/auth/community_report_service.dart';
 
 class CommunityReportScreen extends StatefulWidget {
-  const CommunityReportScreen({super.key, this.title = 'Community Reports'});
+  const CommunityReportScreen({
+    super.key,
+    this.title = 'Community Reports',
+    this.locationLabel,
+  });
 
   final String title;
+  final String? locationLabel;
 
   @override
   State<CommunityReportScreen> createState() => _CommunityReportScreenState();
@@ -106,8 +111,9 @@ class _CommunityReportScreenState extends State<CommunityReportScreen> {
     report.writeln("        COMMUNITY SAFETY REPORT");
     report.writeln("═══════════════════════════════════════\n");
 
-    report.writeln("📅 Date: ${DateTime.now().toString().split('.')[0]}");
-    report.writeln("📍 Location: [Auto-detected or User Input]\n");
+    report.writeln("Date: ${DateTime.now().toString().split('.')[0]}");
+    report.writeln(
+        "Location: ${widget.locationLabel?.isNotEmpty == true ? widget.locationLabel : 'Auto-detected or User Input'}\n");
 
     if (selectedIndices.length == 1) {
       final issue = issueTypes[selectedIndices.first];
@@ -229,7 +235,7 @@ class _CommunityReportScreenState extends State<CommunityReportScreen> {
       final result = await CommunityReportService.submitReport(
         reportContent: _descriptionController.text,
         images: _selectedImages,
-        location: 'User submitted via mobile app',
+        location: widget.locationLabel ?? 'User submitted via mobile app',
         issueTypes: selectedIndices
             .map((index) => issueTypes[index]['title'].toString())
             .toList(),
@@ -336,6 +342,37 @@ class _CommunityReportScreenState extends State<CommunityReportScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (widget.locationLabel != null &&
+                          widget.locationLabel!.trim().isNotEmpty) ...[
+                        Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(bottom: 16),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.06),
+                            borderRadius: BorderRadius.circular(12),
+                            border:
+                                Border.all(color: Colors.white.withOpacity(0.15)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.location_on,
+                                  color: Colors.white70, size: 18),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  widget.locationLabel!,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                       /// SECTION TITLE
                       Row(
                         children: [

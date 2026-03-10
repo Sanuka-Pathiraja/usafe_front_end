@@ -363,7 +363,9 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
                                     context,
                                     MaterialPageRoute(
                                       builder: (context) =>
-                                          const SafetyMapScreen(),
+                                          const SafetyMapScreen(
+                                            selectLocationForReport: true,
+                                          ),
                                     ),
                                   );
                                 },

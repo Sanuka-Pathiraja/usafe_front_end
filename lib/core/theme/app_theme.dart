@@ -40,12 +40,12 @@ class AppTheme {
       ),
 
       // ── Card Theme (Flat Navy Cards) ──
-      cardTheme: CardTheme(
+      cardTheme: const CardThemeData(
         color: surfaceColor,
-        elevation: 0, // Flat surface
+        elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.all(Radius.circular(16)),
         ),
       ),
 
