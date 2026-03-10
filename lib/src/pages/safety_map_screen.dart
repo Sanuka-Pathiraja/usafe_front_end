@@ -3,9 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:usafe_front_end/src/services/audio_analysis_service.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
+import 'communityReport_screen.dart';
 
 class SafetyMapScreen extends StatefulWidget {
-  const SafetyMapScreen({Key? key}) : super(key: key);
+  const SafetyMapScreen({
+    Key? key,
+    this.selectLocationForReport = false,
+  }) : super(key: key);
+
+  final bool selectLocationForReport;
 
   @override
   _SafetyMapScreenState createState() => _SafetyMapScreenState();
@@ -24,6 +32,8 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   Timer? _dangerTimer;
   bool _isDangerDialogOpen = false;
   StateSetter? _dangerDialogSetState;
+  Marker? _selectedMarker;
+  bool _isResolvingLocation = false;
 
   static const CameraPosition _kInitialPosition = CameraPosition(
     target: LatLng(37.7749, -122.4194),
@@ -32,6 +42,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
 
   Color _micStatusColor = Colors.grey;
   String _micStatusText = "Mic Off";
+  bool _didShowSelectionHint = false;
 
   @override
   void initState() {
@@ -53,6 +64,14 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
         _showDangerDialog(event);
       }
     };
+
+    if (widget.selectLocationForReport) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _didShowSelectionHint) return;
+        _didShowSelectionHint = true;
+        _showStatusSnack("Please select a location.");
+      });
+    }
   }
 
   void _toggleSafetyMode() {
@@ -118,6 +137,96 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
     );
+  }
+
+  Future<void> _useCurrentLocationForReport() async {
+    try {
+      final permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        final requested = await Geolocator.requestPermission();
+        if (requested == LocationPermission.denied) {
+          _showStatusSnack("Location permission denied.");
+          return;
+        }
+      }
+      if (permission == LocationPermission.deniedForever) {
+        _showStatusSnack("Location permission permanently denied.");
+        return;
+      }
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
+        timeLimit: const Duration(seconds: 8),
+      );
+      final latLng = LatLng(position.latitude, position.longitude);
+      _selectedMarker = Marker(
+        markerId: const MarkerId("selected_location"),
+        position: latLng,
+      );
+      if (mounted) {
+        setState(() {});
+      }
+      await _goToReportWithLocation(
+        latLng,
+        source: "Current location",
+      );
+    } catch (_) {
+      _showStatusSnack("Unable to get current location.");
+    }
+  }
+
+  Future<void> _goToReportWithLocation(LatLng position,
+      {required String source}) async {
+    if (_isResolvingLocation) return;
+    _isResolvingLocation = true;
+    _showStatusSnack("Resolving address...");
+    final address = await _resolveAddress(position);
+    final label = address.isNotEmpty
+        ? address
+        : "$source (${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)})";
+    _isResolvingLocation = false;
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CommunityReportScreen(locationLabel: label),
+      ),
+    );
+  }
+
+  Future<String> _resolveAddress(LatLng position) async {
+    try {
+      final placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      ).timeout(const Duration(seconds: 8));
+      if (placemarks.isEmpty) return '';
+      final place = placemarks.first;
+      final parts = <String>[];
+      if ((place.street ?? '').trim().isNotEmpty) {
+        parts.add(place.street!.trim());
+      }
+      if ((place.subLocality ?? '').trim().isNotEmpty) {
+        parts.add(place.subLocality!.trim());
+      }
+      if ((place.locality ?? '').trim().isNotEmpty) {
+        parts.add(place.locality!.trim());
+      }
+      if ((place.subAdministrativeArea ?? '').trim().isNotEmpty) {
+        parts.add(place.subAdministrativeArea!.trim());
+      }
+      if ((place.administrativeArea ?? '').trim().isNotEmpty) {
+        parts.add(place.administrativeArea!.trim());
+      }
+      if ((place.postalCode ?? '').trim().isNotEmpty) {
+        parts.add(place.postalCode!.trim());
+      }
+      if ((place.country ?? '').trim().isNotEmpty) {
+        parts.add(place.country!.trim());
+      }
+      return parts.join(', ');
+    } catch (_) {
+      return '';
+    }
   }
   // Load custom JSON for Dark Mode map
   Future<void> _loadMapStyle() async {
@@ -238,7 +347,22 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                     _mapController.setMapStyle(_darkMapStyle);
                   }
                 },
+                onTap: widget.selectLocationForReport
+                    ? (latLng) async {
+                        _selectedMarker = Marker(
+                          markerId: const MarkerId("selected_location"),
+                          position: latLng,
+                        );
+                        setState(() {});
+                        await _goToReportWithLocation(
+                          latLng,
+                          source: "Pinned location",
+                        );
+                      }
+                    : null,
                 circles: _buildCircles(_pulseAnimation.value),
+                markers:
+                    _selectedMarker == null ? {} : <Marker>{_selectedMarker!},
                 myLocationEnabled: true,
                 myLocationButtonEnabled: false,
                 zoomControlsEnabled: false,
@@ -277,6 +401,24 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
             left: 20,
             child: _buildMicStatusPill(),
           ),
+          if (widget.selectLocationForReport)
+            Positioned(
+              top: 120,
+              right: 20,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E1E1E).withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white24),
+                ),
+                child: const Text(
+                  "Tap map to pin or use current location",
+                  style: TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+              ),
+            ),
           // --- Bottom Floating Action Buttons ---
           Positioned(
             bottom: 30,
@@ -307,11 +449,18 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                 FloatingActionButton.extended(
                   heroTag: "report",
                   backgroundColor: const Color(0xFFE53935),
-                  onPressed: () {
-                    // Navigate to Report Screen
-                  },
+                  onPressed: widget.selectLocationForReport
+                      ? (_isResolvingLocation
+                          ? null
+                          : _useCurrentLocationForReport)
+                      : () {},
                   icon: const Icon(Icons.warning_amber_rounded, color: Colors.white),
-                  label: const Text("Report Incident", style: TextStyle(color: Colors.white)),
+                  label: Text(
+                    widget.selectLocationForReport
+                        ? "Use Current Location"
+                        : "Report Incident",
+                    style: const TextStyle(color: Colors.white),
+                  ),
                 ),
               ],
             ),
