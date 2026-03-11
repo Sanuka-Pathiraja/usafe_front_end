@@ -30,6 +30,18 @@
 @import flutter_contacts;
 #endif
 
+#if __has_include(<flutter_phone_direct_caller/FlutterPhoneDirectCallerPlugin.h>)
+#import <flutter_phone_direct_caller/FlutterPhoneDirectCallerPlugin.h>
+#else
+@import flutter_phone_direct_caller;
+#endif
+
+#if __has_include(<flutter_sms/SwiftFlutterSmsPlugin.h>)
+#import <flutter_sms/SwiftFlutterSmsPlugin.h>
+#else
+@import flutter_sms;
+#endif
+
 #if __has_include(<geocoding_ios/GeocodingPlugin.h>)
 #import <geocoding_ios/GeocodingPlugin.h>
 #else
@@ -109,6 +121,8 @@
   [AudioSessionPlugin registerWithRegistrar:[registry registrarForPlugin:@"AudioSessionPlugin"]];
   [FPPBatteryPlusPlugin registerWithRegistrar:[registry registrarForPlugin:@"FPPBatteryPlusPlugin"]];
   [FlutterContactsPlugin registerWithRegistrar:[registry registrarForPlugin:@"FlutterContactsPlugin"]];
+  [FlutterPhoneDirectCallerPlugin registerWithRegistrar:[registry registrarForPlugin:@"FlutterPhoneDirectCallerPlugin"]];
+  [SwiftFlutterSmsPlugin registerWithRegistrar:[registry registrarForPlugin:@"SwiftFlutterSmsPlugin"]];
   [GeocodingPlugin registerWithRegistrar:[registry registrarForPlugin:@"GeocodingPlugin"]];
   [GeolocatorPlugin registerWithRegistrar:[registry registrarForPlugin:@"GeolocatorPlugin"]];
   [FLTGoogleMapsPlugin registerWithRegistrar:[registry registrarForPlugin:@"FLTGoogleMapsPlugin"]];

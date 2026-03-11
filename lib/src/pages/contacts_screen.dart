@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
+import 'package:usafe_front_end/core/services/contact_alert_service.dart';
+import 'package:usafe_front_end/core/services/phone_call_service.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
+import 'package:usafe_front_end/src/widgets/contact_alert_bottom_sheet.dart';
 
 class ContactsScreen extends StatefulWidget {
   final VoidCallback? onBackHome;
@@ -16,12 +19,13 @@ class ContactsScreenState extends State<ContactsScreen> {
   // Min/max constraints for trusted contacts.
   static const int _minContacts = 3;
   static const int _maxContacts = 5;
-  static const double _footerHeight = 70;
-  static const double _footerBottom = 30;
-  static const double _fabSize = 56;
 
   final List<Map<String, String>> _contacts = [];
   bool _loading = true;
+
+  void _logContactAlert(String message) {
+    debugPrint('[ContactAlertUI] $message');
+  }
 
   @override
   void initState() {
@@ -230,6 +234,77 @@ class ContactsScreenState extends State<ContactsScreen> {
     );
   }
 
+  Future<void> _showAlertComposer(Map<String, String> contact) async {
+    await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return ContactAlertBottomSheet(
+          contact: contact,
+          onSend: (message) => _sendAlertToContact(contact, message),
+        );
+      },
+    );
+  }
+
+  Future<void> _sendAlertToContact(
+    Map<String, String> contact,
+    String message,
+  ) async {
+    final name = contact['name'] ?? 'contact';
+    final contactId = contact['contactId'] ?? '';
+    final phone = contact['phone'] ?? '';
+    final normalizedPhone = ContactAlertService.normalizePhoneNumber(phone);
+
+    if (normalizedPhone.isEmpty) {
+      throw Exception('No phone number found for $name.');
+    }
+    if (message.trim().isEmpty) {
+      throw Exception('Emergency message cannot be empty.');
+    }
+
+    try {
+      _logContactAlert(
+        'Starting send for $name. contactId=${contactId.isEmpty ? 'n/a' : contactId}, phone=$normalizedPhone, messageLength=${message.trim().length}',
+      );
+      final serverMessage = await ContactAlertService.sendEmergencyMessage(
+        contactId: contactId,
+        phoneNumber: phone,
+        message: message,
+      );
+      _logContactAlert(
+          'Send completed for $name. serverMessage=$serverMessage');
+      _showSnack(
+        serverMessage.trim().isEmpty
+            ? 'Emergency alert sent to $name.'
+            : serverMessage,
+      );
+    } catch (e) {
+      final error = e.toString().replaceFirst('Exception: ', '');
+      _logContactAlert('Send failed for $name. error=$error');
+      _showSnack(error);
+      rethrow;
+    }
+  }
+
+  Future<void> _callContact(Map<String, String> contact) async {
+    final name = contact['name'] ?? 'contact';
+    final phone = contact['phone'] ?? '';
+
+    try {
+      final launchMode = await PhoneCallService.call(phone);
+      if (!mounted) return;
+
+      if (launchMode == PhoneCallLaunchMode.dialer) {
+        _showSnack('Opened your phone app for $name.');
+      }
+    } catch (e) {
+      _showSnack(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -324,6 +399,7 @@ class ContactsScreenState extends State<ContactsScreen> {
     final String name = contact['name'] ?? 'Unknown';
     final String relation =
         contact['relationship'] ?? contact['relation'] ?? 'Contact';
+    final String phone = contact['phone'] ?? '';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -371,6 +447,16 @@ class ContactsScreenState extends State<ContactsScreen> {
                         fontSize: 12,
                       ),
                     ),
+                    if (phone.trim().isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        phone,
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -386,7 +472,7 @@ class ContactsScreenState extends State<ContactsScreen> {
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () {},
+                  onPressed: () => _callContact(contact),
                   icon: const Icon(Icons.call, size: 18),
                   label: const Text('Call'),
                   style: OutlinedButton.styleFrom(
@@ -402,7 +488,7 @@ class ContactsScreenState extends State<ContactsScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: () {},
+                  onPressed: () => _showAlertComposer(contact),
                   icon: const Icon(Icons.warning_amber_rounded,
                       size: 18, color: Colors.white),
                   label: const Text('Alert'),

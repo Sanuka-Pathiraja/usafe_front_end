@@ -24,6 +24,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>NSContactsUsageDescription</key>
 	<string>USafe needs access to your contacts to add trusted contacts for SOS alerts.</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>tel</string>
+	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>USafe needs your location to provide safety features and show your position on the map.</string>
 	<key>NSMicrophoneUsageDescription</key>

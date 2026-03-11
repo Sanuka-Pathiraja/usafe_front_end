@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -37,6 +38,10 @@ class AuthService {
   static const String _tokenKey = 'auth_token';
   static const String _userKey = 'user_session';
   static const String _contactsKey = 'trusted_contacts';
+
+  static void _logContactAlert(String message) {
+    debugPrint('[ContactAlert] $message');
+  }
 
   static Future<void> _saveSession({
     required String token,
@@ -197,7 +202,8 @@ class AuthService {
         }
 
         final errorMap = _decodeJsonMap(resp.body);
-        final message = (errorMap['message'] ?? 'Profile update failed').toString();
+        final message =
+            (errorMap['message'] ?? 'Profile update failed').toString();
         throw Exception(message);
       }
     }
@@ -301,8 +307,9 @@ class AuthService {
     } catch (_) {}
 
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      final message = (body['message'] ?? body['error'] ?? 'Google login failed')
-          .toString();
+      final message =
+          (body['message'] ?? body['error'] ?? 'Google login failed')
+              .toString();
       return <String, dynamic>{
         'success': false,
         'statusCode': resp.statusCode,
@@ -460,6 +467,85 @@ class AuthService {
     }
   }
 
+  static Future<Map<String, dynamic>> sendContactAlert({
+    String? contactId,
+    required String phoneNumber,
+    required String message,
+  }) async {
+    final trimmedPhone = phoneNumber.trim();
+    final trimmedMessage = message.trim();
+
+    if (trimmedPhone.isEmpty) {
+      throw Exception('Contact phone number is missing.');
+    }
+    if (trimmedMessage.isEmpty) {
+      throw Exception('Emergency message cannot be empty.');
+    }
+
+    final payload = <String, dynamic>{
+      if ((contactId ?? '').trim().isNotEmpty) 'contactId': contactId!.trim(),
+      'phoneNumber': trimmedPhone,
+      'message': trimmedMessage,
+    };
+
+    _logContactAlert(
+      'Sending contact alert. contactId=${(contactId ?? '').trim().isEmpty ? 'n/a' : contactId!.trim()}, phoneNumber=$trimmedPhone, messageLength=${trimmedMessage.length}',
+    );
+
+    final endpoints = <String>[
+      if ((contactId ?? '').trim().isNotEmpty)
+        '/contact/contacts/${contactId!.trim()}/alert',
+      '/contact/alert',
+      '/emergency/contact-alert',
+      '/emergency/contacts/alert',
+    ];
+
+    EmergencyApiException? lastError;
+
+    for (final path in endpoints) {
+      try {
+        _logContactAlert('Trying endpoint: $path');
+        final response = await _authorizedRequest(
+          method: 'POST',
+          path: path,
+          body: payload,
+        );
+        _logContactAlert(
+          'Send success via $path. Response=${jsonEncode(response)}',
+        );
+        return response;
+      } on EmergencyApiException catch (e) {
+        if (e.statusCode == 401) {
+          _logContactAlert('Unauthorized while sending alert via $path');
+          await logout();
+          throw Exception('Invalid or expired token. Please re-login.');
+        }
+        if (e.statusCode == 404 || e.statusCode == 405) {
+          _logContactAlert(
+            'Endpoint unavailable at $path. status=${e.statusCode}, message=${e.message}',
+          );
+          lastError = e;
+          continue;
+        }
+        _logContactAlert(
+          'Send failed via $path. status=${e.statusCode}, message=${e.message}',
+        );
+        throw Exception(e.message);
+      } catch (e) {
+        _logContactAlert('Unexpected error via $path: $e');
+        rethrow;
+      }
+    }
+
+    _logContactAlert(
+      'No backend SMS endpoint available. lastStatus=${lastError?.statusCode ?? 'n/a'}',
+    );
+    throw Exception(
+      'Backend SMS alert endpoint is not available yet'
+      '${lastError == null ? '.' : ' (${lastError.statusCode}).'}',
+    );
+  }
+
   static Future<void> saveTrustedContacts(
       List<Map<String, String>> contacts) async {
     final prefs = await SharedPreferences.getInstance();
@@ -595,9 +681,8 @@ class AuthService {
     }
 
     return EmergencyStartAssessment(
-      messagingSuccessful: response['ok'] == false
-          ? true
-          : (response['success'] != false),
+      messagingSuccessful:
+          response['ok'] == false ? true : (response['success'] != false),
       message: (response['message'] ?? 'Emergency started').toString(),
     );
   }
