@@ -1,6 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
+import 'package:location/location.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+
+//mapbox public token
+const String mapboxToken =
+    "pk.eyJ1IjoieW91c3Vmbml6YW0iLCJhIjoiY21tNWEyeWd5MDR4dDJxb20zbndyZjhseCJ9.dz2ioHxFApAW6K0VCfVVMg";
 
 class SafeRouteNavigationScreen extends StatefulWidget {
   const SafeRouteNavigationScreen({super.key});
@@ -11,15 +18,17 @@ class SafeRouteNavigationScreen extends StatefulWidget {
 }
 
 class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
-  late GoogleMapController _mapController;
+  MapboxMap? _mapController;
+  PolylineAnnotationManager? _polylineManager;
+  static const double _myLocationZoomOutLevel = 10.5;
 
   final TextEditingController _sourceController = TextEditingController();
   final TextEditingController _destinationController = TextEditingController();
+  final Location _location = Location();
 
-  static const CameraPosition _initialPosition = CameraPosition(
-    target: LatLng(37.7749, -122.4194),
-    zoom: 14,
-  );
+  LocationData? _currentPosition;
+  String _distanceText = "Distance: --";
+  String _durationText = "Estimated Time: --";
 
   @override
   void dispose() {
@@ -28,19 +37,161 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     super.dispose();
   }
 
-  // _______________ MY LOCATION FUNCTION __________
+  void _showSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  // ____________ GET REAL LOCATION_______________
+  Future<void> _getRealLocation() async {
+    bool serviceEnabled = await _location.serviceEnabled();
+    if (!serviceEnabled) {
+      serviceEnabled = await _location.requestService();
+      if (!serviceEnabled) return;
+    }
+
+    PermissionStatus permission = await _location.hasPermission();
+    if (permission == PermissionStatus.denied) {
+      permission = await _location.requestPermission();
+      if (permission != PermissionStatus.granted) return;
+    }
+
+    _currentPosition = await _location.getLocation();
+
+    // AUTO FILL SOURCE FIELD
+    final resolvedLocationName = await _getReadableLocationName(
+      _currentPosition!.latitude!,
+      _currentPosition!.longitude!,
+    );
+    _sourceController.text = resolvedLocationName ??
+        "${_currentPosition!.latitude}, ${_currentPosition!.longitude}";
+
+    print(
+        "My Real Location = ${_currentPosition!.latitude}, ${_currentPosition!.longitude}");
+  }
+
+  Future<String?> _getReadableLocationName(double lat, double lng) async {
+    final url = Uri.parse(
+      "https://api.mapbox.com/geocoding/v5/mapbox.places/$lng,$lat.json"
+      "?access_token=$mapboxToken&types=address,place,locality,neighborhood&limit=1",
+    );
+
+    final response = await http.get(url);
+    if (response.statusCode != 200) return null;
+
+    final data = jsonDecode(response.body);
+    final features = data["features"] as List<dynamic>?;
+    if (features == null || features.isEmpty) return null;
+
+    return features.first["place_name"] as String?;
+  }
+
+  // ____________ MAPBOX: GO TO MY LOCATION _______________
   Future<void> _goToMyLocation() async {
-    try {
-      _mapController.animateCamera(
-        CameraUpdate.newCameraPosition(
-          const CameraPosition(
-            target: LatLng(37.7749, -122.4194), // TEMP — replace with GPS later
-            zoom: 16,
-          ),
+    if (_mapController == null) return;
+
+    if (_currentPosition == null) {
+      await _getRealLocation();
+    }
+
+    if (_currentPosition != null) {
+      // Moves the camera on the current map instance (does not open a new map).
+      _mapController!.flyTo(
+        CameraOptions(
+          center: Point(
+            coordinates: Position(
+              _currentPosition!.longitude!,
+              _currentPosition!.latitude!,
+            ),
+          ).toJson(),
+          zoom: _myLocationZoomOutLevel,
+          pitch: 0,
+          bearing: 0,
+        ),
+        MapAnimationOptions(duration: 1000),
+      );
+      print("Moved camera to my location (zoomed out)");
+    }
+  }
+
+  //Search for destination using Mapbox Geocoding API
+  Future<Position?> searchDestination(String place) async {
+    final encodedPlace = Uri.encodeComponent(place.trim());
+    final url = Uri.parse(
+        "https://api.mapbox.com/geocoding/v5/mapbox.places/$encodedPlace.json?access_token=$mapboxToken&limit=1&country=LK");
+
+    final response = await http.get(url);
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+
+      if (data['features'].isNotEmpty) {
+        final coords = data['features'][0]['center'];
+        return Position(
+            (coords[0] as num).toDouble(), (coords[1] as num).toDouble());
+      }
+    }
+
+    return null;
+  }
+
+// __________ DRAW ROUTE USING MAPBOX DIRECTIONS API __________
+
+  Future<void> drawRoute(Position start, Position end) async {
+    if (_mapController == null || _polylineManager == null) return;
+
+    final url = Uri.parse("https://api.mapbox.com/directions/v5/mapbox/driving/"
+        "${start.lng},${start.lat};${end.lng},${end.lat}"
+        "?geometries=geojson&overview=full&alternatives=false&access_token=$mapboxToken");
+
+    final response = await http.get(url);
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      if (data['routes'] == null || (data['routes'] as List).isEmpty) {
+        _showSnackBar("No route found.");
+        return;
+      }
+
+      final geometry = data['routes'][0]['geometry'];
+      final routeCoordinates = (geometry['coordinates'] as List<dynamic>)
+          .map((c) =>
+              Position((c[0] as num).toDouble(), (c[1] as num).toDouble()))
+          .toList();
+
+      await _polylineManager!.deleteAll();
+      await _polylineManager!.create(
+        PolylineAnnotationOptions(
+          geometry: LineString(coordinates: routeCoordinates).toJson(),
+          lineColor: const Color(0xFF2962FF).value,
+          lineWidth: 5.0,
         ),
       );
-    } catch (e) {
-      print("Error moving to location: $e");
+
+      final routeDistanceMeters =
+          (data['routes'][0]['distance'] as num?)?.toDouble() ?? 0.0;
+      final routeDurationSeconds =
+          (data['routes'][0]['duration'] as num?)?.toDouble() ?? 0.0;
+
+      if (mounted) {
+        setState(() {
+          _distanceText =
+              "Distance: ${(routeDistanceMeters / 1000).toStringAsFixed(1)} km";
+          _durationText =
+              "Estimated Time: ${(routeDurationSeconds / 60).toStringAsFixed(0)} mins";
+        });
+      }
+
+      await _mapController!.flyTo(
+        CameraOptions(
+          center: Point(coordinates: end).toJson(),
+          zoom: 12.5,
+        ),
+        MapAnimationOptions(duration: 1200),
+      );
+    } else {
+      _showSnackBar("Directions API failed: ${response.statusCode}");
     }
   }
 
@@ -55,17 +206,25 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       ),
       body: Stack(
         children: [
-          //_______________ GOOGLE MAP ____________
-          GoogleMap(
-            initialCameraPosition: _initialPosition,
-            onMapCreated: (controller) {
-              _mapController = controller;
+          // ---------------- MAPBOX MAP ----------------
+          MapWidget(
+            key: const ValueKey("mapbox_map"),
+            cameraOptions: CameraOptions(
+              center: Point(
+                // 🇱🇰 CENTER OF SRI LANKA
+                coordinates: Position(80.7718, 7.8731),
+              ).toJson(),
+              zoom: 7, // zoomed out to show whole Sri Lanka
+            ),
+            onMapCreated: (map) async {
+              _mapController = map;
+              _polylineManager =
+                  await map.annotations.createPolylineAnnotationManager();
+              await _getRealLocation();
             },
-            myLocationEnabled: true,
-            zoomControlsEnabled: false,
           ),
 
-          //____________SEARCH PANEL_____________
+          // ---------------- SEARCH PANEL ----------------
           Positioned(
             top: 20,
             left: 20,
@@ -126,8 +285,40 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    onPressed: () {
-                      print("Find Route clicked");
+                    onPressed: () async {
+                      try {
+                        if (_currentPosition == null) {
+                          await _getRealLocation();
+                        }
+
+                        if (_currentPosition == null) {
+                          _showSnackBar("Current location unavailable.");
+                          return;
+                        }
+
+                        final destinationText = _destinationController.text;
+                        if (destinationText.trim().isEmpty) {
+                          _showSnackBar("Please enter a destination.");
+                          return;
+                        }
+
+                        final destination =
+                            await searchDestination(destinationText);
+                        if (destination == null) {
+                          _showSnackBar(
+                              "Destination not found. Try a Sri Lanka place name.");
+                          return;
+                        }
+
+                        final start = Position(
+                          _currentPosition!.longitude!,
+                          _currentPosition!.latitude!,
+                        );
+
+                        await drawRoute(start, destination);
+                      } catch (e) {
+                        _showSnackBar("Route error: $e");
+                      }
                     },
                     child: const Text(
                       "Find Route",
@@ -139,7 +330,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
             ),
           ),
 
-          // __________DRAGGABLE SLIDING PANEL____________
+          // ---------------- DRAGGABLE PANEL ----------------
           DraggableScrollableSheet(
             initialChildSize: 0.12,
             minChildSize: 0.12,
@@ -184,22 +375,18 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text(
-                            "Distance: 2.3 km",
-                            style: TextStyle(color: Colors.white, fontSize: 16),
-                          ),
-                          SizedBox(height: 8),
-                          Text(
-                            "Estimated Time: 8 mins",
-                            style: TextStyle(color: Colors.white, fontSize: 16),
-                          ),
-                          SizedBox(height: 8),
-                          Text(
-                            "Safety Score: High Safety Area",
-                            style: TextStyle(
-                                color: Colors.greenAccent, fontSize: 16),
-                          ),
+                        children: [
+                          Text(_distanceText,
+                              style:
+                                  TextStyle(color: Colors.white, fontSize: 16)),
+                          const SizedBox(height: 8),
+                          Text(_durationText,
+                              style:
+                                  TextStyle(color: Colors.white, fontSize: 16)),
+                          const SizedBox(height: 8),
+                          const Text("Safety Score: High Safety Area",
+                              style: TextStyle(
+                                  color: Colors.greenAccent, fontSize: 16)),
                         ],
                       ),
                     ),
@@ -224,9 +411,24 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
             },
           ),
 
-          // _____ MY LOCATION BUTTON ___
+          // __________ SOS BUTTON __________
           Positioned(
-            bottom: 120,
+            bottom: 50,
+            left: 20,
+            child: FloatingActionButton(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              heroTag: "sos_button",
+              onPressed: () {
+                print("SOS clicked");
+              },
+              child: const Icon(Icons.warning, size: 28),
+            ),
+          ),
+
+          // __________ MY LOCATION BUTTON __________
+          Positioned(
+            bottom: 50,
             right: 20,
             child: FloatingActionButton(
               backgroundColor: Colors.white,
@@ -234,20 +436,6 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
               heroTag: "my_location_button",
               onPressed: _goToMyLocation,
               child: const Icon(Icons.my_location, size: 28),
-            ),
-          ),
-          //_____SOS BUTTON_____
-          Positioned(
-            bottom: 20,
-            right: 20,
-            child: FloatingActionButton(
-              backgroundColor: Colors.redAccent,
-              foregroundColor: Colors.white,
-              heroTag: "sos_button",
-              onPressed: () {
-                print("SOS Button Pressed");
-              },
-              child: const Icon(Icons.warning, size: 28),
             ),
           ),
         ],

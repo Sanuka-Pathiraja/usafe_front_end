@@ -99,7 +99,8 @@ class SafetyScoreScreen extends StatelessWidget {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => const SafeRouteNavigationScreen(),
+                          builder: (context) =>
+                              const SafeRouteNavigationScreen(),
                         ),
                       );
                     },
