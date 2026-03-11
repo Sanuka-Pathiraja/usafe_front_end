@@ -4,8 +4,8 @@ import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:usafe_front_end/core/services/contact_alert_service.dart';
 import 'package:usafe_front_end/core/services/phone_call_service.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
+import 'package:usafe_front_end/src/pages/silent_call_page.dart';
 import 'package:usafe_front_end/src/widgets/contact_alert_bottom_sheet.dart';
-import 'package:usafe_front_end/src/widgets/silent_call_bottom_sheet.dart';
 
 class ContactsScreen extends StatefulWidget {
   final VoidCallback? onBackHome;
@@ -26,6 +26,30 @@ class ContactsScreenState extends State<ContactsScreen> {
 
   void _logContactAlert(String message) {
     debugPrint('[ContactAlertUI] $message');
+  }
+
+  Map<String, Color> _silentCallColors(BuildContext context) {
+    final background = AppColors.alert;
+    final foreground = Colors.white;
+    final shadow = Color.lerp(background, Colors.black, 0.34)!;
+
+    return <String, Color>{
+      'background': background,
+      'foreground': foreground,
+      'shadow': shadow,
+    };
+  }
+
+  Map<String, Color> _silentCallRingColors(BuildContext context) {
+    final colors = _silentCallColors(context);
+    final background = colors['background']!;
+    final foreground = colors['foreground']!;
+
+    return <String, Color>{
+      'outer': AppColors.alert.withOpacity(0.78),
+      'inner': Color.lerp(background, Colors.white, 0.08)!,
+      'foregroundSoft': foreground.withOpacity(0.92),
+    };
   }
 
   @override
@@ -251,17 +275,14 @@ class ContactsScreenState extends State<ContactsScreen> {
   }
 
   Future<void> _showSilentCallComposer() async {
-    await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) {
-        return SilentCallBottomSheet(
+    await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SilentCallPage(
           contacts: List<Map<String, String>>.from(_contacts),
           onSend: _sendSilentCall,
-        );
-      },
+        ),
+      ),
     );
   }
 
@@ -372,6 +393,82 @@ class ContactsScreenState extends State<ContactsScreen> {
     }
   }
 
+  Widget _buildSilentCallFab(BuildContext context) {
+    final colors = _silentCallColors(context);
+    final ringColors = _silentCallRingColors(context);
+    final background = colors['background']!;
+    final foreground = colors['foreground']!;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 88),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: background.withOpacity(0.16),
+              blurRadius: 12,
+              spreadRadius: 0,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Container(
+          width: 76,
+          height: 76,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                ringColors['inner']!,
+                background,
+              ],
+            ),
+            border: Border.all(
+              color: ringColors['outer']!,
+              width: 1.8,
+            ),
+          ),
+          child: FloatingActionButton(
+            heroTag: 'silent-call-fab',
+            tooltip: 'Silent Call',
+            elevation: 0,
+            highlightElevation: 0,
+            backgroundColor: Colors.transparent,
+            foregroundColor: foreground,
+            disabledElevation: 0,
+            onPressed: _loading ? null : _showSilentCallComposer,
+            shape: const CircleBorder(),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.volume_off_rounded,
+                  size: 24,
+                  color: Colors.white,
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'Silent\nCall',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: foreground,
+                    fontSize: 10.8,
+                    fontWeight: FontWeight.w800,
+                    height: 1.0,
+                    letterSpacing: 0.1,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -449,7 +546,7 @@ class ContactsScreenState extends State<ContactsScreen> {
                           ),
                         )
                       : ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 196),
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 210),
                           itemCount: _contacts.length,
                           itemBuilder: (context, index) {
                             final contact = _contacts[index];
@@ -459,25 +556,7 @@ class ContactsScreenState extends State<ContactsScreen> {
                 ),
               ],
             ),
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 88),
-        child: FloatingActionButton.extended(
-          heroTag: 'silent-call-fab',
-          backgroundColor: AppColors.primary,
-          foregroundColor: Colors.white,
-          elevation: 10,
-          onPressed: _loading ? null : _showSilentCallComposer,
-          icon: const Icon(Icons.keyboard_voice_outlined),
-          label: const Text(
-            'Silent Call',
-            style: TextStyle(fontWeight: FontWeight.w700),
-          ),
-          tooltip: 'Silent Call',
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-          ),
-        ),
-      ),
+      floatingActionButton: _buildSilentCallFab(context),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
