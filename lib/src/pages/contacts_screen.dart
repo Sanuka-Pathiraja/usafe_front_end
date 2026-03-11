@@ -5,6 +5,7 @@ import 'package:usafe_front_end/core/services/contact_alert_service.dart';
 import 'package:usafe_front_end/core/services/phone_call_service.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
 import 'package:usafe_front_end/src/widgets/contact_alert_bottom_sheet.dart';
+import 'package:usafe_front_end/src/widgets/silent_call_bottom_sheet.dart';
 
 class ContactsScreen extends StatefulWidget {
   final VoidCallback? onBackHome;
@@ -249,6 +250,21 @@ class ContactsScreenState extends State<ContactsScreen> {
     );
   }
 
+  Future<void> _showSilentCallComposer() async {
+    await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return SilentCallBottomSheet(
+          contacts: List<Map<String, String>>.from(_contacts),
+          onSend: _sendSilentCall,
+        );
+      },
+    );
+  }
+
   Future<void> _sendAlertToContact(
     Map<String, String> contact,
     String message,
@@ -302,6 +318,57 @@ class ContactsScreenState extends State<ContactsScreen> {
       }
     } catch (e) {
       _showSnack(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<void> _sendSilentCall(
+    String message,
+    List<Map<String, String>> selectedContacts,
+  ) async {
+    final trimmedMessage = message.trim();
+    if (trimmedMessage.isEmpty) {
+      throw Exception('Emergency message cannot be empty.');
+    }
+    if (selectedContacts.isEmpty) {
+      throw Exception('Select at least one emergency contact.');
+    }
+
+    final normalizedContacts = <Map<String, String>>[];
+    for (final contact in selectedContacts) {
+      final normalizedPhone = ContactAlertService.normalizePhoneNumber(
+        contact['phone'] ?? '',
+      );
+      if (normalizedPhone.isEmpty) {
+        final name = contact['name'] ?? 'Unknown contact';
+        throw Exception('No valid phone number found for $name.');
+      }
+      normalizedContacts.add({
+        'contactId': (contact['contactId'] ?? '').trim(),
+        'name': (contact['name'] ?? '').trim(),
+        'phone': normalizedPhone,
+      });
+    }
+
+    try {
+      debugPrint(
+        '[SilentCallUI] Starting send. contacts=${normalizedContacts.length}, messageLength=${trimmedMessage.length}',
+      );
+      final response = await AuthService.sendSilentCall(
+        message: trimmedMessage,
+        contacts: normalizedContacts,
+      );
+      final serverMessage =
+          (response['message'] ?? 'Silent Call request sent successfully.')
+              .toString();
+      debugPrint(
+        '[SilentCallUI] Send completed. response=${response.toString()}',
+      );
+      _showSnack(serverMessage);
+    } catch (e) {
+      final error = e.toString().replaceFirst('Exception: ', '');
+      debugPrint('[SilentCallUI] Send failed. error=$error');
+      _showSnack(error);
+      rethrow;
     }
   }
 
@@ -382,7 +449,7 @@ class ContactsScreenState extends State<ContactsScreen> {
                           ),
                         )
                       : ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 140),
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 196),
                           itemCount: _contacts.length,
                           itemBuilder: (context, index) {
                             final contact = _contacts[index];
@@ -392,6 +459,26 @@ class ContactsScreenState extends State<ContactsScreen> {
                 ),
               ],
             ),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 88),
+        child: FloatingActionButton.extended(
+          heroTag: 'silent-call-fab',
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.white,
+          elevation: 10,
+          onPressed: _loading ? null : _showSilentCallComposer,
+          icon: const Icon(Icons.keyboard_voice_outlined),
+          label: const Text(
+            'Silent Call',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+          tooltip: 'Silent Call',
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+        ),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 

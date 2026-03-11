@@ -546,6 +546,86 @@ class AuthService {
     );
   }
 
+  static Future<Map<String, dynamic>> sendSilentCall({
+    required String message,
+    required List<Map<String, String>> contacts,
+  }) async {
+    final trimmedMessage = message.trim();
+    if (trimmedMessage.isEmpty) {
+      throw Exception('Emergency message cannot be empty.');
+    }
+    if (contacts.isEmpty) {
+      throw Exception('Select at least one emergency contact.');
+    }
+
+    final payload = <String, dynamic>{
+      'message': trimmedMessage,
+      'contacts': contacts
+          .map(
+            (contact) => <String, dynamic>{
+              'contactId': (contact['contactId'] ?? '').trim(),
+              'name': (contact['name'] ?? '').trim(),
+              'phone': (contact['phone'] ?? '').trim(),
+            },
+          )
+          .toList(),
+    };
+
+    const endpoints = <String>[
+      '/emergency/silent-call',
+      '/contact/silent-call',
+      '/emergency/contacts/silent-call',
+    ];
+
+    EmergencyApiException? lastError;
+    debugPrint(
+      '[SilentCall] Sending silent call. contacts=${contacts.length}, messageLength=${trimmedMessage.length}',
+    );
+
+    for (final path in endpoints) {
+      try {
+        debugPrint('[SilentCall] Trying endpoint: $path');
+        final response = await _authorizedRequest(
+          method: 'POST',
+          path: path,
+          body: payload,
+        );
+        debugPrint(
+          '[SilentCall] Success via $path. Response=${jsonEncode(response)}',
+        );
+        return response;
+      } on EmergencyApiException catch (e) {
+        if (e.statusCode == 401) {
+          debugPrint('[SilentCall] Unauthorized via $path');
+          await logout();
+          throw Exception('Invalid or expired token. Please re-login.');
+        }
+        if (e.statusCode == 404 || e.statusCode == 405) {
+          debugPrint(
+            '[SilentCall] Endpoint unavailable at $path. status=${e.statusCode}, message=${e.message}',
+          );
+          lastError = e;
+          continue;
+        }
+        debugPrint(
+          '[SilentCall] Failed via $path. status=${e.statusCode}, message=${e.message}',
+        );
+        throw Exception(e.message);
+      } catch (e) {
+        debugPrint('[SilentCall] Unexpected error via $path: $e');
+        rethrow;
+      }
+    }
+
+    debugPrint(
+      '[SilentCall] No backend endpoint available. lastStatus=${lastError?.statusCode ?? 'n/a'}',
+    );
+    throw Exception(
+      'Backend Silent Call endpoint is not available yet'
+      '${lastError == null ? '.' : ' (${lastError.statusCode}).'}',
+    );
+  }
+
   static Future<void> saveTrustedContacts(
       List<Map<String, String>> contacts) async {
     final prefs = await SharedPreferences.getInstance();
