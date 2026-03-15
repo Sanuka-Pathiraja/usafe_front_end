@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
+import 'package:usafe_front_end/src/config/app_config.dart';
 import 'app.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // ✅ MAPBOX PUBLIC TOKEN (REQUIRED FOR MAP DISPLAY)
-  MapboxOptions.setAccessToken(
-      "pk.eyJ1IjoieW91c3Vmbml6YW0iLCJhIjoiY21tNWEyeWd5MDR4dDJxb20zbndyZjhseCJ9.dz2ioHxFApAW6K0VCfVVMg");
+  // ✅ MAPBOX PUBLIC TOKEN — loaded from lib/src/config/app_config.dart (gitignored)
+  MapboxOptions.setAccessToken(mapboxPublicToken);
 
   const platform = MethodChannel('com.usafe_frontend/sos');
   bool isSOS = false;

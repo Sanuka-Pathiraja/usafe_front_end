@@ -19,10 +19,7 @@
             android:name="com.google.android.geo.API_KEY"
             android:value="YOUR_GOOGLE_MAPS_API_KEY" />
 
-          <!-- Mapbox Access Token -->
-        <meta-data
-             android:name="MAPBOX_ACCESS_TOKEN"
-             android:value="pk.eyJ1IjoieW91c3Vmbml6YW0iLCJhIjoiY21tNWEyeWd5MDR4dDJxb20zbndyZjhseCJ9.dz2ioHxFApAW6K0VCfVVMg" />
+          <!-- Mapbox Access Token is set in main.dart via MapboxOptions.setAccessToken() -->
 
         <activity
             android:name=".MainActivity"

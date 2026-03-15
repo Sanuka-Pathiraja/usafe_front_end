@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:location/location.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
+import 'package:usafe_front_end/src/config/app_config.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-//mapbox public token
-const String mapboxToken =
-    "pk.eyJ1IjoieW91c3Vmbml6YW0iLCJhIjoiY21tNWEyeWd5MDR4dDJxb20zbndyZjhseCJ9.dz2ioHxFApAW6K0VCfVVMg";
+// Mapbox public token is loaded from lib/src/config/app_config.dart (gitignored)
+const String mapboxToken = mapboxPublicToken;
 
 class SafeRouteNavigationScreen extends StatefulWidget {
   const SafeRouteNavigationScreen({super.key});

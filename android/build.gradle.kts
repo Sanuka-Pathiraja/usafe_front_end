@@ -1,3 +1,12 @@
+import java.util.Properties
+
+// Load secrets.properties (gitignored) so Mapbox Maven registry can authenticate
+val secretsFile = rootProject.file("secrets.properties")
+if (secretsFile.exists()) {
+    val secrets = Properties().apply { load(secretsFile.inputStream()) }
+    secrets.forEach { key, value -> extra[key.toString()] = value }
+}
+
 allprojects {
     repositories {
         google()
