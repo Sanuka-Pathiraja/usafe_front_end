@@ -4,6 +4,7 @@ import 'package:location/location.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:usafe_front_end/src/config/app_config.dart';
 import 'dart:convert';
+import 'dart:async'; // For debouncing the autocomplete
 import 'package:http/http.dart' as http;
 
 // Mapbox public token is loaded from lib/src/config/app_config.dart (gitignored)
@@ -25,6 +26,11 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   final TextEditingController _sourceController = TextEditingController();
   final TextEditingController _destinationController = TextEditingController();
   final Location _location = Location();
+  
+  // Autocomplete state...
+  Timer? _debounce;
+  List<Map<String, dynamic>> _destinationSuggestions = [];
+  bool _isSearchingSuggestions = false;
 
   LocationData? _currentPosition;
   String _distanceText = "Distance: --";
@@ -32,6 +38,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _sourceController.dispose();
     _destinationController.dispose();
     super.dispose();
@@ -134,6 +141,47 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     }
 
     return null;
+  }
+
+  // __________ FETCH DESTINATION SUGGESTIONS (AUTOCOMPLETE) __________
+  Future<void> fetchSuggestions(String query) async {
+    if (query.trim().isEmpty) {
+      setState(() {
+        _destinationSuggestions = [];
+      });
+      return;
+    }
+
+    setState(() {
+      _isSearchingSuggestions = true;
+    });
+
+    final encodedQuery = Uri.encodeComponent(query.trim());
+    // Limit to 5 suggestions, inside Sri Lanka
+    final url = Uri.parse(
+        "https://api.mapbox.com/geocoding/v5/mapbox.places/$encodedQuery.json?access_token=$mapboxToken&limit=5&country=LK&types=place,locality,neighborhood,address,poi");
+
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final features = data['features'] as List<dynamic>?;
+
+        if (features != null && mounted) {
+          setState(() {
+            _destinationSuggestions = features.map((f) => f as Map<String, dynamic>).toList();
+          });
+        }
+      }
+    } catch (e) {
+      print("Error fetching suggestions: $e");
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSearchingSuggestions = false;
+        });
+      }
+    }
   }
 
 // __________ DRAW ROUTE USING MAPBOX DIRECTIONS API __________
@@ -260,6 +308,12 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                           height: 1, thickness: 1, color: Colors.black12),
                       TextField(
                         controller: _destinationController,
+                        onChanged: (value) {
+                          if (_debounce?.isActive ?? false) _debounce!.cancel();
+                          _debounce = Timer(const Duration(milliseconds: 500), () {
+                            fetchSuggestions(value);
+                          });
+                        },
                         decoration: const InputDecoration(
                           hintText: "Enter Destination",
                           prefixIcon:
@@ -269,6 +323,44 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                               horizontal: 16, vertical: 14),
                         ),
                       ),
+                      // ---------------- AUTOCOMPLETE SUGGESTIONS ----------------
+                      if (_isSearchingSuggestions)
+                        const Padding(
+                          padding: EdgeInsets.all(8.0),
+                          child: CircularProgressIndicator(),
+                        ),
+                      if (_destinationSuggestions.isNotEmpty)
+                        Container(
+                          constraints: const BoxConstraints(maxHeight: 200),
+                          decoration: const BoxDecoration(
+                            border: Border(top: BorderSide(color: Colors.black12)),
+                          ),
+                          child: ListView.separated(
+                            shrinkWrap: true,
+                            padding: EdgeInsets.zero,
+                            itemCount: _destinationSuggestions.length,
+                            separatorBuilder: (context, index) => const Divider(height: 1),
+                            itemBuilder: (context, index) {
+                              final suggestion = _destinationSuggestions[index];
+                              return ListTile(
+                                leading: const Icon(Icons.place, color: Colors.blueAccent),
+                                title: Text(
+                                  suggestion['place_name'] ?? '',
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 14),
+                                ),
+                                onTap: () {
+                                  _destinationController.text = suggestion['place_name'] ?? '';
+                                  setState(() {
+                                    _destinationSuggestions = [];
+                                  });
+                                  FocusScope.of(context).unfocus(); // dismiss keyboard
+                                },
+                              );
+                            },
+                          ),
+                        ),
                     ],
                   ),
                 ),
