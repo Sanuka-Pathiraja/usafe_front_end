@@ -44,10 +44,13 @@ class MainActivity : FlutterActivity() {
         handleSOSIntent(intent)
     }
 
+    private var sosChannel: MethodChannel? = null
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
+        sosChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
+        sosChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
                 "checkOverlayPermission" -> result.success(hasOverlayPermission())
                 "requestOverlayPermission" -> {
@@ -69,6 +72,8 @@ class MainActivity : FlutterActivity() {
         if (intent?.getBooleanExtra("SOS_TRIGGERED", false) == true) {
             val prefs = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
             prefs.edit().putBoolean("flutter.SOS_TRIGGERED", true).apply()
+            prefs.edit().putLong("flutter.SOS_TRIGGERED_TS", System.currentTimeMillis()).apply()
+            sosChannel?.invokeMethod("sosTriggered", null)
         }
     }
 

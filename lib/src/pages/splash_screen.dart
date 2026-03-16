@@ -86,11 +86,18 @@ class _SplashScreenState extends State<SplashScreen>
       final triggered = prefs.getBool('SOS_TRIGGERED') ??
           prefs.getBool('flutter.SOS_TRIGGERED') ??
           false;
+      final ts = prefs.getInt('SOS_TRIGGERED_TS') ??
+          prefs.getInt('flutter.SOS_TRIGGERED_TS') ??
+          0;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final withinWindow = ts > 0 && (now - ts) <= (30 * 1000);
       if (triggered) {
         await prefs.setBool('SOS_TRIGGERED', false);
         await prefs.setBool('flutter.SOS_TRIGGERED', false);
+        await prefs.setInt('SOS_TRIGGERED_TS', 0);
+        await prefs.setInt('flutter.SOS_TRIGGERED_TS', 0);
       }
-      return triggered;
+      return triggered && withinWindow;
     } catch (_) {
       return false;
     }
