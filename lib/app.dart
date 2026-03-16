@@ -42,20 +42,41 @@ class _USafeAppState extends State<USafeApp> with WidgetsBindingObserver {
 
   Future<void> _handleSosMethodCall(MethodCall call) async {
     if (call.method == 'sosTriggered') {
-      await _startSosFlow();
+      final source = call.arguments is String ? call.arguments as String : null;
+      debugPrint('SOS: methodChannel sosTriggered source=$source');
+      await _startSosFlow(source: source);
     }
   }
 
-  Future<void> _startSosFlow() async {
+  Future<void> _startSosFlow({String? source}) async {
     if (_handlingSos) return;
     final nav = _navKey.currentState;
     if (nav == null) return;
 
     _handlingSos = true;
+    final resolvedSource = await _resolveSosSource(source);
     await nav.push(
-      MaterialPageRoute(builder: (_) => const SOSScreen(autoStart: true)),
+      MaterialPageRoute(
+        builder: (_) =>
+            SOSScreen(autoStart: true, triggerSource: resolvedSource),
+      ),
     );
     _handlingSos = false;
+  }
+
+  Future<String> _resolveSosSource(String? source) async {
+    final direct = (source ?? '').trim();
+    if (direct.isNotEmpty) return direct;
+
+    final prefs = await SharedPreferences.getInstance();
+    final fallback =
+        prefs.getString('flutter.SOS_TRIGGER_SOURCE') ??
+            prefs.getString('SOS_TRIGGER_SOURCE') ??
+            'notification';
+    debugPrint('SOS: prefs fallback source=$fallback');
+    await prefs.remove('SOS_TRIGGER_SOURCE');
+    await prefs.remove('flutter.SOS_TRIGGER_SOURCE');
+    return fallback;
   }
 
   Future<void> _checkSosTrigger() async {

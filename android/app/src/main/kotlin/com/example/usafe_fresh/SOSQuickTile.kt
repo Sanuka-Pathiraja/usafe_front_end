@@ -12,12 +12,14 @@ class SOSQuickTile : TileService() {
 
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            action = "com.usafe_frontend.SOS_BADGE"
             putExtra("SOS_TRIGGERED", true)
+            putExtra("SOS_SOURCE", "USafe badge")
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) { // Android 14+
             val pendingIntent = PendingIntent.getActivity(
-                this, 0, intent, 
+                this, 1003, intent, 
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             // Use the newer API if available

@@ -23,12 +23,14 @@ class SOSWidgetProvider : AppWidgetProvider() {
             try {
                 val intent = Intent(context, MainActivity::class.java).apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    action = "com.usafe_frontend.SOS_WIDGET"
                     putExtra("SOS_TRIGGERED", true)
+                    putExtra("SOS_SOURCE", "widget")
                 }
 
                 val pendingIntent = PendingIntent.getActivity(
                     context,
-                    0,
+                    1002,
                     intent,
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )

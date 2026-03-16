@@ -55,9 +55,13 @@ class _SplashScreenState extends State<SplashScreen>
     if (isEmergency) {
       await Future.delayed(const Duration(milliseconds: 500));
       if (!mounted) return;
+      final source = await _consumeSOSTriggerSource();
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const SOSScreen(autoStart: true)),
+        MaterialPageRoute(
+          builder: (_) =>
+              SOSScreen(autoStart: true, triggerSource: source),
+        ),
       );
       return;
     }
@@ -100,6 +104,21 @@ class _SplashScreenState extends State<SplashScreen>
       return triggered && withinWindow;
     } catch (_) {
       return false;
+    }
+  }
+
+  Future<String> _consumeSOSTriggerSource() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final source =
+          prefs.getString('SOS_TRIGGER_SOURCE') ??
+          prefs.getString('flutter.SOS_TRIGGER_SOURCE') ??
+          'notification';
+      await prefs.remove('SOS_TRIGGER_SOURCE');
+      await prefs.remove('flutter.SOS_TRIGGER_SOURCE');
+      return source;
+    } catch (_) {
+      return 'notification';
     }
   }
 

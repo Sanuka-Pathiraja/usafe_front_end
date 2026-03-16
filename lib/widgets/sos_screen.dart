@@ -1,18 +1,23 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:intl/intl.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
+import 'package:usafe_front_end/core/services/contact_alert_service.dart';
+import 'package:usafe_front_end/core/services/phone_call_service.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
 import 'package:usafe_front_end/features/auth/screens/login_screen.dart';
 import 'package:usafe_front_end/src/pages/emergency_process_screen.dart';
 import 'package:usafe_front_end/src/pages/home_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'sos_hold_button.dart';
 
 class SOSScreen extends StatefulWidget {
   final bool autoStart;
+  final String? triggerSource;
 
-  const SOSScreen({super.key, this.autoStart = false});
+  const SOSScreen({super.key, this.autoStart = false, this.triggerSource});
 
   @override
   State<SOSScreen> createState() => _SOSScreenState();
@@ -31,6 +36,11 @@ class _SOSScreenState extends State<SOSScreen>
   Timer? _statusPollTimer;
   bool _sessionAnswered = false;
   Map<String, dynamic>? _latestSessionStatus;
+  bool _isGuestMode = false;
+  bool _guestContactsLoaded = false;
+  String? _guestContactsError;
+  String? _guestContactsNotice;
+  final List<Map<String, String>> _guestContacts = [];
 
   @override
   void initState() {
@@ -51,6 +61,18 @@ class _SOSScreenState extends State<SOSScreen>
         if (mounted) _timerController.forward();
       });
     }
+
+    _primeGuestMode();
+  }
+
+  Future<void> _primeGuestMode() async {
+    final token = await AuthService.getToken();
+    if (!mounted) return;
+    if (token.isEmpty) {
+      setState(() => _isGuestMode = true);
+      await _loadGuestContacts();
+      if (mounted) setState(() {});
+    }
   }
 
   void _markSosTriggered() {
@@ -66,6 +88,8 @@ class _SOSScreenState extends State<SOSScreen>
     _isStartingProcess = true;
     _timerController.stop();
     _markSosTriggered();
+
+    await _resolveEmergencyMode();
 
     await Navigator.push(
       context,
@@ -99,6 +123,7 @@ class _SOSScreenState extends State<SOSScreen>
   }
 
   Future<void> _startStatusPolling() async {
+    if (_isGuestMode) return;
     _statusPollTimer?.cancel();
     await _pollEmergencyStatus();
     _statusPollTimer = Timer.periodic(_statusPollInterval, (_) {
@@ -107,6 +132,7 @@ class _SOSScreenState extends State<SOSScreen>
   }
 
   Future<void> _pollEmergencyStatus() async {
+    if (_isGuestMode) return;
     final sessionId = _emergencySessionId;
     if (sessionId == null || sessionId.isEmpty) return;
 
@@ -144,9 +170,10 @@ class _SOSScreenState extends State<SOSScreen>
         MaterialPageRoute(builder: (_) => const HomeScreen()),
       );
     } else {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Login required to access other pages.'),
+        ),
       );
     }
   }
@@ -169,6 +196,9 @@ class _SOSScreenState extends State<SOSScreen>
   }
 
   Future<EmergencyActionResult> _onMessageAllContacts() async {
+    if (_isGuestMode) {
+      return _guestMessageAllContacts();
+    }
     Map<String, dynamic> response;
     try {
       response = await AuthService.startEmergency();
@@ -201,6 +231,9 @@ class _SOSScreenState extends State<SOSScreen>
   }
 
   Future<EmergencyCallResult> _onCallContact(int contactIndex) async {
+    if (_isGuestMode) {
+      return _guestCallContact(contactIndex);
+    }
     if (_sessionAnswered) {
       return const EmergencyCallResult(success: true, answered: true);
     }
@@ -266,6 +299,9 @@ class _SOSScreenState extends State<SOSScreen>
   }
 
   Future<EmergencyActionResult> _onCall119() async {
+    if (_isGuestMode) {
+      return _guestCall119();
+    }
     final sessionId = _emergencySessionId;
     if (sessionId == null || sessionId.isEmpty) {
       return const EmergencyActionResult(
@@ -297,6 +333,12 @@ class _SOSScreenState extends State<SOSScreen>
   }
 
   Future<EmergencyActionResult> _onCancelEmergency() async {
+    if (_isGuestMode) {
+      return const EmergencyActionResult(
+        success: true,
+        message: 'Emergency process stopped',
+      );
+    }
     final sessionId = _emergencySessionId;
     if (sessionId == null || sessionId.isEmpty) {
       return const EmergencyActionResult(
@@ -332,6 +374,14 @@ class _SOSScreenState extends State<SOSScreen>
   }
 
   Future<bool> _handleUnauthorizedError(Object error) async {
+    final token = await AuthService.getToken();
+    if (token.isEmpty) {
+      _isGuestMode = true;
+      await _loadGuestContacts();
+      if (mounted) setState(() {});
+      return true;
+    }
+
     if (error is EmergencyApiException && error.statusCode == 401) {
       await AuthService.logout();
       if (!mounted) return true;
@@ -358,12 +408,213 @@ class _SOSScreenState extends State<SOSScreen>
     return true;
   }
 
+  Future<void> _resolveEmergencyMode() async {
+    if (_isGuestMode) {
+      await _loadGuestContacts();
+      if (mounted) setState(() {});
+      return;
+    }
+
+    final token = await AuthService.getToken();
+    if (token.isEmpty) {
+      _isGuestMode = true;
+      await _loadGuestContacts();
+      if (mounted) setState(() {});
+      return;
+    }
+
+    if (!widget.autoStart) {
+      final validSession = await AuthService.validateSession();
+      if (!validSession) {
+        _isGuestMode = true;
+        await _loadGuestContacts();
+        if (mounted) setState(() {});
+        return;
+      }
+    }
+
+    if (!widget.autoStart) {
+      try {
+        final contacts = await AuthService.fetchContacts();
+        if (contacts.isEmpty) {
+          _isGuestMode = true;
+          await _loadGuestContacts();
+        }
+      } catch (e) {
+        final normalized = e.toString().toLowerCase();
+        if (normalized.contains('not authenticated') ||
+            normalized.contains('unauthorized')) {
+          _isGuestMode = true;
+          await _loadGuestContacts();
+        }
+      }
+    }
+
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _loadGuestContacts() async {
+    if (_guestContactsLoaded) return;
+    _guestContactsLoaded = true;
+    _guestContactsError = null;
+    _guestContactsNotice = null;
+    _guestContacts.clear();
+
+    final granted = await FlutterContacts.requestPermission(readonly: true);
+    if (!granted) {
+      _guestContactsError =
+          'Contacts permission is required to use SOS in guest mode.';
+      return;
+    }
+
+    final contacts = await FlutterContacts.getContacts(
+      withProperties: true,
+      withPhoto: false,
+    );
+
+    final favorites =
+        contacts.where((c) => c.isStarred && c.phones.isNotEmpty).toList();
+    final fallback =
+        contacts.where((c) => c.phones.isNotEmpty).toList(growable: false);
+    final selected = favorites.isNotEmpty ? favorites : fallback;
+    if (favorites.isEmpty && selected.isNotEmpty) {
+      _guestContactsNotice =
+          'No starred contacts found. Using first 5 contacts with numbers.';
+    }
+
+    for (final contact in selected.take(5)) {
+      final phone = contact.phones.isNotEmpty ? contact.phones.first.number : '';
+      final normalized = ContactAlertService.normalizePhoneNumber(phone);
+      if (normalized.isEmpty) continue;
+
+      final name = contact.displayName.trim().isNotEmpty
+          ? contact.displayName.trim()
+          : 'Unknown';
+      _guestContacts.add({
+        'name': name,
+        'phone': normalized,
+      });
+    }
+
+    if (_guestContacts.isEmpty) {
+      _guestContactsError =
+          'No favorite contacts with phone numbers were found.';
+    }
+
+    if (mounted) setState(() {});
+  }
+
+  Future<EmergencyActionResult> _guestMessageAllContacts() async {
+    await _loadGuestContacts();
+    if (_guestContacts.isEmpty) {
+      return const EmergencyActionResult(
+        success: false,
+        message: 'No favorite contacts available for SOS messaging.',
+      );
+    }
+
+    final numbers =
+        _guestContacts.map((c) => c['phone'] ?? '').where((n) => n.isNotEmpty);
+    final recipientPath = numbers.join(',');
+    if (recipientPath.isEmpty) {
+      return const EmergencyActionResult(
+        success: false,
+        message: 'No valid phone numbers available for SOS messaging.',
+      );
+    }
+
+    final uri = Uri(
+      scheme: 'sms',
+      path: recipientPath,
+      queryParameters: {
+        'body': ContactAlertService.defaultEmergencyMessage,
+      },
+    );
+
+    try {
+      final opened =
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened) {
+        return const EmergencyActionResult(
+          success: false,
+          message: 'Could not open the SMS app for SOS messaging.',
+        );
+      }
+      return const EmergencyActionResult(
+        success: true,
+        message: 'SMS composer opened for favorite contacts.',
+      );
+    } catch (e) {
+      return EmergencyActionResult(
+        success: false,
+        message: e.toString(),
+      );
+    }
+  }
+
+  Future<EmergencyCallResult> _guestCallContact(int contactIndex) async {
+    await _loadGuestContacts();
+    final idx = contactIndex - 1;
+    if (idx < 0 || idx >= _guestContacts.length) {
+      return const EmergencyCallResult(
+        success: false,
+        answered: false,
+        message: 'Favorite contact not available.',
+        finalStatus: 'contact-missing',
+      );
+    }
+
+    final phone = _guestContacts[idx]['phone'] ?? '';
+    if (phone.isEmpty) {
+      return const EmergencyCallResult(
+        success: false,
+        answered: false,
+        message: 'Contact phone number is missing.',
+        finalStatus: 'phone-missing',
+      );
+    }
+
+    try {
+      await PhoneCallService.call(phone);
+      return const EmergencyCallResult(success: true, answered: false);
+    } catch (e) {
+      return EmergencyCallResult(
+        success: false,
+        answered: false,
+        message: e.toString(),
+        finalStatus: 'call-failed',
+      );
+    }
+  }
+
+  Future<EmergencyActionResult> _guestCall119() async {
+    try {
+      await PhoneCallService.call('119');
+      return const EmergencyActionResult(
+        success: true,
+        message: 'Emergency services call started.',
+      );
+    } catch (e) {
+      return EmergencyActionResult(
+        success: false,
+        message: e.toString(),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final sourceLabel =
+        _formatTriggerSource(widget.triggerSource, widget.autoStart);
+    debugPrint(
+      'SOSScreen: triggerSource=${widget.triggerSource} '
+      'autoStart=${widget.autoStart} label=$sourceLabel',
+    );
+
     return Scaffold(
-      backgroundColor: AppColors.backgroundBlack,
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: AppColors.background,
         elevation: 0,
         leading: _isSosSent
             ? null
@@ -373,110 +624,278 @@ class _SOSScreenState extends State<SOSScreen>
               ),
         title: Text(
           _isSosSent ? 'SYSTEM LOCKED' : 'EMERGENCY MODE',
-          style: const TextStyle(fontSize: 16, color: Colors.white54),
+          style: const TextStyle(fontSize: 16, color: Colors.white70),
         ),
         centerTitle: true,
         automaticallyImplyLeading: false,
       ),
       body: SafeArea(
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                _isSosSent ? 'EMERGENCY ACTIVATED' : 'SOS ACTIVATING',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.red,
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 2.0,
-                ),
-              ),
-              const SizedBox(height: 50),
-              SizedBox(
-                width: 200,
-                height: 200,
-                child: _isSosSent
-                    ? const Icon(Icons.gpp_maybe_rounded,
-                        color: Colors.redAccent, size: 150)
-                    : AnimatedBuilder(
+        child: Column(
+          children: [
+            const SizedBox(height: 18),
+            _buildTopHeader(sourceLabel),
+            const SizedBox(height: 16),
+            Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _buildLogoGlow(),
+                    const SizedBox(height: 20),
+                    Text(
+                      _isSosSent ? 'EMERGENCY ACTIVATED' : 'SOS ACTIVATING',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: AppColors.alert,
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 34),
+                    SizedBox(
+                      width: 210,
+                      height: 210,
+                      child: _isSosSent
+                          ? const Icon(Icons.gpp_maybe_rounded,
+                              color: AppColors.alert, size: 160)
+                          : AnimatedBuilder(
+                              animation: _timerController,
+                              builder: (context, child) {
+                                return CircularProgressIndicator(
+                                  value: _timerController.value,
+                                  strokeWidth: 12,
+                                  backgroundColor:
+                                      AppColors.surfaceElevated.withOpacity(0.6),
+                                  valueColor:
+                                      const AlwaysStoppedAnimation<Color>(
+                                          AppColors.alert),
+                                  strokeCap: StrokeCap.round,
+                                );
+                              },
+                            ),
+                    ),
+                    const SizedBox(height: 26),
+                    if (_isSosSent)
+                      Column(
+                        children: [
+                          const Text(
+                            'Triggered SOS System',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Emergency process started at $_triggeredTime',
+                            style: const TextStyle(
+                                color: AppColors.textSecondary, fontSize: 14),
+                          ),
+                          if (_isGuestMode) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              _guestContactsError ??
+                                  _guestContactsNotice ??
+                                  'Guest mode: using phone favorites (up to 5).',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ],
+                      )
+                    else
+                      AnimatedBuilder(
                         animation: _timerController,
                         builder: (context, child) {
-                          return CircularProgressIndicator(
-                            value: _timerController.value,
-                            strokeWidth: 12,
-                            backgroundColor: Colors.red.withOpacity(0.1),
-                            valueColor:
-                                const AlwaysStoppedAnimation<Color>(Colors.red),
+                          final remaining =
+                              (_countdownSeconds * (1 - _timerController.value))
+                                  .ceil();
+                          return Text(
+                            'Sending alert in $remaining seconds',
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 16),
                           );
                         },
                       ),
-              ),
-              const SizedBox(height: 30),
-              if (_isSosSent)
-                Column(
-                  children: [
-                    const Text(
-                      'Triggered SOS System',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Emergency process started at $_triggeredTime',
-                      style:
-                          const TextStyle(color: Colors.white70, fontSize: 16),
-                    ),
+                    const SizedBox(height: 36),
+                    if (!_isSosSent) ...[
+                      if (!widget.autoStart && !_timerController.isAnimating)
+                        SOSHoldButton(
+                            onSOSTriggered: () => _timerController.forward())
+                      else
+                        const Icon(Icons.sensors,
+                            color: AppColors.alert, size: 84),
+                      const SizedBox(height: 26),
+                      TextButton(
+                        onPressed: _handleBackAction,
+                        child: const Text('CANCEL SOS',
+                            style: TextStyle(
+                                color: AppColors.textSecondary, fontSize: 16)),
+                      ),
+                    ] else ...[
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 40),
+                        child: OutlinedButton(
+                          onPressed:
+                              _isStartingProcess ? null : _navigateToSafeExit,
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(
+                                color:
+                                    AppColors.border.withOpacity(0.8)),
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 15, horizontal: 30),
+                          ),
+                          child: Text(
+                            _isStartingProcess
+                                ? 'STARTING EMERGENCY...'
+                                : 'I AM SAFE - DISMISS',
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
-                )
-              else
-                AnimatedBuilder(
-                  animation: _timerController,
-                  builder: (context, child) {
-                    final remaining =
-                        (_countdownSeconds * (1 - _timerController.value))
-                            .ceil();
-                    return Text(
-                      'Sending alert in $remaining seconds',
-                      style: const TextStyle(color: Colors.white, fontSize: 18),
-                    );
-                  },
                 ),
-              const SizedBox(height: 50),
-              if (!_isSosSent) ...[
-                if (!widget.autoStart && !_timerController.isAnimating)
-                  SOSHoldButton(onSOSTriggered: () => _timerController.forward())
-                else
-                  const Icon(Icons.sensors, color: Colors.red, size: 80),
-                const SizedBox(height: 40),
-                TextButton(
-                  onPressed: _handleBackAction,
-                  child: const Text('CANCEL SOS',
-                      style: TextStyle(color: Colors.white54, fontSize: 16)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTopHeader(String sourceLabel) {
+    final sourceStatus = _formatTriggerStatus(sourceLabel);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 18),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceElevated.withOpacity(0.7),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: AppColors.border.withOpacity(0.5)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(
+                    color: AppColors.alert,
+                    shape: BoxShape.circle,
+                  ),
                 ),
-              ] else ...[
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 40),
-                  child: OutlinedButton(
-                    onPressed: _isStartingProcess ? null : _navigateToSafeExit,
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.white24),
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 15, horizontal: 30),
-                    ),
-                    child: Text(
-                      _isStartingProcess
-                          ? 'STARTING EMERGENCY...'
-                          : 'I AM SAFE - DISMISS',
-                      style: const TextStyle(color: Colors.white),
-                    ),
+                const SizedBox(width: 8),
+                const Text(
+                  'SOS MODE',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12,
+                    letterSpacing: 0.8,
                   ),
                 ),
               ],
-            ],
+            ),
+          ),
+          const Spacer(),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.notifications_active_outlined,
+                    size: 14, color: AppColors.primary),
+                const SizedBox(width: 6),
+                Text(
+                  sourceStatus,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatTriggerSource(String? source, bool autoStart) {
+    final raw = (source ?? '').trim();
+    if (raw.isEmpty) {
+      return autoStart ? 'Notification' : 'In-app';
+    }
+
+    switch (raw.toLowerCase()) {
+      case 'widget':
+        return 'Widget';
+      case 'notification':
+        return 'Notification';
+      case 'usafe badge':
+        return 'Quick Tile';
+      default:
+        return raw;
+    }
+  }
+
+  String _formatTriggerStatus(String sourceLabel) {
+    switch (sourceLabel) {
+      case 'Widget':
+        return 'Pressed Widget';
+      case 'Quick Tile':
+        return 'Pressed Quick Tile';
+      case 'Notification':
+        return 'Pressed Notification';
+      default:
+        return 'Triggered by $sourceLabel';
+    }
+  }
+
+  Widget _buildLogoGlow() {
+    return Container(
+      width: 86,
+      height: 86,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: AppColors.background,
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withOpacity(0.35),
+            blurRadius: 28,
+            spreadRadius: 6,
+          ),
+          BoxShadow(
+            color: AppColors.alert.withOpacity(0.18),
+            blurRadius: 40,
+            spreadRadius: 2,
+          ),
+        ],
+        border: Border.all(color: AppColors.primary.withOpacity(0.8), width: 2),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Image.asset(
+          'assets/usafe_logo.png',
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => const Icon(
+            Icons.shield,
+            size: 40,
+            color: AppColors.primary,
           ),
         ),
       ),

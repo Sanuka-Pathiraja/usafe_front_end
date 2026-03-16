@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.WindowManager
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -19,6 +20,12 @@ class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.usafe_frontend/sos"
     private val NOTIFICATION_ID = 100
     private val NOTIFICATION_CHANNEL_ID = "sos_emergency_channel"
+    private val SOS_SOURCE_KEY = "SOS_SOURCE"
+    private val SOS_TRIGGERED_KEY = "SOS_TRIGGERED"
+    private val ACTION_SOS_NOTIFICATION = "com.usafe_frontend.SOS_NOTIFICATION"
+    private val ACTION_SOS_WIDGET = "com.usafe_frontend.SOS_WIDGET"
+    private val ACTION_SOS_BADGE = "com.usafe_frontend.SOS_BADGE"
+    private val TAG = "USafeSOS"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,11 +80,31 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun handleSOSIntent(intent: Intent?) {
-        if (intent?.getBooleanExtra("SOS_TRIGGERED", false) == true) {
+        val extras = intent?.extras?.keySet()?.joinToString(",")
+        val trigger = intent?.getBooleanExtra(SOS_TRIGGERED_KEY, false)
+        val sourceExtra = intent?.getStringExtra(SOS_SOURCE_KEY)
+        Log.d(
+            TAG,
+            "handleSOSIntent action=${intent?.action} extras=$extras trigger=$trigger sourceExtra=$sourceExtra"
+        )
+        if (trigger == true) {
+            val source = intent.getStringExtra(SOS_SOURCE_KEY)
+                ?: when (intent.action) {
+                    ACTION_SOS_WIDGET -> "widget"
+                    ACTION_SOS_BADGE -> "USafe badge"
+                    ACTION_SOS_NOTIFICATION -> "notification"
+                    else -> "notification"
+                }
+            Log.d(TAG, "SOS triggered. resolvedSource=$source")
             val prefs = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
             prefs.edit().putBoolean("flutter.SOS_TRIGGERED", true).apply()
             prefs.edit().putLong("flutter.SOS_TRIGGERED_TS", System.currentTimeMillis()).apply()
-            sosChannel?.invokeMethod("sosTriggered", null)
+            prefs.edit().putString("flutter.SOS_TRIGGER_SOURCE", source).apply()
+            Log.d(
+                TAG,
+                "Saved prefs: flutter.SOS_TRIGGERED=true, flutter.SOS_TRIGGER_SOURCE=$source"
+            )
+            sosChannel?.invokeMethod("sosTriggered", source)
         }
     }
 
@@ -120,12 +147,14 @@ class MainActivity : FlutterActivity() {
 
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra("SOS_TRIGGERED", true)
+            action = ACTION_SOS_NOTIFICATION
+            putExtra(SOS_TRIGGERED_KEY, true)
+            putExtra(SOS_SOURCE_KEY, "notification")
         }
 
         val pendingIntent = PendingIntent.getActivity(
             this,
-            0,
+            1001,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
