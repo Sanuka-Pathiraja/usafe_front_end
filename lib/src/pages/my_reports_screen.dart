@@ -14,6 +14,7 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _reports = <Map<String, dynamic>>[];
+  bool _deleting = false;
 
   @override
   void initState() {
@@ -73,12 +74,66 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
   Future<void> _openReport(Map<String, dynamic> report) async {
     final reportId = _reportIdFrom(report);
     if (reportId <= 0) return;
-    await Navigator.push(
+    final deleted = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => ReportDetailsScreen(reportId: reportId),
       ),
     );
+    if (deleted == true) {
+      _loadReports();
+    }
+  }
+
+  Future<void> _confirmDelete(Map<String, dynamic> report) async {
+    if (_deleting) return;
+    final reportId = _reportIdFrom(report);
+    if (reportId <= 0) return;
+
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text(
+          'Delete report?',
+          style: TextStyle(color: AppColors.textPrimary),
+        ),
+        content: const Text(
+          'This will permanently delete the report.',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldDelete != true) return;
+    _deleting = true;
+    final result = await CommunityReportService.deleteReport(reportId);
+    _deleting = false;
+
+    if (!mounted) return;
+    if (result['success'] == true) {
+      setState(() {
+        _reports.removeWhere((r) => _reportIdFrom(r) == reportId);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Report deleted')),
+      );
+    } else {
+      final message = result['error']?.toString() ?? 'Delete failed';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    }
   }
 
   @override
@@ -168,8 +223,11 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
                                     ],
                                   ),
                                 ),
-                                const Icon(Icons.chevron_right,
-                                    color: AppColors.textSecondary),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline,
+                                      color: AppColors.textSecondary),
+                                  onPressed: () => _confirmDelete(report),
+                                ),
                               ],
                             ),
                           ),
@@ -193,6 +251,7 @@ class _ReportDetailsScreenState extends State<ReportDetailsScreen> {
   bool _loading = true;
   String? _error;
   Map<String, dynamic>? _report;
+  bool _deleting = false;
 
   @override
   void initState() {
@@ -219,6 +278,50 @@ class _ReportDetailsScreenState extends State<ReportDetailsScreen> {
         _loading = false;
       });
     }
+  }
+
+  Future<void> _deleteReport() async {
+    if (_deleting) return;
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text(
+          'Delete report?',
+          style: TextStyle(color: AppColors.textPrimary),
+        ),
+        content: const Text(
+          'This will permanently delete the report.',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (shouldDelete != true) return;
+
+    _deleting = true;
+    final result = await CommunityReportService.deleteReport(widget.reportId);
+    _deleting = false;
+
+    if (!mounted) return;
+    if (result['success'] == true) {
+      Navigator.pop(context, true);
+      return;
+    }
+
+    final message = result['error']?.toString() ?? 'Delete failed';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   String _text(dynamic value, {String fallback = 'Not available'}) {
@@ -251,6 +354,12 @@ class _ReportDetailsScreenState extends State<ReportDetailsScreen> {
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
         ),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.white70),
+            onPressed: _deleteReport,
+          ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

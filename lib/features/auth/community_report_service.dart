@@ -162,4 +162,52 @@ class CommunityReportService {
     }
     throw Exception('Invalid report details response.');
   }
+
+  static Future<Map<String, dynamic>> deleteReport(int reportId) async {
+    final token = await AuthService.getToken();
+    if (token.isEmpty) {
+      return {
+        'success': false,
+        'error': 'Session expired. Please login again.',
+      };
+    }
+
+    final response = await http.delete(
+      Uri.parse('$baseUrl/report/$reportId'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+
+    if (response.statusCode == 401) {
+      await AuthService.logout();
+      return {
+        'success': false,
+        'error': 'Invalid or expired token. Please re-login.',
+      };
+    }
+
+    if (response.statusCode == 404) {
+      return {
+        'success': false,
+        'error': 'Report not found.',
+      };
+    }
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      return {
+        'success': false,
+        'error': 'Failed to delete report (${response.statusCode})',
+      };
+    }
+
+    if (response.body.isEmpty) {
+      return {'success': true};
+    }
+
+    try {
+      final decoded = jsonDecode(response.body);
+      return {'success': true, 'data': decoded};
+    } catch (_) {
+      return {'success': true};
+    }
+  }
 }

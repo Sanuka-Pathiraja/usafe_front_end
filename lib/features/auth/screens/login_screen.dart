@@ -625,12 +625,12 @@ class _SignupScreenState extends State<SignupScreen> {
                                     (_) => false,
                                   );
                                 } else {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text("Signup failed."),
-                                      backgroundColor: AppColors.alertRed,
-                                    ),
-                                  );
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text("Signup failed."),
+                                    backgroundColor: AppColors.alertRed,
+                                  ),
+                                );
                                 }
                               } else {
                                 final message = !isPhoneValid

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -20,11 +21,14 @@ class SafetyMapScreen extends StatefulWidget {
 }
 
 class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProviderStateMixin {
-  late GoogleMapController _mapController;
+  GoogleMapController? _mapController;
   String _darkMapStyle = '';
 
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
+
+  final TextEditingController _searchController = TextEditingController();
+  Timer? _searchDebounce;
   
   final AudioAnalysisService _audioService = AudioAnalysisService();
   bool _isSafetyModeActive = false;
@@ -35,19 +39,20 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   Marker? _selectedMarker;
   bool _isResolvingLocation = false;
 
-  static const CameraPosition _kInitialPosition = CameraPosition(
-    target: LatLng(37.7749, -122.4194),
-    zoom: 14.4746,
-  );
+  static const LatLng _fallbackPosition = LatLng(37.7749, -122.4194);
+  LatLng? _currentLatLng;
+  bool _mapReady = false;
 
   Color _micStatusColor = Colors.grey;
   String _micStatusText = "Mic Off";
   bool _didShowSelectionHint = false;
+  bool _isSearchingLocation = false;
 
   @override
   void initState() {
     super.initState();
     _loadMapStyle();
+    _initCurrentLocation();
     
     _pulseController = AnimationController(
       duration: const Duration(seconds: 2),
@@ -72,6 +77,10 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
         _showStatusSnack("Please select a location.");
       });
     }
+
+    _searchController.addListener(() {
+      if (mounted) setState(() {});
+    });
   }
 
   void _toggleSafetyMode() {
@@ -158,6 +167,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
         timeLimit: const Duration(seconds: 8),
       );
       final latLng = LatLng(position.latitude, position.longitude);
+      _currentLatLng = latLng;
       _selectedMarker = Marker(
         markerId: const MarkerId("selected_location"),
         position: latLng,
@@ -172,6 +182,78 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
     } catch (_) {
       _showStatusSnack("Unable to get current location.");
     }
+  }
+
+  void _onSearchChanged(String value) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+      final query = value.trim();
+      if (query.isEmpty) return;
+      _searchLocation(query);
+    });
+  }
+
+  Future<void> _searchLocation(String query) async {
+    if (query.isEmpty || _isSearchingLocation) return;
+    _isSearchingLocation = true;
+    try {
+      final results = await locationFromAddress(query)
+          .timeout(const Duration(seconds: 8));
+      if (results.isEmpty) {
+        _showStatusSnack("No results found.");
+        _isSearchingLocation = false;
+        return;
+      }
+      final best = results.first;
+      final latLng = LatLng(best.latitude, best.longitude);
+      _currentLatLng = latLng;
+      _selectedMarker = Marker(
+        markerId: const MarkerId("selected_location"),
+        position: latLng,
+      );
+      if (mounted) {
+        setState(() {});
+      }
+      _moveCamera(latLng);
+    } catch (_) {
+      _showStatusSnack("Unable to find that place.");
+    } finally {
+      _isSearchingLocation = false;
+    }
+  }
+
+  Future<void> _initCurrentLocation() async {
+    try {
+      final permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.deniedForever) {
+        return;
+      }
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
+        timeLimit: const Duration(seconds: 8),
+      );
+      final latLng = LatLng(position.latitude, position.longitude);
+      _currentLatLng = latLng;
+      if (mounted) {
+        setState(() {});
+      }
+      _moveCamera(latLng);
+    } catch (_) {
+      // Keep fallback position if location cannot be resolved.
+    }
+  }
+
+  void _moveCamera(LatLng latLng) {
+    final controller = _mapController;
+    if (!_mapReady || controller == null) return;
+    controller.animateCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(target: latLng, zoom: 16),
+      ),
+    );
   }
 
   Future<void> _goToReportWithLocation(LatLng position,
@@ -315,6 +397,8 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   void dispose() {
     _pulseController.dispose();
     _dangerTimer?.cancel();
+    _searchDebounce?.cancel();
+    _searchController.dispose();
     if (_isSafetyModeActive) {
       _audioService.stopListening();
     }
@@ -340,11 +424,18 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
             animation: _pulseController,
             builder: (context, child) {
               return GoogleMap(
-                initialCameraPosition: _kInitialPosition,
+                initialCameraPosition: CameraPosition(
+                  target: _currentLatLng ?? _fallbackPosition,
+                  zoom: _currentLatLng == null ? 14.4746 : 16,
+                ),
                 onMapCreated: (GoogleMapController controller) {
                   _mapController = controller;
+                  _mapReady = true;
                   if (_darkMapStyle.isNotEmpty) {
-                    _mapController.setMapStyle(_darkMapStyle);
+                    _mapController?.setMapStyle(_darkMapStyle);
+                  }
+                  if (_currentLatLng != null) {
+                    _moveCamera(_currentLatLng!);
                   }
                 },
                 onTap: widget.selectLocationForReport
@@ -353,6 +444,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                           markerId: const MarkerId("selected_location"),
                           position: latLng,
                         );
+                        _currentLatLng = latLng;
                         setState(() {});
                         await _goToReportWithLocation(
                           latLng,
@@ -375,50 +467,119 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
             top: 50,
             left: 20,
             right: 20,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E1E1E).withOpacity(0.9),
-                borderRadius: BorderRadius.circular(15),
-                border: Border.all(color: Colors.white10),
-                boxShadow: const [
-                  BoxShadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 4))
-                ],
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _buildLegendItem("High Risk", const Color(0xFFE53935)),
-                  _buildLegendItem("Moderate", Colors.orange),
-                  _buildLegendItem("Safe", const Color(0xFF00E676)),
-                ],
-              ),
+            child: Column(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.06),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.search,
+                              color: Colors.white70, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              controller: _searchController,
+                              onChanged: _onSearchChanged,
+                              onSubmitted: (value) =>
+                                  _searchLocation(value.trim()),
+                              style: const TextStyle(color: Colors.white),
+                              cursorColor: Colors.white70,
+                              selectionHeightStyle:
+                                  BoxHeightStyle.tight,
+                              selectionWidthStyle:
+                                  BoxWidthStyle.tight,
+                              decoration: InputDecoration(
+                                hintText: "Search place or address",
+                                hintStyle: TextStyle(
+                                    color: Colors.white.withOpacity(0.5)),
+                                filled: true,
+                                fillColor: Colors.transparent,
+                                isDense: true,
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                disabledBorder: InputBorder.none,
+                                errorBorder: InputBorder.none,
+                                focusedErrorBorder: InputBorder.none,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.mic, color: Colors.white54),
+                            onPressed: () {
+                              _showStatusSnack("Voice search coming soon.");
+                            },
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Text(
+                              "Sri Lanka",
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          if (_searchController.text.isNotEmpty)
+                            IconButton(
+                              icon: const Icon(Icons.clear,
+                                  color: Colors.white54),
+                              onPressed: () {
+                                _searchController.clear();
+                                _searchDebounce?.cancel();
+                                FocusScope.of(context).unfocus();
+                                setState(() {});
+                              },
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E1E1E).withOpacity(0.9),
+                    borderRadius: BorderRadius.circular(15),
+                    border: Border.all(color: Colors.white10),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black45,
+                        blurRadius: 10,
+                        offset: Offset(0, 4),
+                      )
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildLegendItem("High Risk", const Color(0xFFE53935)),
+                      _buildLegendItem("Moderate", Colors.orange),
+                      _buildLegendItem("Safe", const Color(0xFF00E676)),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
-
-          Positioned(
-            top: 120,
-            left: 20,
-            child: _buildMicStatusPill(),
-          ),
-          if (widget.selectLocationForReport)
-            Positioned(
-              top: 120,
-              right: 20,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E1E1E).withOpacity(0.9),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white24),
-                ),
-                child: const Text(
-                  "Tap map to pin or use current location",
-                  style: TextStyle(color: Colors.white70, fontSize: 12),
-                ),
-              ),
-            ),
           // --- Bottom Floating Action Buttons ---
           Positioned(
             bottom: 30,
@@ -427,40 +588,16 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
               children: [
                 FloatingActionButton(
                   heroTag: "recenter",
-                  backgroundColor: const Color(0xFF1E1E1E),
+                  backgroundColor: Colors.white.withOpacity(0.12),
                   onPressed: () {
-                    // Logic to re-center on user
+                    final current = _currentLatLng;
+                    if (current != null) {
+                      _moveCamera(current);
+                    } else {
+                      _initCurrentLocation();
+                    }
                   },
                   child: const Icon(Icons.my_location, color: Colors.white),
-                ),
-                const SizedBox(height: 16),
-                FloatingActionButton(
-                  heroTag: "safety_mode",
-                  backgroundColor: _isSafetyModeActive
-                      ? Colors.redAccent
-                      : const Color(0xFF1E1E1E),
-                  onPressed: _toggleSafetyMode,
-                  child: Icon(
-                    _isSafetyModeActive ? Icons.mic : Icons.mic_none,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                FloatingActionButton.extended(
-                  heroTag: "report",
-                  backgroundColor: const Color(0xFFE53935),
-                  onPressed: widget.selectLocationForReport
-                      ? (_isResolvingLocation
-                          ? null
-                          : _useCurrentLocationForReport)
-                      : () {},
-                  icon: const Icon(Icons.warning_amber_rounded, color: Colors.white),
-                  label: Text(
-                    widget.selectLocationForReport
-                        ? "Use Current Location"
-                        : "Report Incident",
-                    style: const TextStyle(color: Colors.white),
-                  ),
                 ),
               ],
             ),

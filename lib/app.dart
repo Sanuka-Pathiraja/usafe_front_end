@@ -94,7 +94,7 @@ class _USafeAppState extends State<USafeApp> with WidgetsBindingObserver {
       navigatorKey: _navKey,
 
       // Injecting the new Design System
-      theme: AppTheme.darkTheme, // ðŸ‘‰ Locks in the new Master Theme
+      theme: AppTheme.darkTheme, // 👉 Locks in the new Master Theme
       darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.dark,
 
