@@ -6,7 +6,7 @@ import '../../features/auth/screens/login_screen.dart';
 import 'contacts_screen.dart';
 import 'emergency_process_screen.dart';
 import 'package:usafe_front_end/src/pages/profile_screen.dart'; // Adjust path
-import 'safety_score_screen.dart';
+import 'safety_score_gate_screen.dart';
 import 'safepath_scheduler_screen.dart';
 import 'settings_screen.dart'; // ← SettingsPage lives here
 
@@ -34,7 +34,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final pages = [
       const SOSDashboard(),
-      SafetyScoreScreen(
+      SafetyScoreGateScreen(
         showBottomNav: false,
         onBackHome: () => _switchTab(0),
       ),

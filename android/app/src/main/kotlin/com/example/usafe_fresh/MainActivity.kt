@@ -52,6 +52,10 @@ class MainActivity : FlutterActivity() {
         sosChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
         sosChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
+                "openNotificationSettings" -> {
+                    openNotificationSettings()
+                    result.success(null)
+                }
                 "checkOverlayPermission" -> result.success(hasOverlayPermission())
                 "requestOverlayPermission" -> {
                     openOverlaySettings()
@@ -88,6 +92,19 @@ class MainActivity : FlutterActivity() {
             )
             startActivity(intent)
         }
+    }
+
+    private fun openNotificationSettings() {
+        val intent = Intent()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            intent.action = Settings.ACTION_APP_NOTIFICATION_SETTINGS
+            intent.putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+        } else {
+            intent.action = "android.settings.APP_NOTIFICATION_SETTINGS"
+            intent.putExtra("app_package", packageName)
+            intent.putExtra("app_uid", applicationInfo.uid)
+        }
+        startActivity(intent)
     }
 
     private fun showPersistentSOSNotification() {

@@ -12,7 +12,16 @@ import './privacy_screen.dart';
 import './help_support_screen.dart';
 
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key});
+  final bool focusLocationSection;
+  final bool highlightLocationSection;
+  final bool returnToSafetyScoreOnEnable;
+
+  const SettingsPage({
+    super.key,
+    this.focusLocationSection = false,
+    this.highlightLocationSection = false,
+    this.returnToSafetyScoreOnEnable = false,
+  });
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -22,17 +31,33 @@ class _SettingsPageState extends State<SettingsPage>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   bool shareLocation = true;
   bool notificationsEnabled = false;
+  final GlobalKey _locationTileKey = GlobalKey();
+  final ScrollController _scrollController = ScrollController();
+  AnimationController? _highlightController;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadSettings();
+    if (widget.highlightLocationSection) {
+      _highlightController = AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 1200),
+      )..repeat(reverse: true);
+    }
+    if (widget.focusLocationSection) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToLocationTile();
+      });
+    }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _highlightController?.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -55,11 +80,12 @@ class _SettingsPageState extends State<SettingsPage>
   }
 
   // ================= LOCATION =================
-  Future<void> _toggleLocation(bool value) async {
+  Future<bool> _toggleLocation(bool value) async {
     if (value) {
       if (!await Geolocator.isLocationServiceEnabled()) {
         await Geolocator.openLocationSettings();
-        return;
+        _showSnack("Turn on device location services.");
+        return false;
       }
 
       LocationPermission permission = await Geolocator.checkPermission();
@@ -68,9 +94,15 @@ class _SettingsPageState extends State<SettingsPage>
         permission = await Geolocator.requestPermission();
       }
 
+      if (permission == LocationPermission.denied) {
+        _showSnack("Location permission is required.");
+        return false;
+      }
+
       if (permission == LocationPermission.deniedForever) {
         await openAppSettings();
-        return;
+        _showSnack("Allow location permission in app settings.");
+        return false;
       }
     }
 
@@ -82,6 +114,13 @@ class _SettingsPageState extends State<SettingsPage>
     _showSnack(
       value ? "📍 Location sharing enabled" : "📍 Location sharing disabled",
     );
+
+    if (value && widget.returnToSafetyScoreOnEnable) {
+      if (!mounted) return true;
+      Navigator.of(context).pop(true);
+    }
+
+    return true;
   }
 
   // ================= NOTIFICATIONS =================
@@ -120,6 +159,7 @@ class _SettingsPageState extends State<SettingsPage>
   // ================= UI =================
   @override
   Widget build(BuildContext context) {
+    final highlightAnimation = _highlightController;
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -137,22 +177,40 @@ class _SettingsPageState extends State<SettingsPage>
       ),
       body: SafeArea(
         child: SingleChildScrollView(
+          controller: _scrollController,
           padding: const EdgeInsets.fromLTRB(20, 10, 20, 30),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildHeaderCard(),
               const SizedBox(height: 24),
-              _sectionTitle("Privacy & Permissions"),
-              _buildSectionCard(
+              _buildSettingsPanel(
                 children: [
-                  _premiumToggleTile(
-                    icon: Icons.location_on_outlined,
-                    title: "Share Location",
-                    subtitle: "Live location for emergencies",
-                    value: shareLocation,
-                    onChanged: _toggleLocation,
-                  ),
+                  if (highlightAnimation != null)
+                    AnimatedBuilder(
+                      animation: highlightAnimation,
+                      builder: (context, child) {
+                        return _premiumToggleTile(
+                          tileKey: _locationTileKey,
+                          icon: Icons.location_on_outlined,
+                          title: "Share Location",
+                          subtitle: "Live location for emergencies",
+                          value: shareLocation,
+                          onChanged: _toggleLocation,
+                          highlight: true,
+                          highlightPulse: highlightAnimation.value,
+                        );
+                      },
+                    )
+                  else
+                    _premiumToggleTile(
+                      tileKey: _locationTileKey,
+                      icon: Icons.location_on_outlined,
+                      title: "Share Location",
+                      subtitle: "Live location for emergencies",
+                      value: shareLocation,
+                      onChanged: _toggleLocation,
+                    ),
                   _premiumToggleTile(
                     icon: Icons.notifications_outlined,
                     title: "Push Notifications",
@@ -171,24 +229,6 @@ class _SettingsPageState extends State<SettingsPage>
                       MaterialPageRoute(builder: (_) => const PrivacyScreen()),
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              _sectionTitle("Safety"),
-              _buildSectionCard(
-                children: [
-                  _actionTile(
-                    icon: Icons.security_rounded,
-                    title: "Test Emergency System",
-                    subtitle: "Run a safe SOS simulation",
-                    onTap: _openTestEmergencySheet,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              _sectionTitle("Support"),
-              _buildSectionCard(
-                children: [
                   _actionTile(
                     icon: Icons.help_outline,
                     title: "Help & Support",
@@ -200,8 +240,9 @@ class _SettingsPageState extends State<SettingsPage>
                   ),
                 ],
               ),
-              const SizedBox(height: 24),
-              _sectionTitle("Premium"),
+              const SizedBox(height: 20),
+              _buildEmergencyPanel(),
+              const SizedBox(height: 20),
               _premiumCard(),
             ],
           ),
@@ -295,19 +336,44 @@ class _SettingsPageState extends State<SettingsPage>
   }
 
   Widget _premiumToggleTile({
+    Key? tileKey,
     required IconData icon,
     required String title,
     required String subtitle,
     required bool value,
     required Function(bool) onChanged,
+    bool highlight = false,
+    double highlightPulse = 0,
   }) {
+    final baseColor = AppColors.surface;
+    final highlightColor = Color.lerp(
+          AppColors.primary.withOpacity(0.2),
+          AppColors.safetyTeal.withOpacity(0.25),
+          highlightPulse,
+        ) ??
+        baseColor;
+    final shadowOpacity = 0.18 + (0.22 * highlightPulse);
     return Container(
+      key: tileKey,
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: highlight ? highlightColor : baseColor,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border.withOpacity(0.6)),
+        border: Border.all(
+          color: highlight
+              ? AppColors.safetyTeal.withOpacity(0.6)
+              : AppColors.border.withOpacity(0.6),
+        ),
+        boxShadow: highlight
+            ? [
+                BoxShadow(
+                  color: AppColors.safetyTeal.withOpacity(shadowOpacity),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
+                ),
+              ]
+            : [],
       ),
       child: Row(
         children: [
@@ -346,11 +412,146 @@ class _SettingsPageState extends State<SettingsPage>
           ),
           Switch(
             value: value,
-            onChanged: onChanged,
+            onChanged: (next) async {
+              await onChanged(next);
+            },
             activeColor: AppColors.safetyTeal,
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildSettingsPanel({required List<Widget> children}) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.surfaceElevated.withOpacity(0.5),
+            AppColors.surface.withOpacity(0.35),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: AppColors.border.withOpacity(0.45)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        children: children,
+      ),
+    );
+  }
+
+  Widget _buildEmergencyPanel() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.alert.withOpacity(0.35), width: 1.4),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.alert.withOpacity(0.15),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.alert.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.warning_rounded,
+                    color: AppColors.alert),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  "Emergency System",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.success.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Text(
+                  "READY",
+                  style: TextStyle(
+                    color: AppColors.success,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            "Run a safe test to verify location, alerts, and UI readiness. No real alerts will be sent.",
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 12,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _openTestEmergencySheet,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.alert,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              child: const Text(
+                "Run Emergency Test",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _scrollToLocationTile() async {
+    final context = _locationTileKey.currentContext;
+    if (context == null) return;
+    await Scrollable.ensureVisible(
+      context,
+      alignment: 0.2,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOutCubic,
     );
   }
 
