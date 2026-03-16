@@ -22,7 +22,7 @@ class SafetyMapScreen extends StatefulWidget {
 
 class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProviderStateMixin {
   GoogleMapController? _mapController;
-  String _darkMapStyle = '';
+  String _mapStyle = '';
 
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
@@ -310,15 +310,15 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
       return '';
     }
   }
-  // Load custom JSON for Dark Mode map
+  // Load custom JSON for Light Mode map
   Future<void> _loadMapStyle() async {
-    // You can paste a full JSON style here or load from assets/map_style.json
-    // For now, this is a simplified dark style string
-    _darkMapStyle = '''
+    // You can paste a full JSON style here or load from assets/map_style.json.
+    // Light style to match the app theme.
+    _mapStyle = '''
     [
       {
         "elementType": "geometry",
-        "stylers": [{"color": "#212121"}]
+        "stylers": [{"color": "#f5f5f5"}]
       },
       {
         "elementType": "labels.icon",
@@ -326,36 +326,36 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
       },
       {
         "elementType": "labels.text.fill",
-        "stylers": [{"color": "#757575"}]
+        "stylers": [{"color": "#616161"}]
       },
       {
         "elementType": "labels.text.stroke",
-        "stylers": [{"color": "#212121"}]
+        "stylers": [{"color": "#f5f5f5"}]
       },
       {
         "featureType": "administrative",
         "elementType": "geometry",
-        "stylers": [{"color": "#757575"}]
+        "stylers": [{"color": "#c7c7c7"}]
       },
       {
         "featureType": "poi",
         "elementType": "geometry",
-        "stylers": [{"color": "#181818"}]
+        "stylers": [{"color": "#eeeeee"}]
       },
       {
         "featureType": "road",
         "elementType": "geometry.fill",
-        "stylers": [{"color": "#2c2c2c"}]
+        "stylers": [{"color": "#ffffff"}]
       },
       {
         "featureType": "road",
         "elementType": "labels.text.fill",
-        "stylers": [{"color": "#8a8a8a"}]
+        "stylers": [{"color": "#616161"}]
       },
       {
         "featureType": "water",
         "elementType": "geometry",
-        "stylers": [{"color": "#000000"}]
+        "stylers": [{"color": "#c9d9e8"}]
       }
     ]
     ''';
@@ -413,7 +413,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: const Icon(Icons.arrow_back, color: Colors.black87),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -431,8 +431,8 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                 onMapCreated: (GoogleMapController controller) {
                   _mapController = controller;
                   _mapReady = true;
-                  if (_darkMapStyle.isNotEmpty) {
-                    _mapController?.setMapStyle(_darkMapStyle);
+                  if (_mapStyle.isNotEmpty) {
+                    _mapController?.setMapStyle(_mapStyle);
                   }
                   if (_currentLatLng != null) {
                     _moveCamera(_currentLatLng!);
@@ -477,14 +477,14 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.06),
+                        color: Colors.white.withOpacity(0.9),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.white24),
+                        border: Border.all(color: Colors.black12),
                       ),
                       child: Row(
                         children: [
                           const Icon(Icons.search,
-                              color: Colors.white70, size: 20),
+                              color: Colors.black54, size: 20),
                           const SizedBox(width: 8),
                           Expanded(
                             child: TextField(
@@ -492,8 +492,8 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                               onChanged: _onSearchChanged,
                               onSubmitted: (value) =>
                                   _searchLocation(value.trim()),
-                              style: const TextStyle(color: Colors.white),
-                              cursorColor: Colors.white70,
+                              style: const TextStyle(color: Colors.black87),
+                              cursorColor: Colors.black54,
                               selectionHeightStyle:
                                   BoxHeightStyle.tight,
                               selectionWidthStyle:
@@ -501,7 +501,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                               decoration: InputDecoration(
                                 hintText: "Search place or address",
                                 hintStyle: TextStyle(
-                                    color: Colors.white.withOpacity(0.5)),
+                                    color: Colors.black54),
                                 filled: true,
                                 fillColor: Colors.transparent,
                                 isDense: true,
@@ -515,7 +515,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                             ),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.mic, color: Colors.white54),
+                            icon: const Icon(Icons.mic, color: Colors.black54),
                             onPressed: () {
                               _showStatusSnack("Voice search coming soon.");
                             },
@@ -524,13 +524,13 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.08),
+                              color: Colors.black.withOpacity(0.06),
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: const Text(
                               "Sri Lanka",
                               style: TextStyle(
-                                color: Colors.white70,
+                                color: Colors.black87,
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -539,7 +539,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                           if (_searchController.text.isNotEmpty)
                             IconButton(
                               icon: const Icon(Icons.clear,
-                                  color: Colors.white54),
+                                  color: Colors.black54),
                               onPressed: () {
                                 _searchController.clear();
                                 _searchDebounce?.cancel();
@@ -557,12 +557,12 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                   padding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1E1E1E).withOpacity(0.9),
+                    color: Colors.white.withOpacity(0.95),
                     borderRadius: BorderRadius.circular(15),
-                    border: Border.all(color: Colors.white10),
+                    border: Border.all(color: Colors.black12),
                     boxShadow: const [
                       BoxShadow(
-                        color: Colors.black45,
+                        color: Colors.black26,
                         blurRadius: 10,
                         offset: Offset(0, 4),
                       )
@@ -588,7 +588,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
               children: [
                 FloatingActionButton(
                   heroTag: "recenter",
-                  backgroundColor: Colors.white.withOpacity(0.12),
+                  backgroundColor: Colors.white.withOpacity(0.95),
                   onPressed: () {
                     final current = _currentLatLng;
                     if (current != null) {
@@ -597,7 +597,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
                       _initCurrentLocation();
                     }
                   },
-                  child: const Icon(Icons.my_location, color: Colors.white),
+                  child: const Icon(Icons.my_location, color: Colors.black87),
                 ),
               ],
             ),
@@ -616,7 +616,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
         const SizedBox(width: 8),
-        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+        Text(label, style: const TextStyle(color: Colors.black87, fontSize: 12)),
       ],
     );
   }
@@ -625,7 +625,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E).withOpacity(0.9),
+        color: Colors.white.withOpacity(0.95),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: _micStatusColor.withOpacity(0.5)),
       ),

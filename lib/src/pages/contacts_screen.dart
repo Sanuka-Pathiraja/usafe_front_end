@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
@@ -6,11 +7,19 @@ import 'package:usafe_front_end/core/services/phone_call_service.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
 import 'package:usafe_front_end/src/pages/silent_call_page.dart';
 import 'package:usafe_front_end/src/widgets/contact_alert_bottom_sheet.dart';
+import 'package:showcaseview/showcaseview.dart';
 
 class ContactsScreen extends StatefulWidget {
   final VoidCallback? onBackHome;
+  final GlobalKey? infoKey;
+  final GlobalKey? silentCallKey;
 
-  const ContactsScreen({super.key, this.onBackHome});
+  const ContactsScreen({
+    super.key,
+    this.onBackHome,
+    this.infoKey,
+    this.silentCallKey,
+  });
 
   @override
   State<ContactsScreen> createState() => ContactsScreenState();
@@ -23,6 +32,7 @@ class ContactsScreenState extends State<ContactsScreen> {
 
   final List<Map<String, String>> _contacts = [];
   bool _loading = true;
+  final Completer<int> _loadedCountCompleter = Completer<int>();
 
   void _logContactAlert(String message) {
     debugPrint('[ContactAlertUI] $message');
@@ -83,17 +93,30 @@ class ContactsScreenState extends State<ContactsScreen> {
               }));
         _loading = false;
       });
+      if (!_loadedCountCompleter.isCompleted) {
+        _loadedCountCompleter.complete(_contacts.length);
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _contacts.clear();
         _loading = false;
       });
+      if (!_loadedCountCompleter.isCompleted) {
+        _loadedCountCompleter.complete(0);
+      }
       final error = e.toString().replaceFirst('Exception: ', '');
       if (!error.toLowerCase().contains('not authenticated')) {
         _showSnack(error);
       }
     }
+  }
+
+  Future<int> waitForLoadedContactCount() {
+    if (!_loading) {
+      return Future.value(_contacts.length);
+    }
+    return _loadedCountCompleter.future;
   }
 
   Future<void> _addContactFromPhone() async {
@@ -494,69 +517,62 @@ class ContactsScreenState extends State<ContactsScreen> {
         ),
         centerTitle: true,
       ),
-      body: _loading
-          ? const Center(
-              child: CircularProgressIndicator(color: AppColors.primary))
-          : Column(
-              children: [
-                const SizedBox(height: 10),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Add ${_minContacts}-$_maxContacts trusted contacts',
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                      Text(
-                        '${_contacts.length}/$_maxContacts',
-                        style: TextStyle(
-                          color: _contacts.length < _minContacts
-                              ? AppColors.alert
-                              : AppColors.textSecondary,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
+      body: Column(
+        children: [
+          const SizedBox(height: 10),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: (widget.infoKey == null)
+                ? _buildContactsInfoRow()
+                : Showcase(
+                    key: widget.infoKey!,
+                    description:
+                        'Add at least $_minContacts trusted contacts to enable alerts.',
+                    child: _buildContactsInfoRow(),
                   ),
+          ),
+          if (_contacts.length < _minContacts)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 6, 20, 6),
+              child: Text(
+                'Add at least $_minContacts contacts to enable alerts.',
+                style: TextStyle(
+                  color: AppColors.alert.withOpacity(0.9),
+                  fontSize: 12,
                 ),
-                if (_contacts.length < _minContacts)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 6, 20, 6),
-                    child: Text(
-                      'Add at least $_minContacts contacts to enable alerts.',
-                      style: TextStyle(
-                        color: AppColors.alert.withOpacity(0.9),
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                const SizedBox(height: 10),
-                Expanded(
-                  child: _contacts.isEmpty
-                      ? const Center(
-                          child: Text(
-                            'No trusted contacts found.',
-                            style: TextStyle(color: AppColors.textSecondary),
-                          ),
-                        )
-                      : ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 210),
-                          itemCount: _contacts.length,
-                          itemBuilder: (context, index) {
-                            final contact = _contacts[index];
-                            return _buildContactCard(contact, index);
-                          },
-                        ),
-                ),
-              ],
+              ),
             ),
-      floatingActionButton: _buildSilentCallFab(context),
+          const SizedBox(height: 10),
+          Expanded(
+            child: _loading
+                ? const Center(
+                    child: CircularProgressIndicator(
+                        color: AppColors.primary))
+                : _contacts.isEmpty
+                    ? const Center(
+                        child: Text(
+                          'No trusted contacts found.',
+                          style: TextStyle(color: AppColors.textSecondary),
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 210),
+                        itemCount: _contacts.length,
+                        itemBuilder: (context, index) {
+                          final contact = _contacts[index];
+                          return _buildContactCard(contact, index);
+                        },
+                      ),
+          ),
+        ],
+      ),
+      floatingActionButton: (widget.silentCallKey == null)
+          ? _buildSilentCallFab(context)
+          : Showcase(
+              key: widget.silentCallKey!,
+              description: 'Send a silent SOS message to selected contacts.',
+              child: _buildSilentCallFab(context),
+            ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
@@ -672,6 +688,31 @@ class ContactsScreenState extends State<ContactsScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildContactsInfoRow() {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            'Add ${_minContacts}-$_maxContacts trusted contacts',
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 12,
+            ),
+          ),
+        ),
+        Text(
+          '${_contacts.length}/$_maxContacts',
+          style: TextStyle(
+            color: _contacts.length < _minContacts
+                ? AppColors.alert
+                : AppColors.textSecondary,
+            fontSize: 12,
+          ),
+        ),
+      ],
     );
   }
 

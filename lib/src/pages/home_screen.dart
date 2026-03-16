@@ -3,25 +3,45 @@ import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 import '../../features/auth/auth_service.dart';
 import '../../features/auth/screens/login_screen.dart';
+import '../../features/onboarding/onboarding_controller.dart';
 import 'contacts_screen.dart';
 import 'emergency_process_screen.dart';
 import 'package:usafe_front_end/src/pages/profile_screen.dart'; // Adjust path
 import 'safety_score_gate_screen.dart';
 import 'safepath_scheduler_screen.dart';
+import 'package:showcaseview/showcaseview.dart';
 import 'settings_screen.dart'; // ← SettingsPage lives here
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final int initialTabIndex;
+  final bool startContactsTour;
+
+  const HomeScreen({
+    super.key,
+    this.initialTabIndex = 0,
+    this.startContactsTour = false,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _currentIndex = 0;
+  late int _currentIndex;
   final Set<int> _loadedTabs = {0};
   final GlobalKey<ContactsScreenState> _contactsKey =
       GlobalKey<ContactsScreenState>();
+  final GlobalKey _addContactFabKey = GlobalKey();
+  final GlobalKey _contactsInfoKey = GlobalKey();
+  final GlobalKey _silentCallFabKey = GlobalKey();
+  bool _contactsTourRequested = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialTabIndex;
+    _loadedTabs.add(_currentIndex);
+  }
 
   void _switchTab(int index) {
     setState(() {
@@ -40,6 +60,8 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       ContactsScreen(
         key: _contactsKey,
+        infoKey: _contactsInfoKey,
+        silentCallKey: _silentCallFabKey,
         onBackHome: () => _switchTab(0),
       ),
       ProfileScreen(
@@ -48,47 +70,84 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     ];
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: Stack(
-        children: [
-          IndexedStack(
-            index: _currentIndex,
-            children: List.generate(
-              pages.length,
-              (index) => _loadedTabs.contains(index)
-                  ? pages[index]
-                  : const SizedBox.shrink(),
-            ),
-          ),
-          Positioned(
-            bottom: 32,
-            left: 24,
-            right: 24,
-            child: _buildBottomNavBar(),
-          ),
-          if (_currentIndex == 2)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 32 + 76 + 16,
-              child: Center(
-                child: FloatingActionButton.extended(
-                  backgroundColor: AppColors.primary,
-                  elevation: 4,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)),
-                  onPressed: () => _contactsKey.currentState?.openAddContact(),
-                  icon: const Icon(Icons.person_add, color: Colors.white),
-                  label: const Text('Add Contact',
-                      style: TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.bold)),
+    return ShowCaseWidget(
+      builder: (context) {
+        _maybeStartContactsTour(context);
+        return Scaffold(
+          backgroundColor: AppColors.background,
+          body: Stack(
+            children: [
+              IndexedStack(
+                index: _currentIndex,
+                children: List.generate(
+                  pages.length,
+                  (index) => _loadedTabs.contains(index)
+                      ? pages[index]
+                      : const SizedBox.shrink(),
                 ),
               ),
-            ),
-        ],
-      ),
+              Positioned(
+                bottom: 32,
+                left: 24,
+                right: 24,
+                child: _buildBottomNavBar(),
+              ),
+              if (_currentIndex == 2)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 32 + 76 + 16,
+                  child: Center(
+                    child: Showcase(
+                      key: _addContactFabKey,
+                      description:
+                          'Tap here to add trusted contacts for SOS alerts.',
+                      child: FloatingActionButton.extended(
+                        backgroundColor: AppColors.primary,
+                        elevation: 4,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                        onPressed: () =>
+                            _contactsKey.currentState?.openAddContact(),
+                        icon: const Icon(Icons.person_add, color: Colors.white),
+                        label: const Text('Add Contact',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
     );
+  }
+
+  Future<void> _maybeStartContactsTour(BuildContext showcaseContext) async {
+    if (_contactsTourRequested || !widget.startContactsTour) {
+      return;
+    }
+    _contactsTourRequested = true;
+    final contactsState = _contactsKey.currentState;
+    if (contactsState != null) {
+      final count = await contactsState.waitForLoadedContactCount();
+      if (count >= 3) {
+        return;
+      }
+    }
+    final shouldShow = await OnboardingController.shouldShowContactsTour();
+    if (!shouldShow) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final showcase = ShowCaseWidget.of(showcaseContext);
+      if (showcase == null) return;
+      showcase.startShowCase(
+          [_addContactFabKey, _contactsInfoKey, _silentCallFabKey]);
+    });
+    await OnboardingController.markContactsTourSeen();
   }
 
   Widget _buildBottomNavBar() {

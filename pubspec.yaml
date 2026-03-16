@@ -39,6 +39,7 @@ dependencies:
   # Supabase Integration
   supabase_flutter: ^2.5.6
   google_sign_in: ^6.3.0
+  showcaseview: ^5.0.1
 
   # Environment Variables
   flutter_dotenv: ^5.1.0

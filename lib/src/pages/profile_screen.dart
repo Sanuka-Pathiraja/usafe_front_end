@@ -210,17 +210,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _buildDialogField(controller: firstCtrl, label: 'First name'),
+                _buildDialogField(
+                  controller: firstCtrl,
+                  label: 'First name',
+                  hintText: 'e.g. Ayesha',
+                ),
                 const SizedBox(height: 10),
-                _buildDialogField(controller: lastCtrl, label: 'Last name'),
+                _buildDialogField(
+                  controller: lastCtrl,
+                  label: 'Last name',
+                  hintText: 'e.g. Perera',
+                ),
                 const SizedBox(height: 10),
-                _buildDialogField(controller: emailCtrl, label: 'Email'),
+                _buildDialogField(
+                  controller: emailCtrl,
+                  label: 'Email',
+                  hintText: 'e.g. ayesha@example.com',
+                ),
                 const SizedBox(height: 10),
-                _buildDialogField(controller: phoneCtrl, label: 'Phone'),
+                _buildDialogField(
+                  controller: phoneCtrl,
+                  label: 'Phone',
+                  hintText: 'e.g. 0771234567',
+                ),
                 const SizedBox(height: 10),
                 _buildDialogField(
                   controller: ageCtrl,
                   label: 'Age',
+                  hintText: 'e.g. 22',
                   keyboardType: TextInputType.number,
                 ),
               ],
@@ -295,6 +312,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildDialogField({
     required TextEditingController controller,
     required String label,
+    String? hintText,
     TextInputType keyboardType = TextInputType.text,
   }) {
     return TextField(
@@ -303,6 +321,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       style: const TextStyle(color: Colors.white),
       decoration: InputDecoration(
         labelText: label,
+        hintText: hintText,
         labelStyle: const TextStyle(color: AppColors.textSecondary),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
