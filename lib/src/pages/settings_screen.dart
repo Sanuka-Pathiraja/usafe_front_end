@@ -72,9 +72,18 @@ class _SettingsPageState extends State<SettingsPage>
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     final notificationStatus = await Permission.notification.status;
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    final permission = await Geolocator.checkPermission();
+    final permissionGranted = permission == LocationPermission.always ||
+        permission == LocationPermission.whileInUse;
 
     setState(() {
-      shareLocation = prefs.getBool("share_location") ?? true;
+      final storedShare = prefs.getBool("share_location") ?? true;
+      final effectiveShare = storedShare && serviceEnabled && permissionGranted;
+      if (storedShare && !effectiveShare) {
+        prefs.setBool("share_location", false);
+      }
+      shareLocation = effectiveShare;
       notificationsEnabled = notificationStatus.isGranted;
     });
   }

@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:usafe_front_end/core/services/api_service.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
 import 'safety_map_screen.dart';
@@ -46,6 +47,7 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
 
       serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
+        await _setShareLocationPref(false);
         throw Exception('Location services are disabled.');
       }
 
@@ -53,11 +55,13 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
+          await _setShareLocationPref(false);
           throw Exception('Location permissions are denied');
         }
       }
 
       if (permission == LocationPermission.deniedForever) {
+        await _setShareLocationPref(false);
         throw Exception('Location permissions are permanently denied.');
       }
 
@@ -94,6 +98,11 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
         });
       }
     }
+  }
+
+  Future<void> _setShareLocationPref(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool("share_location", value);
   }
 
   Future<Position?> _getSafePosition() async {
