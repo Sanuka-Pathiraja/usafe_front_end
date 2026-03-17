@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
+
 import 'package:location/location.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:usafe_front_end/src/config/app_config.dart';
@@ -21,12 +23,14 @@ class SafeRouteNavigationScreen extends StatefulWidget {
 class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   MapboxMap? _mapController;
   PolylineAnnotationManager? _polylineManager;
+  CircleAnnotationManager? _circleAnnotationManager;
+  PointAnnotationManager? _pointAnnotationManager;
   static const double _myLocationZoomOutLevel = 10.5;
 
   final TextEditingController _sourceController = TextEditingController();
   final TextEditingController _destinationController = TextEditingController();
   final Location _location = Location();
-  
+
   // Autocomplete state...
   Timer? _debounce;
   List<Map<String, dynamic>> _destinationSuggestions = [];
@@ -169,7 +173,8 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
 
         if (features != null && mounted) {
           setState(() {
-            _destinationSuggestions = features.map((f) => f as Map<String, dynamic>).toList();
+            _destinationSuggestions =
+                features.map((f) => f as Map<String, dynamic>).toList();
           });
         }
       }
@@ -187,7 +192,10 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
 // __________ DRAW ROUTE USING MAPBOX DIRECTIONS API __________
 
   Future<void> drawRoute(Position start, Position end) async {
-    if (_mapController == null || _polylineManager == null) return;
+    if (_mapController == null ||
+        _polylineManager == null ||
+        _circleAnnotationManager == null ||
+        _pointAnnotationManager == null) return;
 
     final url = Uri.parse("https://api.mapbox.com/directions/v5/mapbox/driving/"
         "${start.lng},${start.lat};${end.lng},${end.lat}"
@@ -209,11 +217,40 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
           .toList();
 
       await _polylineManager!.deleteAll();
+      await _circleAnnotationManager!.deleteAll();
+      await _pointAnnotationManager!.deleteAll();
+
+      // Draw Route Polyline
       await _polylineManager!.create(
         PolylineAnnotationOptions(
           geometry: LineString(coordinates: routeCoordinates).toJson(),
           lineColor: const Color(0xFF2962FF).value,
           lineWidth: 5.0,
+        ),
+      );
+
+      // --- ADD MARKERS ---
+      // Start Marker (Blue Dot)
+      await _circleAnnotationManager!.create(
+        CircleAnnotationOptions(
+          geometry: Point(coordinates: start).toJson(),
+          circleColor: Colors.blue.value,
+          circleRadius: 8.0,
+          circleStrokeWidth: 2.0,
+          circleStrokeColor: Colors.white.value,
+        ),
+      );
+
+      // Destination Marker (Red Pin Icon)
+      final ByteData bytes = await rootBundle.load('assets/red-pin bg r.png');
+      final Uint8List list = bytes.buffer.asUint8List();
+
+      await _pointAnnotationManager!.create(
+        PointAnnotationOptions(
+          geometry: Point(coordinates: end).toJson(),
+          image: list,
+          iconSize: 0.2, // Adjust size as needed
+          iconAnchor: IconAnchor.BOTTOM,
         ),
       );
 
@@ -268,6 +305,10 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
               _mapController = map;
               _polylineManager =
                   await map.annotations.createPolylineAnnotationManager();
+              _circleAnnotationManager =
+                  await map.annotations.createCircleAnnotationManager();
+              _pointAnnotationManager =
+                  await map.annotations.createPointAnnotationManager();
               await _getRealLocation();
             },
           ),
@@ -310,7 +351,8 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                         controller: _destinationController,
                         onChanged: (value) {
                           if (_debounce?.isActive ?? false) _debounce!.cancel();
-                          _debounce = Timer(const Duration(milliseconds: 500), () {
+                          _debounce =
+                              Timer(const Duration(milliseconds: 500), () {
                             fetchSuggestions(value);
                           });
                         },
@@ -333,17 +375,20 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                         Container(
                           constraints: const BoxConstraints(maxHeight: 200),
                           decoration: const BoxDecoration(
-                            border: Border(top: BorderSide(color: Colors.black12)),
+                            border:
+                                Border(top: BorderSide(color: Colors.black12)),
                           ),
                           child: ListView.separated(
                             shrinkWrap: true,
                             padding: EdgeInsets.zero,
                             itemCount: _destinationSuggestions.length,
-                            separatorBuilder: (context, index) => const Divider(height: 1),
+                            separatorBuilder: (context, index) =>
+                                const Divider(height: 1),
                             itemBuilder: (context, index) {
                               final suggestion = _destinationSuggestions[index];
                               return ListTile(
-                                leading: const Icon(Icons.place, color: Colors.blueAccent),
+                                leading: const Icon(Icons.place,
+                                    color: Colors.blueAccent),
                                 title: Text(
                                   suggestion['place_name'] ?? '',
                                   maxLines: 2,
@@ -351,11 +396,13 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                                   style: const TextStyle(fontSize: 14),
                                 ),
                                 onTap: () {
-                                  _destinationController.text = suggestion['place_name'] ?? '';
+                                  _destinationController.text =
+                                      suggestion['place_name'] ?? '';
                                   setState(() {
                                     _destinationSuggestions = [];
                                   });
-                                  FocusScope.of(context).unfocus(); // dismiss keyboard
+                                  FocusScope.of(context)
+                                      .unfocus(); // dismiss keyboard
                                 },
                               );
                             },
