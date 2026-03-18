@@ -39,6 +39,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   LocationData? _currentPosition;
   String _distanceText = "Distance: --";
   String _durationText = "Estimated Time: --";
+  bool _isCalculatingRoute = false;
 
   @override
   void dispose() {
@@ -499,39 +500,56 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    onPressed: () async {
-                      try {
-                        if (_currentPosition == null) {
-                          await _getRealLocation();
-                        }
-                        if (_currentPosition == null) {
-                          _showSnackBar("Current location unavailable.");
-                          return;
-                        }
-                        final destinationText = _destinationController.text;
-                        if (destinationText.trim().isEmpty) {
-                          _showSnackBar("Please enter a destination.");
-                          return;
-                        }
-                        final destination =
-                            await searchDestination(destinationText);
-                        if (destination == null) {
-                          _showSnackBar("Destination not found.");
-                          return;
-                        }
-                        await drawRoute(
-                          Position(_currentPosition!.longitude!,
-                              _currentPosition!.latitude!),
-                          destination,
-                        );
-                      } catch (e) {
-                        _showSnackBar("Route error: $e");
-                      }
-                    },
-                    child: const Text(
-                      "Find Route",
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
+                    onPressed: _isCalculatingRoute
+                        ? null
+                        : () async {
+                            setState(() => _isCalculatingRoute = true);
+                            try {
+                              if (_currentPosition == null) {
+                                await _getRealLocation();
+                              }
+                              if (_currentPosition == null) {
+                                _showSnackBar("Current location unavailable.");
+                                return;
+                              }
+                              final destinationText = _destinationController.text;
+                              if (destinationText.trim().isEmpty) {
+                                _showSnackBar("Please enter a destination.");
+                                return;
+                              }
+                              final destination =
+                                  await searchDestination(destinationText);
+                              if (destination == null) {
+                                _showSnackBar("Destination not found.");
+                                return;
+                              }
+                              await drawRoute(
+                                Position(_currentPosition!.longitude!,
+                                    _currentPosition!.latitude!),
+                                destination,
+                              );
+                            } catch (e) {
+                              _showSnackBar("Route error: $e");
+                            } finally {
+                              if (mounted) {
+                                setState(() => _isCalculatingRoute = false);
+                              }
+                            }
+                          },
+                    child: _isCalculatingRoute
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                  Color(0xFF2962FF)),
+                            ),
+                          )
+                        : const Text(
+                            "Find Route",
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                   ),
                 ),
               ],
