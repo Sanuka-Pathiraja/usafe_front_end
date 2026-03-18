@@ -6,6 +6,7 @@ import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:usafe_front_end/src/config/app_config.dart'; // For mapboxPublicToken
 import 'dart:convert';
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 const String mapboxToken = mapboxPublicToken;
@@ -112,6 +113,56 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     );
   }
 
+  Future<void> fetchSuggestions(String query) async {
+    final trimmedQuery = query.trim();
+    if (trimmedQuery.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _destinationSuggestions = [];
+        _isSearchingSuggestions = false;
+      });
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() => _isSearchingSuggestions = true);
+
+    final url = Uri.parse(
+      "https://api.mapbox.com/geocoding/v5/mapbox.places/"
+      "${Uri.encodeComponent(trimmedQuery)}.json"
+      "?access_token=$mapboxToken&limit=5&country=LK",
+    );
+
+    try {
+      final response = await http.get(url);
+      if (response.statusCode != 200) {
+        if (!mounted) return;
+        setState(() => _destinationSuggestions = []);
+        return;
+      }
+
+      final data = jsonDecode(response.body);
+      final features = data['features'];
+
+      if (!mounted) return;
+      setState(() {
+        _destinationSuggestions = features is List
+            ? features
+                .whereType<Map>()
+                .map((feature) => Map<String, dynamic>.from(feature))
+                .toList()
+            : [];
+      });
+    } catch (e) {
+      debugPrint("Suggestions Error: $e");
+      if (!mounted) return;
+      setState(() => _destinationSuggestions = []);
+    } finally {
+      if (!mounted) return;
+      setState(() => _isSearchingSuggestions = false);
+    }
+  }
+
   Future<Position?> searchDestination(String place) async {
     final encodedPlace = Uri.encodeComponent(place.trim());
     final url = Uri.parse(
@@ -159,7 +210,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       // Draw Route Polyline
       await _polylineManager!.create(
         PolylineAnnotationOptions(
-          geometry: LineString(coordinates: routeCoordinates).toJson(),
+          geometry: LineString(coordinates: routeCoordinates),
           lineColor: const Color(0xFF2962FF).value,
           lineWidth: 5.0,
         ),
@@ -168,7 +219,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       // Start Marker (Blue Dot)
       await _circleAnnotationManager!.create(
         CircleAnnotationOptions(
-          geometry: Point(coordinates: start).toJson(),
+          geometry: Point(coordinates: start),
           circleColor: Colors.blue.value,
           circleRadius: 8.0,
           circleStrokeWidth: 2.0,
@@ -227,6 +278,40 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     }
   }
 
+  IconData _getIconForType(List<dynamic>? types) {
+    if (types == null || types.isEmpty) return Icons.location_on;
+    if (types.contains('poi')) return Icons.place;
+    if (types.contains('address')) return Icons.home_outlined;
+    if (types.contains('locality')) return Icons.location_city;
+    if (types.contains('place')) return Icons.map_outlined;
+    return Icons.location_on;
+  }
+
+  String _formatPlaceType(List<dynamic>? types) {
+    if (types == null || types.isEmpty) return 'Location';
+    return types
+        .whereType<String>()
+        .map((type) => type.replaceAll('_', ' '))
+        .map(
+          (type) => type.isEmpty
+              ? type
+              : "${type[0].toUpperCase()}${type.substring(1)}",
+        )
+        .join(', ');
+  }
+
+  Text _buildRichText(String fullText, String query) {
+    return Text(
+      fullText,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(
+        fontWeight: FontWeight.w600,
+        color: Colors.black87,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // your UI code here (unchanged)
@@ -245,7 +330,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
             cameraOptions: CameraOptions(
               center: Point(
                 coordinates: Position(80.7718, 7.8731),
-              ).toJson(),
+              ),
               zoom: 7,
             ),
             onMapCreated: (map) async {
