@@ -1,4 +1,0 @@
-// Template for other developers — copy this file to app_config.dart
-// and replace with your own Mapbox public token from https://account.mapbox.com
-
-const String mapboxPublicToken = "YOUR_MAPBOX_PUBLIC_TOKEN_HERE";

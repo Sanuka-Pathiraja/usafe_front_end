@@ -11,12 +11,13 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
+
   
 
   # mapbox for safe route navigation (ysf)
-  mapbox_maps_flutter: ^1.1.0
+ 
   location: ^6.0.1
-  
+  mapbox_maps_flutter: ^2.20.0  # latest stable version  
 
   # Core Functionality
   flutter_contacts: ^1.1.9

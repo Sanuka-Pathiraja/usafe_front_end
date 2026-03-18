@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
-import 'package:usafe_front_end/src/config/app_config.dart';
+import 'package:usafe_front_end/src/config/app_config.dart'; // For mapboxPublicToken 
 import 'app.dart';
 
 Future<void> main() async {
