@@ -284,17 +284,6 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
         ),
       );
 
-      // Start Marker (Blue Dot)
-      await _circleAnnotationManager!.create(
-        CircleAnnotationOptions(
-          geometry: Point(coordinates: start).toJson(),
-          circleColor: Colors.blue.value,
-          circleRadius: 8.0,
-          circleStrokeWidth: 2.0,
-          circleStrokeColor: Colors.white.value,
-        ),
-      );
-
       // Destination Marker (Red Pin Icon)
       final ByteData bytes = await rootBundle.load('assets/red-pin bg r.png');
       final Uint8List list = bytes.buffer.asUint8List();
@@ -365,6 +354,10 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
               _pointAnnotationManager =
                   await map.annotations.createPointAnnotationManager();
 
+               await map.location.updateSettings(LocationComponentSettings(
+                enabled: true,
+                pulsingEnabled: true,
+              ));
 
               await _getRealLocation();
             },
