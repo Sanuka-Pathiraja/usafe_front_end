@@ -325,6 +325,22 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     }
   }
 
+  // __________ CLEAR ROUTE __________
+  Future<void> _clearRoute() async {
+    await _polylineManager?.deleteAll();
+    await _circleAnnotationManager?.deleteAll();
+    await _pointAnnotationManager?.deleteAll();
+
+    if (mounted) {
+      setState(() {
+        _destinationController.clear();
+        _destinationSuggestions = [];
+        _distanceText = "Distance: --";
+        _durationText = "Estimated Time: --";
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -481,69 +497,91 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                   ),
                 ),
                 const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.black87,
-                      elevation: 3,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: Colors.black87,
+                          elevation: 3,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onPressed: _isCalculatingRoute
+                            ? null
+                            : () async {
+                                setState(() => _isCalculatingRoute = true);
+                                try {
+                                  if (_currentPosition == null) {
+                                    await _getRealLocation();
+                                  }
+                                  if (_currentPosition == null) {
+                                    _showSnackBar("Current location unavailable.");
+                                    return;
+                                  }
+                                  final destinationText = _destinationController.text;
+                                  if (destinationText.trim().isEmpty) {
+                                    _showSnackBar("Please enter a destination.");
+                                    return;
+                                  }
+                                  final destination =
+                                      await searchDestination(destinationText);
+                                  if (destination == null) {
+                                    _showSnackBar("Destination not found.");
+                                    return;
+                                  }
+                                  await drawRoute(
+                                    Position(_currentPosition!.longitude!,
+                                        _currentPosition!.latitude!),
+                                    destination,
+                                  );
+                                } catch (e) {
+                                  _showSnackBar("Route error: $e");
+                                } finally {
+                                  if (mounted) {
+                                    setState(() => _isCalculatingRoute = false);
+                                  }
+                                }
+                              },
+                        child: _isCalculatingRoute
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Color(0xFF2962FF)),
+                                ),
+                              )
+                            : const Text(
+                                "Find Route",
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
                       ),
                     ),
-                    onPressed: _isCalculatingRoute
-                        ? null
-                        : () async {
-                            setState(() => _isCalculatingRoute = true);
-                            try {
-                              if (_currentPosition == null) {
-                                await _getRealLocation();
-                              }
-                              if (_currentPosition == null) {
-                                _showSnackBar("Current location unavailable.");
-                                return;
-                              }
-                              final destinationText = _destinationController.text;
-                              if (destinationText.trim().isEmpty) {
-                                _showSnackBar("Please enter a destination.");
-                                return;
-                              }
-                              final destination =
-                                  await searchDestination(destinationText);
-                              if (destination == null) {
-                                _showSnackBar("Destination not found.");
-                                return;
-                              }
-                              await drawRoute(
-                                Position(_currentPosition!.longitude!,
-                                    _currentPosition!.latitude!),
-                                destination,
-                              );
-                            } catch (e) {
-                              _showSnackBar("Route error: $e");
-                            } finally {
-                              if (mounted) {
-                                setState(() => _isCalculatingRoute = false);
-                              }
-                            }
-                          },
-                    child: _isCalculatingRoute
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                  Color(0xFF2962FF)),
-                            ),
-                          )
-                        : const Text(
-                            "Find Route",
-                            style: TextStyle(fontWeight: FontWeight.bold),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: Colors.redAccent,
+                          elevation: 3,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                  ),
+                        ),
+                        onPressed: _clearRoute,
+                        child: const Text(
+                          "Clear Route",
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
