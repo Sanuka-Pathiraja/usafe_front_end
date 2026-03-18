@@ -156,24 +156,25 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     await _circleAnnotationManager!.deleteAll();
     await _pointAnnotationManager!.deleteAll();
 
-    // ✅ Correct usage: LineString / Point objects directly
-    await _polylineManager!.create(
-      PolylineAnnotationOptions(
-        geometry: LineString(coordinates: routeCoordinates),
-        lineColor: const Color(0xFF2962FF).value,
-        lineWidth: 5.0,
-      ),
-    );
+      // Draw Route Polyline
+      await _polylineManager!.create(
+        PolylineAnnotationOptions(
+          geometry: LineString(coordinates: routeCoordinates).toJson(),
+          lineColor: const Color(0xFF2962FF).value,
+          lineWidth: 5.0,
+        ),
+      );
 
-    await _circleAnnotationManager!.create(
-      CircleAnnotationOptions(
-        geometry: Point(coordinates: start),
-        circleColor: Colors.blue.value,
-        circleRadius: 8.0,
-        circleStrokeWidth: 2.0,
-        circleStrokeColor: Colors.white.value,
-      ),
-    );
+      // Start Marker (Blue Dot)
+      await _circleAnnotationManager!.create(
+        CircleAnnotationOptions(
+          geometry: Point(coordinates: start).toJson(),
+          circleColor: Colors.blue.value,
+          circleRadius: 8.0,
+          circleStrokeWidth: 2.0,
+          circleStrokeColor: Colors.white.value,
+        ),
+      );
 
     final ByteData bytes = await rootBundle.load('assets/red-pin bg r.png');
     final Uint8List list = bytes.buffer.asUint8List();
@@ -210,12 +211,348 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     );
   }
 
+  // __________ CLEAR ROUTE __________
+  Future<void> _clearRoute() async {
+    await _polylineManager?.deleteAll();
+    await _circleAnnotationManager?.deleteAll();
+    await _pointAnnotationManager?.deleteAll();
+
+    if (mounted) {
+      setState(() {
+        _destinationController.clear();
+        _destinationSuggestions = [];
+        _distanceText = "Distance: --";
+        _durationText = "Estimated Time: --";
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // your UI code here (unchanged)
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: const Center(child: Text("Map UI here")),
+      appBar: AppBar(
+        title: const Text("Safe Route Navigation"),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
+      body: Stack(
+        children: [
+          // ---------------- MAPBOX MAP ----------------
+          MapWidget(
+            key: const ValueKey("mapbox_map"),
+            cameraOptions: CameraOptions(
+              center: Point(
+                coordinates: Position(80.7718, 7.8731),
+              ).toJson(),
+              zoom: 7,
+            ),
+            onMapCreated: (map) async {
+              _mapController = map;
+              _polylineManager =
+                  await map.annotations.createPolylineAnnotationManager();
+              _circleAnnotationManager =
+                  await map.annotations.createCircleAnnotationManager();
+              _pointAnnotationManager =
+                  await map.annotations.createPointAnnotationManager();
+
+
+              await _getRealLocation();
+            },
+          ),
+
+          // ---------------- SEARCH PANEL ----------------
+          Positioned(
+            top: 20,
+            left: 20,
+            right: 20,
+            child: Column(
+              children: [
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(15),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 10,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      TextField(
+                        controller: _destinationController,
+                        onChanged: (value) {
+                          if (_debounce?.isActive ?? false) _debounce!.cancel();
+                          _debounce =
+                              Timer(const Duration(milliseconds: 500), () {
+                            fetchSuggestions(value);
+                          });
+                        },
+                        decoration: const InputDecoration(
+                          hintText: "Enter Destination",
+                          prefixIcon:
+                              Icon(Icons.location_on, color: Colors.red),
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 14),
+                        ),
+                      ),
+                      if (_isSearchingSuggestions)
+                        const Padding(
+                          padding: EdgeInsets.all(8.0),
+                          child: CircularProgressIndicator(),
+                        ),
+                      if (_destinationSuggestions.isNotEmpty)
+                        Container(
+                          constraints: const BoxConstraints(maxHeight: 200),
+                          decoration: const BoxDecoration(
+                            border:
+                                Border(top: BorderSide(color: Colors.black12)),
+                          ),
+                          child: AnimatedSize(
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                            child: ListView.separated(
+                              shrinkWrap: true,
+                              padding: EdgeInsets.zero,
+                              itemCount: _destinationSuggestions.length,
+                              separatorBuilder: (context, index) =>
+                                  const Divider(height: 1),
+                              itemBuilder: (context, index) {
+                                final suggestion = _destinationSuggestions[index];
+                                final types = suggestion['place_type'] as List<dynamic>?;
+                                
+                                return TweenAnimationBuilder<double>(
+                                  duration: const Duration(milliseconds: 400),
+                                  tween: Tween(begin: 0.0, end: 1.0),
+                                  builder: (context, value, child) {
+                                    return Opacity(
+                                      opacity: value,
+                                      child: Transform.translate(
+                                        offset: Offset(0, 10 * (1 - value)),
+                                        child: child,
+                                      ),
+                                    );
+                                  },
+                                  child: ListTile(
+                                    leading: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF2962FF).withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Icon(
+                                        _getIconForType(types),
+                                        color: const Color(0xFF2962FF),
+                                        size: 20,
+                                      ),
+                                    ),
+                                    title: _buildRichText(
+                                      suggestion['place_name'] ?? '',
+                                      _destinationController.text,
+                                    ),
+                                    subtitle: Text(
+                                      _formatPlaceType(types),
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ),
+                                    onTap: () {
+                                      _destinationController.text =
+                                          suggestion['place_name'] ?? '';
+                                      setState(() {
+                                        _destinationSuggestions = [];
+                                      });
+                                      FocusScope.of(context).unfocus();
+                                    },
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black87,
+                      elevation: 3,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: _isCalculatingRoute
+                        ? null
+                        : () async {
+                            setState(() => _isCalculatingRoute = true);
+                            try {
+                              if (_currentPosition == null) {
+                                await _getRealLocation();
+                              }
+                              if (_currentPosition == null) {
+                                _showSnackBar("Current location unavailable.");
+                                return;
+                              }
+                              final destinationText = _destinationController.text;
+                              if (destinationText.trim().isEmpty) {
+                                _showSnackBar("Please enter a destination.");
+                                return;
+                              }
+                              final destination =
+                                  await searchDestination(destinationText);
+                              if (destination == null) {
+                                _showSnackBar("Destination not found.");
+                                return;
+                              }
+                              await drawRoute(
+                                Position(_currentPosition!.longitude!,
+                                    _currentPosition!.latitude!),
+                                destination,
+                              );
+                            } catch (e) {
+                              _showSnackBar("Route error: $e");
+                            } finally {
+                              if (mounted) {
+                                setState(() => _isCalculatingRoute = false);
+                              }
+                            }
+                          },
+                    child: _isCalculatingRoute
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                  Color(0xFF2962FF)),
+                            ),
+                          )
+                        : const Text(
+                            "Find Route",
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // ---------------- DRAGGABLE PANEL ----------------
+          DraggableScrollableSheet(
+            initialChildSize: 0.12,
+            minChildSize: 0.12,
+            maxChildSize: 0.45,
+            builder: (context, scrollController) {
+              return Container(
+                decoration: const BoxDecoration(
+                  color: Color(0xFF1E1E1E),
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(22),
+                  ),
+                ),
+                child: ListView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 5,
+                        margin: const EdgeInsets.only(top: 10, bottom: 14),
+                        decoration: BoxDecoration(
+                          color: Colors.white24,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                    const Text(
+                      "Route Details",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.black26,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(_distanceText,
+                              style: const TextStyle(
+                                  color: Colors.white, fontSize: 16)),
+                          const SizedBox(height: 8),
+                          Text(_durationText,
+                              style: const TextStyle(
+                                  color: Colors.white, fontSize: 16)),
+
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    ElevatedButton(
+                      onPressed: () {},
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF2962FF),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text(
+                        "Start Navigation",
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+
+          // __________ SOS BUTTON __________
+          Positioned(
+            bottom: 50,
+            left: 20,
+            child: FloatingActionButton(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              heroTag: "sos_button",
+              onPressed: () {},
+              child: const Icon(Icons.warning, size: 28),
+            ),
+          ),
+
+          // __________ MY LOCATION BUTTON __________
+          Positioned(
+            bottom: 50,
+            right: 20,
+            child: FloatingActionButton(
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.blueAccent,
+              heroTag: "my_location_button",
+              onPressed: _goToMyLocation,
+              child: const Icon(Icons.my_location, size: 28),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
