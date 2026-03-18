@@ -31,7 +31,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   final TextEditingController _destinationController = TextEditingController();
   final Location _location = Location();
 
-  // Autocomplete state...
+  // Autocomplete state
   Timer? _debounce;
   List<Map<String, dynamic>> _destinationSuggestions = [];
   bool _isSearchingSuggestions = false;
@@ -77,9 +77,6 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     );
     _sourceController.text = resolvedLocationName ??
         "${_currentPosition!.latitude}, ${_currentPosition!.longitude}";
-
-    print(
-        "My Real Location = ${_currentPosition!.latitude}, ${_currentPosition!.longitude}");
   }
 
   Future<String?> _getReadableLocationName(double lat, double lng) async {
@@ -107,7 +104,6 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     }
 
     if (_currentPosition != null) {
-      // Moves the camera on the current map instance (does not open a new map).
       _mapController!.flyTo(
         CameraOptions(
           center: Point(
@@ -122,7 +118,6 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
         ),
         MapAnimationOptions(duration: 1000),
       );
-      print("Moved camera to my location (zoomed out)");
     }
   }
 
@@ -143,7 +138,6 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
             (coords[0] as num).toDouble(), (coords[1] as num).toDouble());
       }
     }
-
     return null;
   }
 
@@ -161,7 +155,6 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     });
 
     final encodedQuery = Uri.encodeComponent(query.trim());
-    // Limit to 5 suggestions, inside Sri Lanka
     final url = Uri.parse(
         "https://api.mapbox.com/geocoding/v5/mapbox.places/$encodedQuery.json?access_token=$mapboxToken&limit=5&country=LK&types=place,locality,neighborhood,address,poi");
 
@@ -189,8 +182,69 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     }
   }
 
-// __________ DRAW ROUTE USING MAPBOX DIRECTIONS API __________
+  // __________ HELPERS FOR SUGGESTIONS UI __________
 
+  Widget _buildRichText(String fullText, String query) {
+    if (query.isEmpty) return Text(fullText);
+
+    final String lowercaseText = fullText.toLowerCase();
+    final String lowercaseQuery = query.toLowerCase();
+
+    final List<TextSpan> spans = [];
+    int start = 0;
+    int indexOfMatch;
+
+    while ((indexOfMatch = lowercaseText.indexOf(lowercaseQuery, start)) != -1) {
+      // Add text before match
+      if (indexOfMatch > start) {
+        spans.add(TextSpan(text: fullText.substring(start, indexOfMatch)));
+      }
+
+      // Add actual match (Bold + Primary Blue)
+      spans.add(TextSpan(
+        text: fullText.substring(indexOfMatch, indexOfMatch + query.length),
+        style: const TextStyle(
+          fontWeight: FontWeight.bold,
+          color: Color(0xFF2962FF),
+        ),
+      ));
+
+      start = indexOfMatch + query.length;
+    }
+
+    // Add remaining text
+    if (start < fullText.length) {
+      spans.add(TextSpan(text: fullText.substring(start)));
+    }
+
+    return RichText(
+      text: TextSpan(
+        style: const TextStyle(color: Colors.black87, fontSize: 14),
+        children: spans,
+      ),
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+
+  IconData _getIconForType(List<dynamic>? types) {
+    if (types == null) return Icons.place;
+    if (types.contains('poi')) return Icons.location_on;
+    if (types.contains('address')) return Icons.home;
+    if (types.contains('place')) return Icons.location_city;
+    if (types.contains('locality')) return Icons.map_outlined;
+    if (types.contains('neighborhood')) return Icons.holiday_village;
+    return Icons.place;
+  }
+
+  String _formatPlaceType(List<dynamic>? types) {
+    if (types == null || types.isEmpty) return "";
+    final String primary = types.first.toString();
+    // Capitalize first letter
+    return primary[0].toUpperCase() + primary.substring(1).replaceAll('_', ' ');
+  }
+
+  // __________ DRAW ROUTE USING MAPBOX DIRECTIONS API __________
   Future<void> drawRoute(Position start, Position end) async {
     if (_mapController == null ||
         _polylineManager == null ||
@@ -229,7 +283,6 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
         ),
       );
 
-      // --- ADD MARKERS ---
       // Start Marker (Blue Dot)
       await _circleAnnotationManager!.create(
         CircleAnnotationOptions(
@@ -249,7 +302,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
         PointAnnotationOptions(
           geometry: Point(coordinates: end).toJson(),
           image: list,
-          iconSize: 0.2, // Adjust size as needed
+          iconSize: 0.2,
           iconAnchor: IconAnchor.BOTTOM,
         ),
       );
@@ -275,6 +328,8 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
         ),
         MapAnimationOptions(duration: 1200),
       );
+
+
     } else {
       _showSnackBar("Directions API failed: ${response.statusCode}");
     }
@@ -296,10 +351,9 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
             key: const ValueKey("mapbox_map"),
             cameraOptions: CameraOptions(
               center: Point(
-                // 🇱🇰 CENTER OF SRI LANKA
                 coordinates: Position(80.7718, 7.8731),
               ).toJson(),
-              zoom: 7, // zoomed out to show whole Sri Lanka
+              zoom: 7,
             ),
             onMapCreated: (map) async {
               _mapController = map;
@@ -309,6 +363,8 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                   await map.annotations.createCircleAnnotationManager();
               _pointAnnotationManager =
                   await map.annotations.createPointAnnotationManager();
+
+
               await _getRealLocation();
             },
           ),
@@ -323,30 +379,17 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                 Container(
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: const [
+                    borderRadius: BorderRadius.circular(15),
+                    boxShadow: [
                       BoxShadow(
-                        color: Colors.black26,
-                        blurRadius: 6,
-                        offset: Offset(0, 3),
-                      )
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 10,
+                        spreadRadius: 2,
+                      ),
                     ],
                   ),
                   child: Column(
                     children: [
-                      TextField(
-                        controller: _sourceController,
-                        decoration: const InputDecoration(
-                          hintText: "Your Location",
-                          prefixIcon:
-                              Icon(Icons.circle, size: 12, color: Colors.green),
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 14),
-                        ),
-                      ),
-                      const Divider(
-                          height: 1, thickness: 1, color: Colors.black12),
                       TextField(
                         controller: _destinationController,
                         onChanged: (value) {
@@ -365,7 +408,6 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                               horizontal: 16, vertical: 14),
                         ),
                       ),
-                      // ---------------- AUTOCOMPLETE SUGGESTIONS ----------------
                       if (_isSearchingSuggestions)
                         const Padding(
                           padding: EdgeInsets.all(8.0),
@@ -378,34 +420,67 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                             border:
                                 Border(top: BorderSide(color: Colors.black12)),
                           ),
-                          child: ListView.separated(
-                            shrinkWrap: true,
-                            padding: EdgeInsets.zero,
-                            itemCount: _destinationSuggestions.length,
-                            separatorBuilder: (context, index) =>
-                                const Divider(height: 1),
-                            itemBuilder: (context, index) {
-                              final suggestion = _destinationSuggestions[index];
-                              return ListTile(
-                                leading: const Icon(Icons.place,
-                                    color: Colors.blueAccent),
-                                title: Text(
-                                  suggestion['place_name'] ?? '',
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 14),
-                                ),
-                                onTap: () {
-                                  _destinationController.text =
-                                      suggestion['place_name'] ?? '';
-                                  setState(() {
-                                    _destinationSuggestions = [];
-                                  });
-                                  FocusScope.of(context)
-                                      .unfocus(); // dismiss keyboard
-                                },
-                              );
-                            },
+                          child: AnimatedSize(
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                            child: ListView.separated(
+                              shrinkWrap: true,
+                              padding: EdgeInsets.zero,
+                              itemCount: _destinationSuggestions.length,
+                              separatorBuilder: (context, index) =>
+                                  const Divider(height: 1),
+                              itemBuilder: (context, index) {
+                                final suggestion = _destinationSuggestions[index];
+                                final types = suggestion['place_type'] as List<dynamic>?;
+                                
+                                return TweenAnimationBuilder<double>(
+                                  duration: const Duration(milliseconds: 400),
+                                  tween: Tween(begin: 0.0, end: 1.0),
+                                  builder: (context, value, child) {
+                                    return Opacity(
+                                      opacity: value,
+                                      child: Transform.translate(
+                                        offset: Offset(0, 10 * (1 - value)),
+                                        child: child,
+                                      ),
+                                    );
+                                  },
+                                  child: ListTile(
+                                    leading: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF2962FF).withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Icon(
+                                        _getIconForType(types),
+                                        color: const Color(0xFF2962FF),
+                                        size: 20,
+                                      ),
+                                    ),
+                                    title: _buildRichText(
+                                      suggestion['place_name'] ?? '',
+                                      _destinationController.text,
+                                    ),
+                                    subtitle: Text(
+                                      _formatPlaceType(types),
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ),
+                                    onTap: () {
+                                      _destinationController.text =
+                                          suggestion['place_name'] ?? '';
+                                      setState(() {
+                                        _destinationSuggestions = [];
+                                      });
+                                      FocusScope.of(context).unfocus();
+                                    },
+                                  ),
+                                );
+                              },
+                            ),
                           ),
                         ),
                     ],
@@ -429,32 +504,26 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                         if (_currentPosition == null) {
                           await _getRealLocation();
                         }
-
                         if (_currentPosition == null) {
                           _showSnackBar("Current location unavailable.");
                           return;
                         }
-
                         final destinationText = _destinationController.text;
                         if (destinationText.trim().isEmpty) {
                           _showSnackBar("Please enter a destination.");
                           return;
                         }
-
                         final destination =
                             await searchDestination(destinationText);
                         if (destination == null) {
-                          _showSnackBar(
-                              "Destination not found. Try a Sri Lanka place name.");
+                          _showSnackBar("Destination not found.");
                           return;
                         }
-
-                        final start = Position(
-                          _currentPosition!.longitude!,
-                          _currentPosition!.latitude!,
+                        await drawRoute(
+                          Position(_currentPosition!.longitude!,
+                              _currentPosition!.latitude!),
+                          destination,
                         );
-
-                        await drawRoute(start, destination);
                       } catch (e) {
                         _showSnackBar("Route error: $e");
                       }
@@ -516,16 +585,13 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(_distanceText,
-                              style:
-                                  TextStyle(color: Colors.white, fontSize: 16)),
+                              style: const TextStyle(
+                                  color: Colors.white, fontSize: 16)),
                           const SizedBox(height: 8),
                           Text(_durationText,
-                              style:
-                                  TextStyle(color: Colors.white, fontSize: 16)),
-                          const SizedBox(height: 8),
-                          const Text("Safety Score: High Safety Area",
-                              style: TextStyle(
-                                  color: Colors.greenAccent, fontSize: 16)),
+                              style: const TextStyle(
+                                  color: Colors.white, fontSize: 16)),
+
                         ],
                       ),
                     ),
@@ -558,9 +624,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
               heroTag: "sos_button",
-              onPressed: () {
-                print("SOS clicked");
-              },
+              onPressed: () {},
               child: const Icon(Icons.warning, size: 28),
             ),
           ),
@@ -581,4 +645,5 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       ),
     );
   }
+
 }

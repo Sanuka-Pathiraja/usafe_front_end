@@ -179,8 +179,7 @@ class _SOSDashboardState extends State<SOSDashboard>
         children: [
           Column(
             children: [
-              const SizedBox(height: 20),
-              if (!isSOSActive) _buildStatusPill(),
+              const SizedBox(height: 40),
               if (isSOSActive) _buildSOSHeader(),
               const Spacer(),
               Center(
@@ -250,34 +249,6 @@ class _SOSDashboardState extends State<SOSDashboard>
                 ),
               ),
             ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatusPill() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E2228),
-        borderRadius: BorderRadius.circular(30),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: const BoxDecoration(
-              color: Colors.tealAccent,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 10),
-          const Text(
-            'Your Area: Safe',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
-          ),
         ],
       ),
     );
