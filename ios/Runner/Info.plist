@@ -61,10 +61,6 @@
     <string>This app uses your location to enhance safety features.</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>This app needs microphone access to detect distress signals.</string>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>remote-notification</string>
-	</array>
 	<key>NSAppTransportSecurity</key>
 <dict>
     <key>NSAllowsArbitraryLoads</key>

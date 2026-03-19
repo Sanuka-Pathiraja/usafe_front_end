@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:usafe_front_end/core/services/push_notification_service.dart';
 
 class EmergencyApiException implements Exception {
   final int statusCode;
@@ -266,7 +265,6 @@ class AuthService {
         ? body['user'] as Map<String, dynamic>
         : null;
     await _saveSession(token: token, user: user);
-    await PushNotificationService.syncTokenWithBackend();
     return true;
   }
 
@@ -332,7 +330,6 @@ class AuthService {
         ? body['user'] as Map<String, dynamic>
         : null;
     await _saveSession(token: token, user: user);
-    await PushNotificationService.syncTokenWithBackend();
     // Pull freshest server-side profile (phone, birthday, image, etc).
     await validateSession();
     return <String, dynamic>{
@@ -374,7 +371,6 @@ class AuthService {
           ? body['user'] as Map<String, dynamic>
           : null;
       await _saveSession(token: token, user: user);
-      await PushNotificationService.syncTokenWithBackend();
       return true;
     }
 
@@ -382,7 +378,6 @@ class AuthService {
   }
 
   static Future<void> logout() async {
-    await PushNotificationService.unregisterTokenFromBackend();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
     await prefs.remove('token');

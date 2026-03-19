@@ -29,6 +29,7 @@ dependencies:
   firebase_messaging: ^15.2.5
   flutter_local_notifications: ^19.1.0
 
+
   # Maps & Payment
   flutter_stripe: ^9.0.0
   http: ^1.0.0
@@ -61,5 +62,7 @@ flutter:
     - .env
     - assets/usafe_logo.png
     - assets/google.jpg
+    - assets/red_pin.png
+    - assets/red-pin bg r.png
     - assets/models/yamnet.tflite
     - assets/models/yamnet_class_map.csv

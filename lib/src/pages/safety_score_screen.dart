@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:usafe_front_end/core/services/api_service.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
+import 'safe_route_navigation_screen.dart';
 import 'safety_map_screen.dart';
 import 'safepath_scheduler_screen.dart';
 
@@ -363,7 +364,7 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
                                     context,
                                     MaterialPageRoute(
                                       builder: (context) =>
-                                          const SafetyMapScreen(),
+                                          const SafeRouteNavigationScreen(),
                                     ),
                                   );
                                 },

@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:geocoding/geocoding.dart' as geocoding;
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:location/location.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:usafe_front_end/src/config/app_config.dart'; // For mapboxPublicToken
 import 'dart:convert';
 import 'dart:async';
+import 'dart:math';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
@@ -25,7 +27,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   PointAnnotationManager? _pointAnnotationManager;
   CircleAnnotationManager? _userLocationManager;
   CircleAnnotation? _userLocationAnnotation;
-  static const double _myLocationZoomOutLevel = 10.5;
+  static const double _myLocationZoomOutLevel = 14.5;
 
   final TextEditingController _sourceController = TextEditingController();
   final TextEditingController _destinationController = TextEditingController();
@@ -34,6 +36,9 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   Timer? _debounce;
   List<Map<String, dynamic>> _destinationSuggestions = [];
   bool _isSearchingSuggestions = false;
+  String _searchSessionToken = '';
+  String? _selectedDestinationMapboxId;
+  Position? _selectedDestinationPosition;
 
   LocationData? _currentPosition;
   String _distanceText = "Distance: --";
@@ -50,10 +55,44 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     super.dispose();
   }
 
+  @override
+  void initState() {
+    super.initState();
+    _refreshSearchSessionToken();
+  }
+
   void _showSnackBar(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _refreshSearchSessionToken() {
+    final random = Random.secure();
+    final bytes =
+        List<int>.generate(16, (_) => random.nextInt(256)).map((value) {
+      return value.toRadixString(16).padLeft(2, '0');
+    }).join();
+    _searchSessionToken =
+        '${bytes.substring(0, 8)}-${bytes.substring(8, 12)}-${bytes.substring(12, 16)}-${bytes.substring(16, 20)}-${bytes.substring(20, 32)}';
+  }
+
+  String _buildSearchBoxCommonParams() {
+    final params = <String>[
+      'access_token=$mapboxToken',
+      'session_token=$_searchSessionToken',
+      'limit=10',
+      'language=en',
+      'country=LK',
+    ];
+
+    if (_currentPosition?.longitude != null && _currentPosition?.latitude != null) {
+      params.add(
+        'proximity=${_currentPosition!.longitude},${_currentPosition!.latitude}',
+      );
+    }
+
+    return params.join('&');
   }
 
   Position _positionFromLocation(LocationData location) {
@@ -214,6 +253,8 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       setState(() {
         _destinationSuggestions = [];
         _isSearchingSuggestions = false;
+        _selectedDestinationMapboxId = null;
+        _selectedDestinationPosition = null;
       });
       return;
     }
@@ -221,31 +262,34 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     if (!mounted) return;
     setState(() => _isSearchingSuggestions = true);
 
-    final url = Uri.parse(
-      "https://api.mapbox.com/geocoding/v5/mapbox.places/"
-      "${Uri.encodeComponent(trimmedQuery)}.json"
-      "?access_token=$mapboxToken&limit=5&country=LK",
-    );
-
     try {
-      final response = await http.get(url);
-      if (response.statusCode != 200) {
-        if (!mounted) return;
-        setState(() => _destinationSuggestions = []);
-        return;
-      }
+      var parsedSuggestions = <Map<String, dynamic>>[];
 
-      final data = jsonDecode(response.body);
-      final features = data['features'];
+      final geocodingSuggestion =
+          await _geocodingFallbackSuggestion(trimmedQuery);
+      if (geocodingSuggestion != null) {
+        parsedSuggestions = [geocodingSuggestion];
+      } else {
+        final url = Uri.parse(
+          "https://api.mapbox.com/search/searchbox/v1/suggest"
+          "?q=${Uri.encodeComponent(trimmedQuery)}&${_buildSearchBoxCommonParams()}",
+        );
+        final response = await http.get(url);
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          final suggestions = data['suggestions'];
+          parsedSuggestions = suggestions is List
+              ? suggestions
+                  .whereType<Map>()
+                  .map((feature) => Map<String, dynamic>.from(feature))
+                  .toList()
+              : <Map<String, dynamic>>[];
+        }
+      }
 
       if (!mounted) return;
       setState(() {
-        _destinationSuggestions = features is List
-            ? features
-                .whereType<Map>()
-                .map((feature) => Map<String, dynamic>.from(feature))
-                .toList()
-            : [];
+        _destinationSuggestions = parsedSuggestions;
       });
     } catch (e) {
       debugPrint("Suggestions Error: $e");
@@ -257,21 +301,158 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     }
   }
 
-  Future<Position?> searchDestination(String place) async {
-    final encodedPlace = Uri.encodeComponent(place.trim());
+  Future<Map<String, dynamic>?> _retrieveSuggestion(String mapboxId) async {
     final url = Uri.parse(
-        "https://api.mapbox.com/geocoding/v5/mapbox.places/$encodedPlace.json?access_token=$mapboxToken&limit=1&country=LK");
+      "https://api.mapbox.com/search/searchbox/v1/retrieve/"
+      "$mapboxId?access_token=$mapboxToken&session_token=$_searchSessionToken&language=en",
+    );
 
     final response = await http.get(url);
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      if (data['features'].isNotEmpty) {
-        final coords = data['features'][0]['center'];
-        return Position((coords[0] as num).toDouble(),
-            (coords[1] as num).toDouble());
-      }
+    if (response.statusCode != 200) return null;
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final features = data['features'];
+    if (features is! List || features.isEmpty) return null;
+
+    final feature = features.first;
+    return feature is Map<String, dynamic>
+        ? feature
+        : Map<String, dynamic>.from(feature as Map);
+  }
+
+  Future<Position?> _forwardSearchDestination(String place) async {
+    final params = <String>[
+      'access_token=$mapboxToken',
+      'limit=1',
+      'language=en',
+      'autocomplete=true',
+      'country=LK',
+    ];
+
+    if (_currentPosition?.longitude != null && _currentPosition?.latitude != null) {
+      params.add(
+        'proximity=${_currentPosition!.longitude},${_currentPosition!.latitude}',
+      );
     }
+
+    final url = Uri.parse(
+      "https://api.mapbox.com/search/searchbox/v1/forward"
+      "?q=${Uri.encodeComponent(place.trim())}&${params.join('&')}",
+    );
+
+    final response = await http.get(url);
+    if (response.statusCode != 200) return null;
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final features = data['features'];
+    if (features is! List || features.isEmpty) return null;
+
+    final feature = features.first;
+    final featureMap = feature is Map<String, dynamic>
+        ? feature
+        : Map<String, dynamic>.from(feature as Map);
+    final geometry = featureMap['geometry'];
+    final coordinates =
+        geometry is Map<String, dynamic> ? geometry['coordinates'] : null;
+    if (coordinates is List && coordinates.length >= 2) {
+      return Position(
+        (coordinates[0] as num).toDouble(),
+        (coordinates[1] as num).toDouble(),
+      );
+    }
+
     return null;
+  }
+
+  Future<Position?> _geocodingFallbackDestination(String place) async {
+    try {
+      final results = await geocoding.locationFromAddress(place.trim())
+          .timeout(const Duration(seconds: 8));
+      if (results.isEmpty) return null;
+
+      final best = results.first;
+      return Position(best.longitude, best.latitude);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> _geocodingFallbackSuggestion(
+    String place,
+  ) async {
+    try {
+      final results = await geocoding.locationFromAddress(place.trim())
+          .timeout(const Duration(seconds: 8));
+      if (results.isEmpty) return null;
+
+      final best = results.first;
+      return <String, dynamic>{
+        'name': place.trim(),
+        'full_address': place.trim(),
+        'feature_type': 'place',
+        'source': 'geocoding_fallback',
+        'fallback_lat': best.latitude,
+        'fallback_lng': best.longitude,
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Position?> searchDestination(String place) async {
+    if (_selectedDestinationPosition != null) {
+      return _selectedDestinationPosition;
+    }
+
+    final geocodingPosition = await _geocodingFallbackDestination(place);
+    if (geocodingPosition != null) {
+      return geocodingPosition;
+    }
+
+    var mapboxId = _selectedDestinationMapboxId;
+
+    if (mapboxId == null || mapboxId.isEmpty) {
+      final suggestUrl = Uri.parse(
+        "https://api.mapbox.com/search/searchbox/v1/suggest"
+        "?q=${Uri.encodeComponent(place.trim())}&${_buildSearchBoxCommonParams()}",
+      );
+      final suggestResponse = await http.get(suggestUrl);
+      if (suggestResponse.statusCode != 200) {
+        return _forwardSearchDestination(place) ??
+            _geocodingFallbackDestination(place);
+      }
+
+      final suggestData = jsonDecode(suggestResponse.body) as Map<String, dynamic>;
+      final suggestions = suggestData['suggestions'];
+      if (suggestions is! List || suggestions.isEmpty) {
+        return _forwardSearchDestination(place) ??
+            _geocodingFallbackDestination(place);
+      }
+      mapboxId = suggestions.first['mapbox_id']?.toString();
+    }
+
+    if (mapboxId == null || mapboxId.isEmpty) {
+      return _forwardSearchDestination(place) ??
+          _geocodingFallbackDestination(place);
+    }
+
+    final feature = await _retrieveSuggestion(mapboxId);
+    if (feature == null) {
+      return _forwardSearchDestination(place) ??
+          _geocodingFallbackDestination(place);
+    }
+
+    final geometry = feature['geometry'];
+    final coordinates = geometry is Map<String, dynamic> ? geometry['coordinates'] : null;
+    if (coordinates is List && coordinates.length >= 2) {
+      return Position(
+        (coordinates[0] as num).toDouble(),
+        (coordinates[1] as num).toDouble(),
+      );
+    }
+
+    return _forwardSearchDestination(place) ??
+        _geocodingFallbackDestination(place);
   }
 
   Future<void> drawRoute(Position start, Position end) async {
@@ -366,6 +547,26 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     return Icons.location_on;
   }
 
+  List<dynamic>? _suggestionTypes(Map<String, dynamic> suggestion) {
+    final featureType = suggestion['feature_type']?.toString();
+    final poiCategory = suggestion['poi_category'];
+
+    if (poiCategory is List && poiCategory.isNotEmpty) {
+      return ['poi', ...poiCategory];
+    }
+    if (featureType == null || featureType.isEmpty) return null;
+    return [featureType];
+  }
+
+  String _suggestionLabel(Map<String, dynamic> suggestion) {
+    final name = suggestion['name']?.toString().trim() ?? '';
+    final address = suggestion['full_address']?.toString().trim() ?? '';
+    if (address.isEmpty) return name;
+    if (name.isEmpty) return address;
+    if (address.startsWith(name)) return address;
+    return '$name, $address';
+  }
+
   String _formatPlaceType(List<dynamic>? types) {
     if (types == null || types.isEmpty) return 'Location';
     return types
@@ -406,12 +607,16 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
           // ---------------- MAPBOX MAP ----------------
           MapWidget(
             key: const ValueKey("mapbox_map"),
+            styleUri: MapboxStyles.STANDARD,
             cameraOptions: CameraOptions(
               center: Point(
                 coordinates: Position(80.7718, 7.8731),
               ),
               zoom: 7,
             ),
+            onTapListener: (_) async {
+              FocusScope.of(context).unfocus();
+            },
             onMapCreated: (map) async {
               _mapController = map;
               _polylineManager =
@@ -449,6 +654,8 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                       TextField(
                         controller: _destinationController,
                         onChanged: (value) {
+                          _selectedDestinationMapboxId = null;
+                          _selectedDestinationPosition = null;
                           if (_debounce?.isActive ?? false) _debounce!.cancel();
                           _debounce =
                               Timer(const Duration(milliseconds: 500), () {
@@ -487,7 +694,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                                   const Divider(height: 1),
                               itemBuilder: (context, index) {
                                 final suggestion = _destinationSuggestions[index];
-                                final types = suggestion['place_type'] as List<dynamic>?;
+                                final types = _suggestionTypes(suggestion);
                                 
                                 return TweenAnimationBuilder<double>(
                                   duration: const Duration(milliseconds: 400),
@@ -515,7 +722,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                                       ),
                                     ),
                                     title: _buildRichText(
-                                      suggestion['place_name'] ?? '',
+                                      _suggestionLabel(suggestion),
                                       _destinationController.text,
                                     ),
                                     subtitle: Text(
@@ -526,11 +733,26 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                                       ),
                                     ),
                                     onTap: () {
+                                      _selectedDestinationMapboxId =
+                                          suggestion['mapbox_id']?.toString();
+                                      final fallbackLat =
+                                          suggestion['fallback_lat'];
+                                      final fallbackLng =
+                                          suggestion['fallback_lng'];
+                                      _selectedDestinationPosition =
+                                          fallbackLat is num &&
+                                                  fallbackLng is num
+                                              ? Position(
+                                                  fallbackLng.toDouble(),
+                                                  fallbackLat.toDouble(),
+                                                )
+                                              : null;
                                       _destinationController.text =
-                                          suggestion['place_name'] ?? '';
+                                          _suggestionLabel(suggestion);
                                       setState(() {
                                         _destinationSuggestions = [];
                                       });
+                                      _refreshSearchSessionToken();
                                       FocusScope.of(context).unfocus();
                                     },
                                   ),
@@ -558,6 +780,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                     onPressed: _isCalculatingRoute
                         ? null
                         : () async {
+                            FocusScope.of(context).unfocus();
                             setState(() => _isCalculatingRoute = true);
                             try {
                               if (_currentPosition == null) {
@@ -664,7 +887,6 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                           Text(_durationText,
                               style: const TextStyle(
                                   color: Colors.white, fontSize: 16)),
-
                         ],
                       ),
                     ),
