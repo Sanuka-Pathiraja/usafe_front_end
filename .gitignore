@@ -61,3 +61,5 @@ android/gradle.properties
 android/gradle.properties
 android/gradle.properties
 android/gradle.properties
+lib/src/config/app_config.dart
+android/secrets.properties
