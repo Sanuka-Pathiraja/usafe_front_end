@@ -86,7 +86,8 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       'country=LK',
     ];
 
-    if (_currentPosition?.longitude != null && _currentPosition?.latitude != null) {
+    if (_currentPosition?.longitude != null &&
+        _currentPosition?.latitude != null) {
       params.add(
         'proximity=${_currentPosition!.longitude},${_currentPosition!.latitude}',
       );
@@ -155,8 +156,8 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     final position = _positionFromLocation(location);
 
     if (_userLocationAnnotation == null) {
-      _userLocationAnnotation =
-          await _userLocationManager!.create(_buildUserLocationMarker(position));
+      _userLocationAnnotation = await _userLocationManager!
+          .create(_buildUserLocationMarker(position));
     } else {
       _userLocationAnnotation!.geometry = Point(coordinates: position);
       await _userLocationManager!.update(_userLocationAnnotation!);
@@ -329,7 +330,8 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       'country=LK',
     ];
 
-    if (_currentPosition?.longitude != null && _currentPosition?.latitude != null) {
+    if (_currentPosition?.longitude != null &&
+        _currentPosition?.latitude != null) {
       params.add(
         'proximity=${_currentPosition!.longitude},${_currentPosition!.latitude}',
       );
@@ -366,7 +368,8 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
 
   Future<Position?> _geocodingFallbackDestination(String place) async {
     try {
-      final results = await geocoding.locationFromAddress(place.trim())
+      final results = await geocoding
+          .locationFromAddress(place.trim())
           .timeout(const Duration(seconds: 8));
       if (results.isEmpty) return null;
 
@@ -381,7 +384,8 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     String place,
   ) async {
     try {
-      final results = await geocoding.locationFromAddress(place.trim())
+      final results = await geocoding
+          .locationFromAddress(place.trim())
           .timeout(const Duration(seconds: 8));
       if (results.isEmpty) return null;
 
@@ -422,7 +426,8 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
             _geocodingFallbackDestination(place);
       }
 
-      final suggestData = jsonDecode(suggestResponse.body) as Map<String, dynamic>;
+      final suggestData =
+          jsonDecode(suggestResponse.body) as Map<String, dynamic>;
       final suggestions = suggestData['suggestions'];
       if (suggestions is! List || suggestions.isEmpty) {
         return _forwardSearchDestination(place) ??
@@ -443,7 +448,8 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     }
 
     final geometry = feature['geometry'];
-    final coordinates = geometry is Map<String, dynamic> ? geometry['coordinates'] : null;
+    final coordinates =
+        geometry is Map<String, dynamic> ? geometry['coordinates'] : null;
     if (coordinates is List && coordinates.length >= 2) {
       return Position(
         (coordinates[0] as num).toDouble(),
@@ -473,8 +479,8 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     final data = jsonDecode(response.body);
     final geometry = data['routes'][0]['geometry'];
     final routeCoordinates = (geometry['coordinates'] as List<dynamic>)
-        .map((c) =>
-            Position((c[0] as num).toDouble(), (c[1] as num).toDouble()))
+        .map(
+            (c) => Position((c[0] as num).toDouble(), (c[1] as num).toDouble()))
         .toList();
 
     await _polylineManager!.deleteAll();
@@ -607,7 +613,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
           // ---------------- MAPBOX MAP ----------------
           MapWidget(
             key: const ValueKey("mapbox_map"),
-            styleUri: MapboxStyles.STANDARD,
+            styleUri: MapboxStyles.LIGHT,
             cameraOptions: CameraOptions(
               center: Point(
                 coordinates: Position(80.7718, 7.8731),
@@ -693,9 +699,10 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                               separatorBuilder: (context, index) =>
                                   const Divider(height: 1),
                               itemBuilder: (context, index) {
-                                final suggestion = _destinationSuggestions[index];
+                                final suggestion =
+                                    _destinationSuggestions[index];
                                 final types = _suggestionTypes(suggestion);
-                                
+
                                 return TweenAnimationBuilder<double>(
                                   duration: const Duration(milliseconds: 400),
                                   tween: Tween(begin: 0.0, end: 1.0),
@@ -712,7 +719,8 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                                     leading: Container(
                                       padding: const EdgeInsets.all(8),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFF2962FF).withOpacity(0.1),
+                                        color: const Color(0xFF2962FF)
+                                            .withOpacity(0.1),
                                         borderRadius: BorderRadius.circular(8),
                                       ),
                                       child: Icon(
@@ -790,7 +798,8 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                                 _showSnackBar("Current location unavailable.");
                                 return;
                               }
-                              final destinationText = _destinationController.text;
+                              final destinationText =
+                                  _destinationController.text;
                               if (destinationText.trim().isEmpty) {
                                 _showSnackBar("Please enter a destination.");
                                 return;
