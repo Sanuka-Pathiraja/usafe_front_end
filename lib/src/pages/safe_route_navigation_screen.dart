@@ -22,8 +22,9 @@ class SafeRouteNavigationScreen extends StatefulWidget {
 class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   MapboxMap? _mapController;
   PolylineAnnotationManager? _polylineManager;
-  CircleAnnotationManager? _circleAnnotationManager;
   PointAnnotationManager? _pointAnnotationManager;
+  CircleAnnotationManager? _userLocationManager;
+  CircleAnnotation? _userLocationAnnotation;
   static const double _myLocationZoomOutLevel = 10.5;
 
   final TextEditingController _sourceController = TextEditingController();
@@ -38,9 +39,11 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   String _distanceText = "Distance: --";
   String _durationText = "Estimated Time: --";
   bool _isCalculatingRoute = false;
+  StreamSubscription<LocationData>? _locationSubscription;
 
   @override
   void dispose() {
+    _locationSubscription?.cancel();
     _debounce?.cancel();
     _sourceController.dispose();
     _destinationController.dispose();
@@ -53,20 +56,119 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _getRealLocation() async {
+  Position _positionFromLocation(LocationData location) {
+    return Position(location.longitude!, location.latitude!);
+  }
+
+  CircleAnnotationOptions _buildUserLocationMarker(Position position) {
+    return CircleAnnotationOptions(
+      geometry: Point(coordinates: position),
+      circleColor: Colors.blue.value,
+      circleRadius: 8.0,
+      circleStrokeWidth: 2.0,
+      circleStrokeColor: Colors.white.value,
+      circleSortKey: 100,
+    );
+  }
+
+  Future<bool> _ensureLocationAccess() async {
     bool serviceEnabled = await _location.serviceEnabled();
     if (!serviceEnabled) {
       serviceEnabled = await _location.requestService();
-      if (!serviceEnabled) return;
+      if (!serviceEnabled) return false;
     }
 
     PermissionStatus permission = await _location.hasPermission();
     if (permission == PermissionStatus.denied) {
       permission = await _location.requestPermission();
-      if (permission != PermissionStatus.granted) return;
     }
 
+    return permission == PermissionStatus.granted;
+  }
+
+  Future<void> _moveCameraToPosition(
+    Position position, {
+    double zoom = _myLocationZoomOutLevel,
+  }) async {
+    if (_mapController == null) return;
+
+    await _mapController!.flyTo(
+      CameraOptions(
+        center: Point(coordinates: position),
+        zoom: zoom,
+        pitch: 0,
+        bearing: 0,
+      ),
+      MapAnimationOptions(duration: 1000),
+    );
+  }
+
+  Future<void> _syncUserLocationMarker({
+    required LocationData location,
+    bool moveCamera = false,
+  }) async {
+    if (_userLocationManager == null ||
+        location.latitude == null ||
+        location.longitude == null) {
+      return;
+    }
+
+    final position = _positionFromLocation(location);
+
+    if (_userLocationAnnotation == null) {
+      _userLocationAnnotation =
+          await _userLocationManager!.create(_buildUserLocationMarker(position));
+    } else {
+      _userLocationAnnotation!.geometry = Point(coordinates: position);
+      await _userLocationManager!.update(_userLocationAnnotation!);
+    }
+
+    if (moveCamera) {
+      await _moveCameraToPosition(position);
+    }
+  }
+
+  Future<void> _startUserLocationTracking() async {
+    final hasAccess = await _ensureLocationAccess();
+    if (!hasAccess) return;
+
+    await _location.changeSettings(
+      accuracy: LocationAccuracy.high,
+      interval: 2000,
+      distanceFilter: 5,
+    );
+
+    final initialLocation = await _location.getLocation();
+    _currentPosition = initialLocation;
+    await _syncUserLocationMarker(location: initialLocation, moveCamera: true);
+    await _updateSourceLabel();
+
+    _locationSubscription?.cancel();
+    _locationSubscription =
+        _location.onLocationChanged.listen((location) async {
+      if (!mounted || location.latitude == null || location.longitude == null) {
+        return;
+      }
+
+      _currentPosition = location;
+      await _syncUserLocationMarker(location: location);
+    });
+  }
+
+  Future<void> _getRealLocation() async {
+    final hasAccess = await _ensureLocationAccess();
+    if (!hasAccess) return;
+
     _currentPosition = await _location.getLocation();
+    await _syncUserLocationMarker(location: _currentPosition!);
+    await _updateSourceLabel();
+  }
+
+  Future<void> _updateSourceLabel() async {
+    if (_currentPosition?.latitude == null ||
+        _currentPosition?.longitude == null) {
+      return;
+    }
 
     final resolvedLocationName = await _getReadableLocationName(
       _currentPosition!.latitude!,
@@ -97,19 +199,11 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     if (_currentPosition == null) await _getRealLocation();
     if (_currentPosition == null) return;
 
-    _mapController!.flyTo(
-      CameraOptions(
-        center: Point(
-          coordinates: Position(
-            _currentPosition!.longitude!,
-            _currentPosition!.latitude!,
-          ),
-        ),
-        zoom: _myLocationZoomOutLevel,
-        pitch: 0,
-        bearing: 0,
+    await _moveCameraToPosition(
+      Position(
+        _currentPosition!.longitude!,
+        _currentPosition!.latitude!,
       ),
-      MapAnimationOptions(duration: 1000),
     );
   }
 
@@ -183,7 +277,6 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   Future<void> drawRoute(Position start, Position end) async {
     if (_mapController == null ||
         _polylineManager == null ||
-        _circleAnnotationManager == null ||
         _pointAnnotationManager == null) return;
 
     final url = Uri.parse(
@@ -204,28 +297,15 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
         .toList();
 
     await _polylineManager!.deleteAll();
-    await _circleAnnotationManager!.deleteAll();
     await _pointAnnotationManager!.deleteAll();
 
-      // Draw Route Polyline
-      await _polylineManager!.create(
-        PolylineAnnotationOptions(
-          geometry: LineString(coordinates: routeCoordinates),
-          lineColor: const Color(0xFF2962FF).value,
-          lineWidth: 5.0,
-        ),
-      );
-
-      // Start Marker (Blue Dot)
-      await _circleAnnotationManager!.create(
-        CircleAnnotationOptions(
-          geometry: Point(coordinates: start),
-          circleColor: Colors.blue.value,
-          circleRadius: 8.0,
-          circleStrokeWidth: 2.0,
-          circleStrokeColor: Colors.white.value,
-        ),
-      );
+    await _polylineManager!.create(
+      PolylineAnnotationOptions(
+        geometry: LineString(coordinates: routeCoordinates),
+        lineColor: const Color(0xFF2962FF).value,
+        lineWidth: 5.0,
+      ),
+    );
 
     final ByteData bytes = await rootBundle.load('assets/red-pin bg r.png');
     final Uint8List list = bytes.buffer.asUint8List();
@@ -265,7 +345,6 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   // __________ CLEAR ROUTE __________
   Future<void> _clearRoute() async {
     await _polylineManager?.deleteAll();
-    await _circleAnnotationManager?.deleteAll();
     await _pointAnnotationManager?.deleteAll();
 
     if (mounted) {
@@ -337,13 +416,12 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
               _mapController = map;
               _polylineManager =
                   await map.annotations.createPolylineAnnotationManager();
-              _circleAnnotationManager =
-                  await map.annotations.createCircleAnnotationManager();
               _pointAnnotationManager =
                   await map.annotations.createPointAnnotationManager();
+              _userLocationManager =
+                  await map.annotations.createCircleAnnotationManager();
 
-
-              await _getRealLocation();
+              await _startUserLocationTracking();
             },
           ),
 
