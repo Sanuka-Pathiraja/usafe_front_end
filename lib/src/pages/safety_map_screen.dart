@@ -270,7 +270,11 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => CommunityReportScreen(locationLabel: label),
+        builder: (_) => CommunityReportScreen(
+          locationLabel: label,
+          locationLat: position.latitude,
+          locationLng: position.longitude,
+        ),
       ),
     );
   }

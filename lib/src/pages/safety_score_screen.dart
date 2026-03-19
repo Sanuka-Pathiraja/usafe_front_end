@@ -65,10 +65,13 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
         throw Exception('Location permissions are permanently denied.');
       }
 
-      final position =
-          await _getSafePosition() ?? await Geolocator.getLastKnownPosition();
-      final latitude = position?.latitude ?? 37.7749;
-      final longitude = position?.longitude ?? -122.4194;
+      final position = await _getSafePosition();
+      if (position == null) {
+        throw Exception(
+            'Unable to determine your current location. Please enable location and try again.');
+      }
+      final latitude = position.latitude;
+      final longitude = position.longitude;
       final jwt = await AuthService.getToken();
 
       final response = await ApiService.fetchSafetyScore(
@@ -108,8 +111,11 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
   Future<Position?> _getSafePosition() async {
     try {
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-        // Avoid known emulator GNSS/NMEA crash path from live updates.
-        return Geolocator.getLastKnownPosition();
+        // Prefer cached Android location first, then try a fresh fix if needed.
+        final lastKnown = await Geolocator.getLastKnownPosition();
+        if (lastKnown != null) {
+          return lastKnown;
+        }
       }
 
       return Geolocator.getCurrentPosition(
