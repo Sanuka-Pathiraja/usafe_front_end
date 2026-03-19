@@ -30,6 +30,8 @@ dependencies:
   flutter_stripe: ^9.0.0
   http: ^1.0.0
   google_maps_flutter: ^2.10.0
+  location: ^6.0.1
+  mapbox_maps_flutter: ^2.20.0
 
   # Machine Learning & Audio
   tflite_flutter: ^0.12.1
@@ -56,5 +58,7 @@ flutter:
     - .env
     - assets/usafe_logo.png
     - assets/google.jpg
+    - assets/red_pin.png
+    - assets/red-pin bg r.png
     - assets/models/yamnet.tflite
     - assets/models/yamnet_class_map.csv

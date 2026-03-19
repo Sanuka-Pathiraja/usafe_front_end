@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'app.dart';
 import 'features/auth/auth_service.dart';
 import 'core/services/tone_sos_bridge_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/services/diagnostics_service.dart';
+import 'src/config/app_config.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  MapboxOptions.setAccessToken(mapboxPublicToken);
   await _loadEnvironment();
   await Supabase.initialize(
     url: _readRequiredConfig('SUPABASE_URL'),
