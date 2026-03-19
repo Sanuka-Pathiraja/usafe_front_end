@@ -15,6 +15,9 @@
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="AIzaSyD8uT_BsJ4ACLTPCmSMaP1QgmjNDnstoxc" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="usafe_emergency_alerts" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
