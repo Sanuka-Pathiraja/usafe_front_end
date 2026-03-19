@@ -11,6 +11,8 @@ class CommunityReportService {
     required String reportContent,
     required List<File> images,
     String? location,
+    double? locationLat,
+    double? locationLng,
     List<String>? issueTypes,
   }) async {
     try {
@@ -36,6 +38,12 @@ class CommunityReportService {
       request.fields['location'] = (location == null || location.trim().isEmpty)
           ? 'Unknown'
           : location.trim();
+      if (locationLat != null && locationLng != null) {
+        request.fields['locationCoordinates'] = jsonEncode({
+          'lat': locationLat,
+          'lng': locationLng,
+        });
+      }
       if (issueTypes != null && issueTypes.isNotEmpty) {
         request.fields['issueTypes'] = jsonEncode(issueTypes);
       }

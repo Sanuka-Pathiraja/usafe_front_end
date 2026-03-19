@@ -9,10 +9,14 @@ class CommunityReportScreen extends StatefulWidget {
     super.key,
     this.title = 'Community Reports',
     this.locationLabel,
+    this.locationLat,
+    this.locationLng,
   });
 
   final String title;
   final String? locationLabel;
+  final double? locationLat;
+  final double? locationLng;
 
   @override
   State<CommunityReportScreen> createState() => _CommunityReportScreenState();
@@ -236,6 +240,8 @@ class _CommunityReportScreenState extends State<CommunityReportScreen> {
         reportContent: _descriptionController.text,
         images: _selectedImages,
         location: widget.locationLabel ?? 'User submitted via mobile app',
+        locationLat: widget.locationLat,
+        locationLng: widget.locationLng,
         issueTypes: selectedIndices
             .map((index) => issueTypes[index]['title'].toString())
             .toList(),
