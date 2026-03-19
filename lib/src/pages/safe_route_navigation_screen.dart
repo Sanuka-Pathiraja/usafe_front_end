@@ -28,8 +28,8 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   CircleAnnotationManager? _userLocationManager;
   CircleAnnotation? _userLocationAnnotation;
   static const double _myLocationZoomOutLevel = 14.5;
+  late final Widget _mapView;
 
-  final TextEditingController _sourceController = TextEditingController();
   final TextEditingController _destinationController = TextEditingController();
   final Location _location = Location();
 
@@ -45,12 +45,17 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   String _durationText = "Estimated Time: --";
   bool _isCalculatingRoute = false;
   StreamSubscription<LocationData>? _locationSubscription;
+  int _suggestionRequestId = 0;
+  bool _isPickingDestination = false;
+  Position? _pendingPinnedPosition;
+  Position? _confirmedPinnedPosition;
+  Uint8List? _destinationMarkerBytes;
+  double _sheetExtent = 0.12;
 
   @override
   void dispose() {
     _locationSubscription?.cancel();
     _debounce?.cancel();
-    _sourceController.dispose();
     _destinationController.dispose();
     super.dispose();
   }
@@ -59,6 +64,41 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   void initState() {
     super.initState();
     _refreshSearchSessionToken();
+    _mapView = RepaintBoundary(
+      child: MapWidget(
+        key: const ValueKey("mapbox_map"),
+        styleUri: MapboxStyles.STANDARD,
+        cameraOptions: CameraOptions(
+          center: Point(
+            coordinates: Position(80.7718, 7.8731),
+          ),
+          zoom: 7,
+        ),
+        onTapListener: (_) async {
+          if (!mounted) return;
+          FocusScope.of(context).unfocus();
+        },
+        onCameraChangeListener: (event) {
+          if (!_isPickingDestination) return;
+          _pendingPinnedPosition = _positionFromPoint(event.cameraState.center);
+        },
+        onMapIdleListener: (_) {
+          if (!mounted || !_isPickingDestination) return;
+          setState(() {});
+        },
+        onMapCreated: (map) async {
+          _mapController = map;
+          _polylineManager =
+              await map.annotations.createPolylineAnnotationManager();
+          _pointAnnotationManager =
+              await map.annotations.createPointAnnotationManager();
+          _userLocationManager =
+              await map.annotations.createCircleAnnotationManager();
+
+          await _startUserLocationTracking();
+        },
+      ),
+    );
   }
 
   void _showSnackBar(String message) {
@@ -97,6 +137,10 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
 
   Position _positionFromLocation(LocationData location) {
     return Position(location.longitude!, location.latitude!);
+  }
+
+  Position _positionFromPoint(Point point) {
+    return point.coordinates;
   }
 
   CircleAnnotationOptions _buildUserLocationMarker(Position position) {
@@ -180,7 +224,6 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     final initialLocation = await _location.getLocation();
     _currentPosition = initialLocation;
     await _syncUserLocationMarker(location: initialLocation, moveCamera: true);
-    await _updateSourceLabel();
 
     _locationSubscription?.cancel();
     _locationSubscription =
@@ -200,37 +243,6 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
 
     _currentPosition = await _location.getLocation();
     await _syncUserLocationMarker(location: _currentPosition!);
-    await _updateSourceLabel();
-  }
-
-  Future<void> _updateSourceLabel() async {
-    if (_currentPosition?.latitude == null ||
-        _currentPosition?.longitude == null) {
-      return;
-    }
-
-    final resolvedLocationName = await _getReadableLocationName(
-      _currentPosition!.latitude!,
-      _currentPosition!.longitude!,
-    );
-    _sourceController.text = resolvedLocationName ??
-        "${_currentPosition!.latitude}, ${_currentPosition!.longitude}";
-  }
-
-  Future<String?> _getReadableLocationName(double lat, double lng) async {
-    final url = Uri.parse(
-      "https://api.mapbox.com/geocoding/v5/mapbox.places/$lng,$lat.json"
-      "?access_token=$mapboxToken&types=address,place,locality,neighborhood&limit=1",
-    );
-
-    final response = await http.get(url);
-    if (response.statusCode != 200) return null;
-
-    final data = jsonDecode(response.body);
-    final features = data["features"] as List<dynamic>?;
-    if (features == null || features.isEmpty) return null;
-
-    return features.first["place_name"] as String?;
   }
 
   Future<void> _goToMyLocation() async {
@@ -246,8 +258,141 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     );
   }
 
+  String _pinnedLocationLabel(Position position) {
+    return 'Pinned point (${position.lat.toStringAsFixed(5)}, ${position.lng.toStringAsFixed(5)})';
+  }
+
+  Future<Uint8List> _loadDestinationMarkerBytes() async {
+    final existing = _destinationMarkerBytes;
+    if (existing != null) {
+      return existing;
+    }
+
+    final bytes = await rootBundle.load('assets/red-pin bg r.png');
+    final markerBytes = bytes.buffer.asUint8List();
+    _destinationMarkerBytes = markerBytes;
+    return markerBytes;
+  }
+
+  Future<void> _showDestinationPin(Position position) async {
+    final pointManager = _pointAnnotationManager;
+    if (pointManager == null) return;
+
+    await pointManager.deleteAll();
+    final markerBytes = await _loadDestinationMarkerBytes();
+    await pointManager.create(
+      PointAnnotationOptions(
+        geometry: Point(coordinates: position),
+        image: markerBytes,
+        iconSize: 0.2,
+        iconAnchor: IconAnchor.BOTTOM,
+      ),
+    );
+  }
+
+  Future<void> _enableMapPickMode() async {
+    FocusScope.of(context).unfocus();
+
+    Position? initialPin = _confirmedPinnedPosition ?? _selectedDestinationPosition;
+    if (initialPin == null && _currentPosition != null) {
+      initialPin = Position(
+        _currentPosition!.longitude!,
+        _currentPosition!.latitude!,
+      );
+    }
+
+    if (initialPin != null) {
+      _pendingPinnedPosition = initialPin;
+      await _moveCameraToPosition(initialPin);
+    } else if (_mapController != null) {
+      final cameraState = await _mapController!.getCameraState();
+      _pendingPinnedPosition = _positionFromPoint(cameraState.center);
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _isPickingDestination = true;
+    });
+  }
+
+  void _cancelMapPickMode() {
+    if (!mounted) return;
+    setState(() {
+      _isPickingDestination = false;
+      _pendingPinnedPosition = null;
+    });
+  }
+
+  Future<void> _confirmPinnedDestination() async {
+    Position? position = _pendingPinnedPosition;
+
+    if (position == null && _mapController != null) {
+      final cameraState = await _mapController!.getCameraState();
+      position = _positionFromPoint(cameraState.center);
+    }
+
+    if (position == null) {
+      _showSnackBar('Move the map to choose a destination.');
+      return;
+    }
+
+    final confirmedPosition = position;
+
+    await _showDestinationPin(confirmedPosition);
+
+    if (!mounted) return;
+    setState(() {
+      _confirmedPinnedPosition = confirmedPosition;
+      _selectedDestinationPosition = confirmedPosition;
+      _selectedDestinationMapboxId = null;
+      _destinationSuggestions = [];
+      _destinationController.text = _pinnedLocationLabel(confirmedPosition);
+      _isPickingDestination = false;
+      _pendingPinnedPosition = null;
+    });
+  }
+
+  Future<void> _handleFindRoute() async {
+    FocusScope.of(context).unfocus();
+    setState(() => _isCalculatingRoute = true);
+    try {
+      if (_currentPosition == null) {
+        await _getRealLocation();
+      }
+      if (_currentPosition == null) {
+        _showSnackBar("Current location unavailable.");
+        return;
+      }
+      final destinationText = _destinationController.text;
+      if (destinationText.trim().isEmpty) {
+        _showSnackBar("Please enter a destination.");
+        return;
+      }
+      final destination = await searchDestination(destinationText);
+      if (destination == null) {
+        _showSnackBar("Destination not found.");
+        return;
+      }
+      await drawRoute(
+        Position(
+          _currentPosition!.longitude!,
+          _currentPosition!.latitude!,
+        ),
+        destination,
+      );
+    } catch (e) {
+      _showSnackBar("Route error: $e");
+    } finally {
+      if (mounted) {
+        setState(() => _isCalculatingRoute = false);
+      }
+    }
+  }
+
   Future<void> fetchSuggestions(String query) async {
     final trimmedQuery = query.trim();
+    final requestId = ++_suggestionRequestId;
+
     if (trimmedQuery.isEmpty) {
       if (!mounted) return;
       setState(() {
@@ -287,16 +432,16 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
         }
       }
 
-      if (!mounted) return;
+      if (!mounted || requestId != _suggestionRequestId) return;
       setState(() {
         _destinationSuggestions = parsedSuggestions;
       });
     } catch (e) {
       debugPrint("Suggestions Error: $e");
-      if (!mounted) return;
+      if (!mounted || requestId != _suggestionRequestId) return;
       setState(() => _destinationSuggestions = []);
     } finally {
-      if (!mounted) return;
+      if (!mounted || requestId != _suggestionRequestId) return;
       setState(() => _isSearchingSuggestions = false);
     }
   }
@@ -404,11 +549,6 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       return _selectedDestinationPosition;
     }
 
-    final geocodingPosition = await _geocodingFallbackDestination(place);
-    if (geocodingPosition != null) {
-      return geocodingPosition;
-    }
-
     var mapboxId = _selectedDestinationMapboxId;
 
     if (mapboxId == null || mapboxId.isEmpty) {
@@ -418,28 +558,24 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       );
       final suggestResponse = await http.get(suggestUrl);
       if (suggestResponse.statusCode != 200) {
-        return _forwardSearchDestination(place) ??
-            _geocodingFallbackDestination(place);
+        return await _resolveDestinationFallback(place);
       }
 
       final suggestData = jsonDecode(suggestResponse.body) as Map<String, dynamic>;
       final suggestions = suggestData['suggestions'];
       if (suggestions is! List || suggestions.isEmpty) {
-        return _forwardSearchDestination(place) ??
-            _geocodingFallbackDestination(place);
+        return await _resolveDestinationFallback(place);
       }
       mapboxId = suggestions.first['mapbox_id']?.toString();
     }
 
     if (mapboxId == null || mapboxId.isEmpty) {
-      return _forwardSearchDestination(place) ??
-          _geocodingFallbackDestination(place);
+      return await _resolveDestinationFallback(place);
     }
 
     final feature = await _retrieveSuggestion(mapboxId);
     if (feature == null) {
-      return _forwardSearchDestination(place) ??
-          _geocodingFallbackDestination(place);
+      return await _resolveDestinationFallback(place);
     }
 
     final geometry = feature['geometry'];
@@ -451,8 +587,16 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       );
     }
 
-    return _forwardSearchDestination(place) ??
-        _geocodingFallbackDestination(place);
+    return await _resolveDestinationFallback(place);
+  }
+
+  Future<Position?> _resolveDestinationFallback(String place) async {
+    final forwardPosition = await _forwardSearchDestination(place);
+    if (forwardPosition != null) {
+      return forwardPosition;
+    }
+
+    return _geocodingFallbackDestination(place);
   }
 
   Future<void> drawRoute(Position start, Position end) async {
@@ -488,8 +632,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       ),
     );
 
-    final ByteData bytes = await rootBundle.load('assets/red-pin bg r.png');
-    final Uint8List list = bytes.buffer.asUint8List();
+    final Uint8List list = await _loadDestinationMarkerBytes();
 
     await _pointAnnotationManager!.create(
       PointAnnotationOptions(
@@ -507,6 +650,8 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
 
     if (mounted) {
       setState(() {
+        _confirmedPinnedPosition = end;
+        _selectedDestinationPosition = end;
         _distanceText =
             "Distance: ${(routeDistanceMeters / 1000).toStringAsFixed(1)} km";
         _durationText =
@@ -532,6 +677,11 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       setState(() {
         _destinationController.clear();
         _destinationSuggestions = [];
+        _selectedDestinationMapboxId = null;
+        _selectedDestinationPosition = null;
+        _confirmedPinnedPosition = null;
+        _pendingPinnedPosition = null;
+        _isPickingDestination = false;
         _distanceText = "Distance: --";
         _durationText = "Estimated Time: --";
       });
@@ -605,115 +755,153 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       body: Stack(
         children: [
           // ---------------- MAPBOX MAP ----------------
-          MapWidget(
-            key: const ValueKey("mapbox_map"),
-            styleUri: MapboxStyles.STANDARD,
-            cameraOptions: CameraOptions(
-              center: Point(
-                coordinates: Position(80.7718, 7.8731),
-              ),
-              zoom: 7,
-            ),
-            onTapListener: (_) async {
-              FocusScope.of(context).unfocus();
-            },
-            onMapCreated: (map) async {
-              _mapController = map;
-              _polylineManager =
-                  await map.annotations.createPolylineAnnotationManager();
-              _pointAnnotationManager =
-                  await map.annotations.createPointAnnotationManager();
-              _userLocationManager =
-                  await map.annotations.createCircleAnnotationManager();
-
-              await _startUserLocationTracking();
-            },
-          ),
+          _mapView,
 
           // ---------------- SEARCH PANEL ----------------
           Positioned(
-            top: 20,
-            left: 20,
-            right: 20,
-            child: Column(
-              children: [
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(15),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 10,
-                        spreadRadius: 2,
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      TextField(
-                        controller: _destinationController,
-                        onChanged: (value) {
-                          _selectedDestinationMapboxId = null;
-                          _selectedDestinationPosition = null;
-                          if (_debounce?.isActive ?? false) _debounce!.cancel();
-                          _debounce =
-                              Timer(const Duration(milliseconds: 500), () {
-                            fetchSuggestions(value);
-                          });
-                        },
-                        decoration: const InputDecoration(
-                          hintText: "Enter Destination",
-                          prefixIcon:
-                              Icon(Icons.location_on, color: Colors.red),
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 14),
+            top: 16,
+            left: 16,
+            right: 16,
+            child: SafeArea(
+              bottom: false,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF102348).withOpacity(0.92),
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: Colors.white.withOpacity(0.06)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.16),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.07),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.06),
                         ),
                       ),
-                      if (_isSearchingSuggestions)
-                        const Padding(
-                          padding: EdgeInsets.all(8.0),
-                          child: CircularProgressIndicator(),
-                        ),
-                      if (_destinationSuggestions.isNotEmpty)
-                        Container(
-                          constraints: const BoxConstraints(maxHeight: 200),
-                          decoration: const BoxDecoration(
-                            border:
-                                Border(top: BorderSide(color: Colors.black12)),
-                          ),
-                          child: AnimatedSize(
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeInOut,
-                            child: ListView.separated(
-                              shrinkWrap: true,
-                              padding: EdgeInsets.zero,
-                              itemCount: _destinationSuggestions.length,
-                              separatorBuilder: (context, index) =>
-                                  const Divider(height: 1),
-                              itemBuilder: (context, index) {
-                                final suggestion = _destinationSuggestions[index];
-                                final types = _suggestionTypes(suggestion);
-                                
-                                return TweenAnimationBuilder<double>(
-                                  duration: const Duration(milliseconds: 400),
-                                  tween: Tween(begin: 0.0, end: 1.0),
-                                  builder: (context, value, child) {
-                                    return Opacity(
-                                      opacity: value,
-                                      child: Transform.translate(
-                                        offset: Offset(0, 10 * (1 - value)),
-                                        child: child,
+                      child: Column(
+                        children: [
+                          TextField(
+                            controller: _destinationController,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            onChanged: (value) {
+                              _selectedDestinationMapboxId = null;
+                              _selectedDestinationPosition = null;
+                              _confirmedPinnedPosition = null;
+                              if (_debounce?.isActive ?? false) {
+                                _debounce!.cancel();
+                              }
+                              _debounce =
+                                  Timer(const Duration(milliseconds: 500), () {
+                                fetchSuggestions(value);
+                              });
+                            },
+                            decoration: InputDecoration(
+                              hintText: "Enter destination",
+                              hintStyle: TextStyle(
+                                color: Colors.white.withOpacity(0.62),
+                              ),
+                              prefixIcon: const Icon(
+                                Icons.location_on_rounded,
+                                color: Color(0xFFFF6B57),
+                              ),
+                              suffixIcon: _destinationController.text.isEmpty
+                                  ? IconButton(
+                                      onPressed: _isCalculatingRoute
+                                          ? null
+                                          : _handleFindRoute,
+                                      icon: Icon(
+                                        Icons.search_rounded,
+                                        color: Colors.white.withOpacity(0.72),
+                                        size: 19,
                                       ),
-                                    );
-                                  },
-                                  child: ListTile(
+                                    )
+                                  : Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          onPressed: _isCalculatingRoute
+                                              ? null
+                                              : _handleFindRoute,
+                                          icon: Icon(
+                                            Icons.search_rounded,
+                                            color:
+                                                Colors.white.withOpacity(0.72),
+                                            size: 19,
+                                          ),
+                                        ),
+                                        IconButton(
+                                          onPressed: _clearRoute,
+                                          icon: Icon(
+                                            Icons.close_rounded,
+                                            color:
+                                                Colors.white.withOpacity(0.62),
+                                            size: 18,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                              border: InputBorder.none,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 14,
+                              ),
+                            ),
+                          ),
+                          if (_isSearchingSuggestions)
+                            const Padding(
+                              padding: EdgeInsets.only(bottom: 12),
+                              child: SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          if (_destinationSuggestions.isNotEmpty)
+                            Container(
+                              constraints: const BoxConstraints(maxHeight: 220),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              margin: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                              child: ListView.separated(
+                                shrinkWrap: true,
+                                padding: EdgeInsets.zero,
+                                itemCount: _destinationSuggestions.length,
+                                separatorBuilder: (context, index) =>
+                                    const Divider(height: 1),
+                                itemBuilder: (context, index) {
+                                  final suggestion =
+                                      _destinationSuggestions[index];
+                                  final types = _suggestionTypes(suggestion);
+
+                                  return ListTile(
                                     leading: Container(
                                       padding: const EdgeInsets.all(8),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFF2962FF).withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(8),
+                                        color: const Color(0xFF2962FF)
+                                            .withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(10),
                                       ),
                                       child: Icon(
                                         _getIconForType(types),
@@ -732,13 +920,14 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                                         color: Colors.grey[600],
                                       ),
                                     ),
-                                    onTap: () {
+                                    onTap: () async {
                                       _selectedDestinationMapboxId =
                                           suggestion['mapbox_id']?.toString();
                                       final fallbackLat =
                                           suggestion['fallback_lat'];
                                       final fallbackLng =
                                           suggestion['fallback_lng'];
+                                      _confirmedPinnedPosition = null;
                                       _selectedDestinationPosition =
                                           fallbackLat is num &&
                                                   fallbackLng is num
@@ -754,186 +943,456 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                                       });
                                       _refreshSearchSessionToken();
                                       FocusScope.of(context).unfocus();
+                                      await _handleFindRoute();
                                     },
-                                  ),
-                                );
-                              },
+                                  );
+                                },
+                              ),
                             ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.black87,
-                      elevation: 3,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    onPressed: _isCalculatingRoute
-                        ? null
-                        : () async {
-                            FocusScope.of(context).unfocus();
-                            setState(() => _isCalculatingRoute = true);
-                            try {
-                              if (_currentPosition == null) {
-                                await _getRealLocation();
-                              }
-                              if (_currentPosition == null) {
-                                _showSnackBar("Current location unavailable.");
-                                return;
-                              }
-                              final destinationText = _destinationController.text;
-                              if (destinationText.trim().isEmpty) {
-                                _showSnackBar("Please enter a destination.");
-                                return;
-                              }
-                              final destination =
-                                  await searchDestination(destinationText);
-                              if (destination == null) {
-                                _showSnackBar("Destination not found.");
-                                return;
-                              }
-                              await drawRoute(
-                                Position(_currentPosition!.longitude!,
-                                    _currentPosition!.latitude!),
-                                destination,
-                              );
-                            } catch (e) {
-                              _showSnackBar("Route error: $e");
-                            } finally {
-                              if (mounted) {
-                                setState(() => _isCalculatingRoute = false);
-                              }
-                            }
-                          },
-                    child: _isCalculatingRoute
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                  Color(0xFF2962FF)),
-                            ),
-                          )
-                        : const Text(
-                            "Find Route",
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // ---------------- DRAGGABLE PANEL ----------------
-          DraggableScrollableSheet(
-            initialChildSize: 0.12,
-            minChildSize: 0.12,
-            maxChildSize: 0.45,
-            builder: (context, scrollController) {
-              return Container(
-                decoration: const BoxDecoration(
-                  color: Color(0xFF1E1E1E),
-                  borderRadius: BorderRadius.vertical(
-                    top: Radius.circular(22),
-                  ),
-                ),
-                child: ListView(
-                  controller: scrollController,
-                  padding: const EdgeInsets.all(16),
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 40,
-                        height: 5,
-                        margin: const EdgeInsets.only(top: 10, bottom: 14),
-                        decoration: BoxDecoration(
-                          color: Colors.white24,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                    const Text(
-                      "Route Details",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.black26,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(_distanceText,
-                              style: const TextStyle(
-                                  color: Colors.white, fontSize: 16)),
-                          const SizedBox(height: 8),
-                          Text(_durationText,
-                              style: const TextStyle(
-                                  color: Colors.white, fontSize: 16)),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 20),
-                    ElevatedButton(
-                      onPressed: () {},
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2962FF),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                    if (_confirmedPinnedPosition != null) ...[
+                      const SizedBox(height: 6),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 2),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.place_rounded,
+                              color: Colors.white.withOpacity(0.72),
+                              size: 14,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                _pinnedLocationLabel(_confirmedPinnedPosition!),
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.78),
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      child: const Text(
-                        "Start Navigation",
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          if (_isPickingDestination)
+            IgnorePointer(
+              child: Center(
+                child: Transform.translate(
+                  offset: const Offset(0, -20),
+                  child: const Icon(
+                    Icons.location_on_rounded,
+                    size: 52,
+                    color: Colors.red,
+                  ),
+                ),
+              ),
+            ),
+
+          if (_isPickingDestination)
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 232,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFCFCFD),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: Colors.black.withOpacity(0.04)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.10),
+                      blurRadius: 16,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEEF3FF),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.push_pin_rounded,
+                            color: Color(0xFF2F6BFF),
+                            size: 18,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Text(
+                            'Pick Destination',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _pendingPinnedPosition == null
+                          ? 'Drag the map until the pin is over your destination.'
+                          : _pinnedLocationLabel(_pendingPinnedPosition!),
+                      style: const TextStyle(
+                        color: Color(0xFF6B7280),
+                        fontSize: 12.5,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _confirmPinnedDestination,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF2962FF),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text(
+                          'Pin This Location',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
                       ),
                     ),
                   ],
                 ),
-              );
-            },
-          ),
+              ),
+            ),
 
-          // __________ SOS BUTTON __________
-          Positioned(
-            bottom: 50,
-            left: 20,
-            child: FloatingActionButton(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-              heroTag: "sos_button",
-              onPressed: () {},
-              child: const Icon(Icons.warning, size: 28),
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOut,
+            left: 16,
+            right: 16,
+            bottom: _sheetExtent > 0.17 ? 104 : 136,
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 180),
+              opacity: _sheetExtent > 0.17 ? 0 : 1,
+              child: IgnorePointer(
+                ignoring: _sheetExtent > 0.17,
+                child: SafeArea(
+                  top: false,
+                  child: SizedBox(
+                    height: 54,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF1E63FF),
+                        foregroundColor: Colors.white,
+                        elevation: 8,
+                        shadowColor: Colors.black.withOpacity(0.18),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                      ),
+                      onPressed: _isCalculatingRoute ? null : _handleFindRoute,
+                      icon: _isCalculatingRoute
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.white,
+                                ),
+                              ),
+                            )
+                          : const Icon(Icons.alt_route_rounded),
+                      label: Text(
+                        _isCalculatingRoute
+                            ? "Finding Route..."
+                            : "Find Route",
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
 
-          // __________ MY LOCATION BUTTON __________
-          Positioned(
-            bottom: 50,
-            right: 20,
-            child: FloatingActionButton(
-              backgroundColor: Colors.white,
-              foregroundColor: Colors.blueAccent,
-              heroTag: "my_location_button",
-              onPressed: _goToMyLocation,
-              child: const Icon(Icons.my_location, size: 28),
+          // ---------------- DRAGGABLE PANEL ----------------
+          NotificationListener<DraggableScrollableNotification>(
+            onNotification: (notification) {
+              if ((_sheetExtent - notification.extent).abs() > 0.005 && mounted) {
+                setState(() {
+                  _sheetExtent = notification.extent;
+                });
+              }
+              return false;
+            },
+            child: DraggableScrollableSheet(
+              initialChildSize: 0.12,
+              minChildSize: 0.12,
+              maxChildSize: 0.45,
+              builder: (context, scrollController) {
+                return Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF161B22).withOpacity(0.96),
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(28),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.22),
+                        blurRadius: 22,
+                        offset: const Offset(0, -8),
+                      ),
+                    ],
+                  ),
+                  child: ListView(
+                    controller: scrollController,
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 40,
+                          height: 5,
+                          margin: const EdgeInsets.only(top: 10, bottom: 14),
+                          decoration: BoxDecoration(
+                            color: Colors.white24,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                      const Text(
+                        "Route Details",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.black26,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(_distanceText,
+                                style: const TextStyle(
+                                    color: Colors.white, fontSize: 16)),
+                            const SizedBox(height: 8),
+                            Text(_durationText,
+                                style: const TextStyle(
+                                    color: Colors.white, fontSize: 16)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      ElevatedButton(
+                        onPressed: () {},
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF2962FF),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text(
+                          "Start Navigation",
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+
+          // __________ SOS BUTTON __________
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOut,
+            top: _sheetExtent > 0.17 ? 210 : 248,
+            right: 16,
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 180),
+              opacity: _sheetExtent > 0.17 ? 0 : 1,
+              child: IgnorePointer(
+                ignoring: _sheetExtent > 0.17,
+                child: Column(
+                  children: [
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: const Color(0xCCFF4B57),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: const Color(0xFFFFD1D5)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0x55FF4B57),
+                            blurRadius: 18,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(18),
+                          onTap: () {},
+                          child: const Icon(
+                            Icons.warning_amber_rounded,
+                            color: Colors.white,
+                            size: 28,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: const Color(0xCC2F6BFF),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: const Color(0xFFBED0FF)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0x552F6BFF),
+                            blurRadius: 18,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(18),
+                          onTap: _isPickingDestination
+                              ? _cancelMapPickMode
+                              : _enableMapPickMode,
+                          child: Icon(
+                            _isPickingDestination
+                                ? Icons.close_rounded
+                                : Icons.push_pin_rounded,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: const Color(0xCC65A2FF),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: const Color(0xFFD7E7FF)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0x5565A2FF),
+                            blurRadius: 18,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(18),
+                          onTap: _goToMyLocation,
+                          child: const Icon(
+                            Icons.my_location_rounded,
+                            color: Colors.white,
+                            size: 26,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: (_confirmedPinnedPosition != null ||
+                                _selectedDestinationPosition != null ||
+                                _destinationController.text.isNotEmpty)
+                            ? const Color(0xCCFF6B6B)
+                            : const Color(0xCC8E98A8),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: (_confirmedPinnedPosition != null ||
+                                  _selectedDestinationPosition != null ||
+                                  _destinationController.text.isNotEmpty)
+                              ? const Color(0xFFFFD0D0)
+                              : const Color(0xFFD5DBE5),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: (_confirmedPinnedPosition != null ||
+                                    _selectedDestinationPosition != null ||
+                                    _destinationController.text.isNotEmpty)
+                                ? const Color(0x55FF6B6B)
+                                : const Color(0x338E98A8),
+                            blurRadius: 18,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(18),
+                          onTap: (_confirmedPinnedPosition != null ||
+                                  _selectedDestinationPosition != null ||
+                                  _destinationController.text.isNotEmpty)
+                              ? _clearRoute
+                              : null,
+                          child: Icon(
+                            Icons.delete_outline_rounded,
+                            color: (_confirmedPinnedPosition != null ||
+                                    _selectedDestinationPosition != null ||
+                                    _destinationController.text.isNotEmpty)
+                                ? Colors.white
+                                : Colors.white.withOpacity(0.78),
+                            size: 24,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ],
