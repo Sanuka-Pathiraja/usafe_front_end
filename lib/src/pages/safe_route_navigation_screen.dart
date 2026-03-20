@@ -44,6 +44,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   String _distanceText = "Distance: --";
   String _durationText = "Estimated Time: --";
   bool _isCalculatingRoute = false;
+  bool _hasActiveRoute = false;
   StreamSubscription<LocationData>? _locationSubscription;
   int _suggestionRequestId = 0;
   bool _isPickingDestination = false;
@@ -51,6 +52,13 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   Position? _confirmedPinnedPosition;
   Uint8List? _destinationMarkerBytes;
   double _sheetExtent = 0.12;
+
+  bool get _hasSelectedDestination =>
+      _confirmedPinnedPosition != null ||
+      _selectedDestinationPosition != null ||
+      _destinationController.text.trim().isNotEmpty;
+
+  bool get _showRouteDetails => _hasSelectedDestination && _hasActiveRoute;
 
   @override
   void dispose() {
@@ -347,6 +355,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       _selectedDestinationMapboxId = null;
       _destinationSuggestions = [];
       _destinationController.text = _pinnedLocationLabel(confirmedPosition);
+      _hasActiveRoute = false;
       _isPickingDestination = false;
       _pendingPinnedPosition = null;
     });
@@ -354,7 +363,10 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
 
   Future<void> _handleFindRoute() async {
     FocusScope.of(context).unfocus();
-    setState(() => _isCalculatingRoute = true);
+    setState(() {
+      _isCalculatingRoute = true;
+      _hasActiveRoute = false;
+    });
     try {
       if (_currentPosition == null) {
         await _getRealLocation();
@@ -400,6 +412,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
         _isSearchingSuggestions = false;
         _selectedDestinationMapboxId = null;
         _selectedDestinationPosition = null;
+        _hasActiveRoute = false;
       });
       return;
     }
@@ -656,6 +669,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
             "Distance: ${(routeDistanceMeters / 1000).toStringAsFixed(1)} km";
         _durationText =
             "Estimated Time: ${(routeDurationSeconds / 60).toStringAsFixed(0)} mins";
+        _hasActiveRoute = true;
       });
     }
 
@@ -684,6 +698,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
         _isPickingDestination = false;
         _distanceText = "Distance: --";
         _durationText = "Estimated Time: --";
+        _hasActiveRoute = false;
       });
     }
   }
@@ -799,9 +814,12 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                               fontWeight: FontWeight.w500,
                             ),
                             onChanged: (value) {
-                              _selectedDestinationMapboxId = null;
-                              _selectedDestinationPosition = null;
-                              _confirmedPinnedPosition = null;
+                              setState(() {
+                                _selectedDestinationMapboxId = null;
+                                _selectedDestinationPosition = null;
+                                _confirmedPinnedPosition = null;
+                                _hasActiveRoute = false;
+                              });
                               if (_debounce?.isActive ?? false) {
                                 _debounce!.cancel();
                               }
@@ -940,6 +958,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                                           _suggestionLabel(suggestion);
                                       setState(() {
                                         _destinationSuggestions = [];
+                                        _hasActiveRoute = false;
                                       });
                                       _refreshSearchSessionToken();
                                       FocusScope.of(context).unfocus();
@@ -1092,7 +1111,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
             curve: Curves.easeOut,
             left: 16,
             right: 16,
-            bottom: _sheetExtent > 0.17 ? 104 : 136,
+            bottom: _sheetExtent > 0.17 ? 88 : 112,
             child: AnimatedOpacity(
               duration: const Duration(milliseconds: 180),
               opacity: _sheetExtent > 0.17 ? 0 : 1,
@@ -1159,10 +1178,11 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
               builder: (context, scrollController) {
                 return Container(
                   decoration: BoxDecoration(
-                    color: const Color(0xFF161B22).withOpacity(0.96),
+                    color: AppColors.background.withOpacity(0.96),
                     borderRadius: const BorderRadius.vertical(
                       top: Radius.circular(28),
                     ),
+                    border: Border.all(color: AppColors.glassBorder),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withOpacity(0.22),
@@ -1186,49 +1206,81 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                           ),
                         ),
                       ),
-                      const Text(
-                        "Route Details",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.black26,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(_distanceText,
-                                style: const TextStyle(
-                                    color: Colors.white, fontSize: 16)),
-                            const SizedBox(height: 8),
-                            Text(_durationText,
-                                style: const TextStyle(
-                                    color: Colors.white, fontSize: 16)),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      ElevatedButton(
-                        onPressed: () {},
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF2962FF),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                      if (_showRouteDetails) ...[
+                        const Text(
+                          "Route Details",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
                           ),
                         ),
-                        child: const Text(
-                          "Start Navigation",
-                          style: TextStyle(fontWeight: FontWeight.bold),
+                        const SizedBox(height: 14),
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: AppColors.surface,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: AppColors.primary.withOpacity(0.18),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.primary.withOpacity(0.08),
+                                blurRadius: 16,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _distanceText,
+                                style: const TextStyle(
+                                  color: AppColors.textPrimary,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                _durationText,
+                                style: const TextStyle(
+                                  color: AppColors.textPrimary,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
+                        const SizedBox(height: 20),
+                        ElevatedButton(
+                          onPressed: () {},
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primaryDark,
+                            foregroundColor: AppColors.textPrimary,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: const Text(
+                            "Start Navigation",
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ] else ...[
+                        Text(
+                          "Select a destination and find a route to see navigation details.",
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: AppColors.textSecondary.withOpacity(0.92),
+                            height: 1.45,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 );
@@ -1344,24 +1396,18 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                       width: 56,
                       height: 56,
                       decoration: BoxDecoration(
-                        color: (_confirmedPinnedPosition != null ||
-                                _selectedDestinationPosition != null ||
-                                _destinationController.text.isNotEmpty)
+                        color: _hasSelectedDestination
                             ? const Color(0xCCFF6B6B)
                             : const Color(0xCC8E98A8),
                         borderRadius: BorderRadius.circular(18),
                         border: Border.all(
-                          color: (_confirmedPinnedPosition != null ||
-                                  _selectedDestinationPosition != null ||
-                                  _destinationController.text.isNotEmpty)
+                          color: _hasSelectedDestination
                               ? const Color(0xFFFFD0D0)
                               : const Color(0xFFD5DBE5),
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: (_confirmedPinnedPosition != null ||
-                                    _selectedDestinationPosition != null ||
-                                    _destinationController.text.isNotEmpty)
+                            color: _hasSelectedDestination
                                 ? const Color(0x55FF6B6B)
                                 : const Color(0x338E98A8),
                             blurRadius: 18,
@@ -1373,16 +1419,10 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                         color: Colors.transparent,
                         child: InkWell(
                           borderRadius: BorderRadius.circular(18),
-                          onTap: (_confirmedPinnedPosition != null ||
-                                  _selectedDestinationPosition != null ||
-                                  _destinationController.text.isNotEmpty)
-                              ? _clearRoute
-                              : null,
+                          onTap: _hasSelectedDestination ? _clearRoute : null,
                           child: Icon(
                             Icons.delete_outline_rounded,
-                            color: (_confirmedPinnedPosition != null ||
-                                    _selectedDestinationPosition != null ||
-                                    _destinationController.text.isNotEmpty)
+                            color: _hasSelectedDestination
                                 ? Colors.white
                                 : Colors.white.withOpacity(0.78),
                             size: 24,
