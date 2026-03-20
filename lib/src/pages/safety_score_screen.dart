@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:usafe_front_end/core/services/api_service.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
 import 'package:usafe_front_end/features/auth/screens/login_screen.dart';
+import 'community_reports_portal_screen.dart';
 import 'safepath_scheduler_screen.dart';
 import 'safe_route_navigation_screen.dart'; // ← NEW import
 import 'score_detail_page.dart';
@@ -392,29 +393,7 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => ScoreDetailPage(
-          categoryKey: 'community_reports',
-          categoryTitle: 'Community Reports',
-          icon: Icons.forum_rounded,
-          status: _trafficLabel,
-          statusColor: _trafficColor,
-          parameters: [
-            ScoreParameter(
-              label: 'Population Density',
-              value: _populationLabel,
-              progress: _populationProgress,
-              color: _populationColor,
-              description: 'People per square kilometer in your area',
-            ),
-            ScoreParameter(
-              label: 'Traffic Level',
-              value: _trafficLabel,
-              progress: _trafficProgress,
-              color: _trafficColor,
-              description: 'Current traffic congestion status',
-            ),
-          ],
-        ),
+        builder: (_) => const CommunityReportsPortalScreen(),
       ),
     );
   }
@@ -771,8 +750,8 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
                       _buildScoreBar(
                         title: 'Community Reports',
                         icon: Icons.forum_rounded,
-                        summary: _trafficLabel,
-                        summaryColor: _trafficColor,
+                        summary: 'View live community updates',
+                        summaryColor: AppColors.primary,
                         onTap: _navigateToCommunityReports,
                       ),
                       const SizedBox(height: 12),
