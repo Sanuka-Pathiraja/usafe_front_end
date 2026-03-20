@@ -66,3 +66,4 @@ flutter:
     - assets/red-pin bg r.png
     - assets/models/yamnet.tflite
     - assets/models/yamnet_class_map.csv
+    - assets/models/scream_logmel_best.tflite
