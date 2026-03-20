@@ -10,6 +10,7 @@ import 'package:usafe_front_end/core/constants/app_colors.dart';
 import './payment_screen.dart';
 import './privacy_screen.dart';
 import './help_support_screen.dart';
+import './detector_page.dart';
 
 class SettingsPage extends StatefulWidget {
   final bool focusLocationSection;
@@ -31,6 +32,7 @@ class _SettingsPageState extends State<SettingsPage>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   bool shareLocation = true;
   bool notificationsEnabled = false;
+  bool activeMicrophoneListening = false;
   final GlobalKey _locationTileKey = GlobalKey();
   final ScrollController _scrollController = ScrollController();
   AnimationController? _highlightController;
@@ -85,6 +87,8 @@ class _SettingsPageState extends State<SettingsPage>
       }
       shareLocation = effectiveShare;
       notificationsEnabled = notificationStatus.isGranted;
+      activeMicrophoneListening =
+          prefs.getBool("active_microphone_listening") ?? false;
     });
   }
 
@@ -154,6 +158,26 @@ class _SettingsPageState extends State<SettingsPage>
         _showSnack("Cannot open app settings");
       }
     }
+  }
+
+  Future<void> _toggleActiveMicrophoneListening(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool("active_microphone_listening", value);
+
+    if (!mounted) return;
+    setState(() => activeMicrophoneListening = value);
+    _showSnack(
+      value
+          ? "Active microphone listening enabled"
+          : "Active microphone listening disabled",
+    );
+  }
+
+  void _openDetectorPage() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const DetectorPage()),
+    );
   }
 
   void _showSnack(String text) {
@@ -249,6 +273,8 @@ class _SettingsPageState extends State<SettingsPage>
                   ),
                 ],
               ),
+              const SizedBox(height: 20),
+              _buildAiFeaturesPanel(),
               const SizedBox(height: 20),
               _buildEmergencyPanel(),
               const SizedBox(height: 20),
@@ -550,6 +576,32 @@ class _SettingsPageState extends State<SettingsPage>
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildAiFeaturesPanel() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionTitle("AI Features"),
+        _buildSettingsPanel(
+          children: [
+            _premiumToggleTile(
+              icon: Icons.mic_none_rounded,
+              title: "Active Microphone Listening",
+              subtitle: "Allow AI features to listen in the background",
+              value: activeMicrophoneListening,
+              onChanged: _toggleActiveMicrophoneListening,
+            ),
+            _actionTile(
+              icon: Icons.open_in_new_rounded,
+              title: "Open AI Site",
+              subtitle: "Temporary button for future site navigation",
+              onTap: _openDetectorPage,
+            ),
+          ],
+        ),
+      ],
     );
   }
 

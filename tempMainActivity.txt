@@ -14,31 +14,21 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
-import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
-    companion object {
-        private const val CHANNEL = "com.usafe_frontend/sos"
-        private const val METHOD_CHANNEL = "usafe/monitor"
-        private const val EVENT_CHANNEL = "usafe/monitor_events"
-        private const val EXTRA_RESTORE_LISTENING = "restore_listening"
-        private const val NOTIFICATION_ID = 100
-        private const val NOTIFICATION_CHANNEL_ID = "sos_emergency_channel"
-        private const val SOS_SOURCE_KEY = "SOS_SOURCE"
-        private const val SOS_TRIGGERED_KEY = "SOS_TRIGGERED"
-        private const val ACTION_SOS_NOTIFICATION = "com.usafe_frontend.SOS_NOTIFICATION"
-        private const val ACTION_SOS_WIDGET = "com.usafe_frontend.SOS_WIDGET"
-        private const val ACTION_SOS_BADGE = "com.usafe_frontend.SOS_BADGE"
-        private const val TAG = "USafeSOS"
-    }
-
-    private var pendingRestoreRequest = false
+    private val CHANNEL = "com.usafe_frontend/sos"
+    private val NOTIFICATION_ID = 100
+    private val NOTIFICATION_CHANNEL_ID = "sos_emergency_channel"
+    private val SOS_SOURCE_KEY = "SOS_SOURCE"
+    private val SOS_TRIGGERED_KEY = "SOS_TRIGGERED"
+    private val ACTION_SOS_NOTIFICATION = "com.usafe_frontend.SOS_NOTIFICATION"
+    private val ACTION_SOS_WIDGET = "com.usafe_frontend.SOS_WIDGET"
+    private val ACTION_SOS_BADGE = "com.usafe_frontend.SOS_BADGE"
+    private val TAG = "USafeSOS"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        AppVisibilityTracker.install(application)
-        pendingRestoreRequest = intent?.getBooleanExtra(EXTRA_RESTORE_LISTENING, false) == true
         handleSOSIntent(intent)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
@@ -58,9 +48,6 @@ class MainActivity : FlutterActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (intent.getBooleanExtra(EXTRA_RESTORE_LISTENING, false)) {
-            pendingRestoreRequest = true
-        }
         handleSOSIntent(intent)
     }
 
@@ -90,45 +77,6 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
-
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, METHOD_CHANNEL)
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "startMonitoring" -> {
-                        SafetyMonitorService.startService(this)
-                        result.success(true)
-                    }
-                    "stopMonitoring" -> {
-                        SafetyMonitorService.stopService(this)
-                        result.success(true)
-                    }
-                    "restoreListening" -> {
-                        SafetyMonitorService.restoreListeningWhenVisible(this)
-                        result.success(true)
-                    }
-                    "consumeRestoreRequest" -> {
-                        val shouldRestore = pendingRestoreRequest
-                        if (shouldRestore) {
-                            Log.d("MainActivity", "Notification restore request consumed")
-                        }
-                        pendingRestoreRequest = false
-                        result.success(shouldRestore)
-                    }
-                    "getStatus" -> result.success(SafetyMonitorBridge.latestStatus.toMap())
-                    else -> result.notImplemented()
-                }
-            }
-
-        EventChannel(flutterEngine.dartExecutor.binaryMessenger, EVENT_CHANNEL)
-            .setStreamHandler(object : EventChannel.StreamHandler {
-                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
-                    SafetyMonitorBridge.attachSink(events)
-                }
-
-                override fun onCancel(arguments: Any?) {
-                    SafetyMonitorBridge.attachSink(null)
-                }
-            })
     }
 
     private fun handleSOSIntent(intent: Intent?) {
