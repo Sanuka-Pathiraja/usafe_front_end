@@ -1,6 +1,13 @@
 import 'dart:async';
+import 'dart:math' as math;
+import 'dart:ui';
+
+import 'package:battery_plus/battery_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
+import 'package:usafe_front_end/core/services/api_service.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
 
 class SafePathSchedulerScreen extends StatefulWidget {
@@ -14,6 +21,11 @@ class SafePathSchedulerScreen extends StatefulWidget {
 }
 
 class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
+  static const CameraPosition _initialMapCamera = CameraPosition(
+    target: LatLng(6.9271, 79.8612),
+    zoom: 14,
+  );
+
   // ── State toggle ──
   bool _isTripActive = false;
 
@@ -28,18 +40,155 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
   // ── Active Trip State ──
   int _remainingSeconds = 0;
   Timer? _countdownTimer;
+  Timer? _scoreRefreshTimer;
+  final Set<Marker> _checkpoints = <Marker>{};
+  int _checkpointSeed = 0;
+  String? _selectedCheckpointId;
+  int? _backendSafetyScore;
+  String _backendSafetyStatus = '';
+  bool _isFetchingBackendScore = false;
+
+  int get _configuredTripSeconds => _selectedDurationMins * 60;
+
+  int get _fallbackSafetyScore {
+    final baseline = 35;
+    final totalTripSeconds = math.max(1, _configuredTripSeconds);
+    final activeSeconds = _isTripActive ? _remainingSeconds : totalTripSeconds;
+
+    final timeRatio = (activeSeconds / totalTripSeconds).clamp(0.0, 1.0);
+    final timeScore = (timeRatio * 40).round();
+    final contactScore = math.min(_selectedContactIndices.length, 5) * 5;
+    final checkpointScore = math.min(_checkpoints.length, 4) * 3;
+
+    final lowTimePenalty = _isTripActive && _remainingSeconds < 180 ? 15 : 0;
+    final criticalTimePenalty =
+        _isTripActive && _remainingSeconds < 60 ? 10 : 0;
+
+    final rawScore = baseline +
+        timeScore +
+        contactScore +
+        checkpointScore -
+        lowTimePenalty -
+        criticalTimePenalty;
+    return rawScore.clamp(0, 100);
+  }
+
+  int get _liveSafetyScore => _backendSafetyScore ?? _fallbackSafetyScore;
+
+  String get _liveSafetyLabel {
+    final backendStatus = _backendSafetyStatus.trim().toUpperCase();
+    if (backendStatus.isNotEmpty &&
+        backendStatus != 'UNKNOWN' &&
+        backendStatus != 'CALCULATING...') {
+      return backendStatus;
+    }
+
+    if (_liveSafetyScore >= 80) return 'GOOD';
+    if (_liveSafetyScore >= 60) return 'CAUTION';
+    return 'CRITICAL';
+  }
+
+  Color get _liveSafetyColor {
+    final normalized = _backendSafetyStatus.toLowerCase();
+    if (normalized.contains('safe') || normalized.contains('success')) {
+      return AppColors.success;
+    }
+    if (normalized.contains('caution') || normalized.contains('moderate')) {
+      return const Color(0xFFFFC658);
+    }
+    if (normalized.contains('high risk') || normalized.contains('danger')) {
+      return AppColors.alert;
+    }
+
+    if (_liveSafetyScore >= 80) return AppColors.success;
+    if (_liveSafetyScore >= 60) return const Color(0xFFFFC658);
+    return AppColors.alert;
+  }
 
   @override
   void initState() {
     super.initState();
     _loadContacts();
+    _fetchBackendSafetyScore();
+    _startBackendScoreRefresh();
   }
 
   @override
   void dispose() {
+    _mapController?.dispose();
     _tripNameController.dispose();
     _countdownTimer?.cancel();
+    _scoreRefreshTimer?.cancel();
     super.dispose();
+  }
+
+  void _startBackendScoreRefresh() {
+    _scoreRefreshTimer?.cancel();
+    _scoreRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!mounted || _isFetchingBackendScore) return;
+      _fetchBackendSafetyScore();
+    });
+  }
+
+  Future<void> _fetchBackendSafetyScore() async {
+    if (_isFetchingBackendScore) return;
+    _isFetchingBackendScore = true;
+
+    try {
+      final battery = Battery();
+      final batteryLevel = await battery.batteryLevel;
+
+      Position? position;
+      var isLocationEnabled = await Geolocator.isLocationServiceEnabled();
+      if (isLocationEnabled) {
+        var permission = await Geolocator.checkPermission();
+        if (permission == LocationPermission.denied) {
+          permission = await Geolocator.requestPermission();
+        }
+
+        final hasPermission = permission != LocationPermission.denied &&
+            permission != LocationPermission.deniedForever;
+        if (hasPermission) {
+          try {
+            position = await Geolocator.getCurrentPosition(
+              desiredAccuracy: LocationAccuracy.medium,
+              timeLimit: const Duration(seconds: 8),
+            );
+          } catch (_) {
+            position = await Geolocator.getLastKnownPosition();
+          }
+        } else {
+          isLocationEnabled = false;
+        }
+      }
+
+      final response = await ApiService.fetchSafetyScore(
+        latitude: position?.latitude ?? _initialMapCamera.target.latitude,
+        longitude: position?.longitude ?? _initialMapCamera.target.longitude,
+        batteryLevel: batteryLevel,
+        isLocationEnabled: isLocationEnabled && position != null,
+        isSafePathActive: _isTripActive,
+      );
+
+      final rawScore = response['score'];
+      int? parsedScore;
+      if (rawScore is num) {
+        parsedScore = rawScore.toInt();
+      } else {
+        parsedScore = int.tryParse(rawScore?.toString() ?? '');
+      }
+
+      if (mounted) {
+        setState(() {
+          _backendSafetyScore = parsedScore;
+          _backendSafetyStatus = response['status']?.toString() ?? '';
+        });
+      }
+    } catch (_) {
+      // Keep UI responsive with local fallback score if backend request fails.
+    } finally {
+      _isFetchingBackendScore = false;
+    }
   }
 
   Future<void> _loadContacts() async {
@@ -74,6 +223,7 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
       _isTripActive = true;
       _remainingSeconds = _selectedDurationMins * 60;
     });
+    _fetchBackendSafetyScore();
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_remainingSeconds <= 0) {
         timer.cancel();
@@ -92,11 +242,70 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
       _isTripActive = false;
       _remainingSeconds = 0;
     });
+    _fetchBackendSafetyScore();
   }
 
   void _addTime(int minutes) {
     setState(() {
       _remainingSeconds += minutes * 60;
+    });
+  }
+
+  void _dropCheckpoint() {
+    _addCheckpointAt(_initialMapCamera.target, animateCamera: true);
+  }
+
+  void _addCheckpointAt(LatLng position, {bool animateCamera = false}) {
+    final id = 'checkpoint_${_checkpointSeed++}';
+    final markerId = MarkerId(id);
+
+    setState(() {
+      _selectedCheckpointId = id;
+      _checkpoints
+        ..removeWhere((m) => m.markerId == markerId)
+        ..add(
+          Marker(
+            markerId: markerId,
+            position: position,
+            infoWindow: InfoWindow(title: 'Checkpoint $_checkpointSeed'),
+            icon: BitmapDescriptor.defaultMarkerWithHue(
+              BitmapDescriptor.hueAzure,
+            ),
+            onTap: () => _selectCheckpoint(id),
+          ),
+        );
+    });
+
+    if (animateCamera && _mapController != null) {
+      // The map animates to the newest checkpoint so user can immediately verify it.
+      _mapController!.animateCamera(
+        CameraUpdate.newLatLng(position),
+      );
+    }
+  }
+
+  Future<void> _onMapTap(LatLng position) async {
+    _addCheckpointAt(position, animateCamera: false);
+  }
+
+  void _selectCheckpoint(String checkpointId) {
+    setState(() {
+      _selectedCheckpointId = checkpointId;
+      final updated = _checkpoints
+          .map(
+            (marker) => marker.copyWith(
+              iconParam: BitmapDescriptor.defaultMarkerWithHue(
+                marker.markerId.value == checkpointId
+                    ? BitmapDescriptor.hueAzure
+                    : BitmapDescriptor.hueRed,
+              ),
+            ),
+          )
+          .toSet();
+
+      _checkpoints
+        ..clear()
+        ..addAll(updated);
     });
   }
 
@@ -110,6 +319,8 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 
+  GoogleMapController? _mapController;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -119,7 +330,7 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
         elevation: 0,
         centerTitle: true,
         title: Text(
-          _isTripActive ? 'Trip Active' : 'SafePath Scheduler',
+          _isTripActive ? 'Trip Active' : 'SafePath Setup',
           style: const TextStyle(
             color: AppColors.textPrimary,
             fontWeight: FontWeight.w800,
@@ -246,6 +457,81 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
 
           const SizedBox(height: 24),
 
+          // ── Setup Map + Checkpoints ──
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: Stack(
+                children: [
+                  GoogleMap(
+                    initialCameraPosition: _initialMapCamera,
+                    myLocationButtonEnabled: true,
+                    zoomControlsEnabled: false,
+                    mapToolbarEnabled: false,
+                    onMapCreated: (controller) {
+                      _mapController = controller;
+                    },
+                    onTap: _onMapTap,
+                    markers: _checkpoints,
+                  ),
+                  Positioned(
+                    top: 10,
+                    left: 10,
+                    child: ElevatedButton.icon(
+                      onPressed: _dropCheckpoint,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF16233A),
+                        foregroundColor: Colors.white,
+                        elevation: 2,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      icon: const Icon(Icons.fiber_manual_record,
+                          size: 10, color: Color(0xFF13C48A)),
+                      label: const Text(
+                        'DROP CHECKPOINTS',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.2,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    right: 10,
+                    top: 10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.6),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '${_checkpoints.length} checkpoint${_checkpoints.length == 1 ? '' : 's'}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
           // ── Emergency Contacts ──
           const Text('NOTIFY CONTACTS',
               style: TextStyle(
@@ -347,7 +633,7 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
                       ),
           ),
 
-          const Spacer(),
+          const SizedBox(height: 20),
 
           // ── Start Trip Button ──
           SizedBox(
@@ -387,6 +673,7 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
         ? _tripNameController.text.trim()
         : 'Active Trip';
     final isUrgent = _remainingSeconds < 300; // < 5 mins = urgent
+    final score = _liveSafetyScore;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -442,12 +729,73 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
             ),
           ),
 
-          const Spacer(flex: 1),
+          const SizedBox(height: 14),
+
+          // ── Live Safety Score ──
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  AppColors.primary.withOpacity(0.2),
+                  AppColors.primary.withOpacity(0.08),
+                ],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.primary.withOpacity(0.35)),
+            ),
+            child: Column(
+              children: [
+                const Text(
+                  'LIVE SAFETY SCORE',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  '$score',
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 52,
+                    fontWeight: FontWeight.w900,
+                    height: 1,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _liveSafetyColor.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(10),
+                    border:
+                        Border.all(color: _liveSafetyColor.withOpacity(0.35)),
+                  ),
+                  child: Text(
+                    _liveSafetyLabel,
+                    style: TextStyle(
+                      color: _liveSafetyColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.0,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
 
           // ── Massive Countdown Timer ──
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 40),
+            padding: const EdgeInsets.symmetric(vertical: 22),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: isUrgent
@@ -485,7 +833,7 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
                   _formatTime(_remainingSeconds),
                   style: TextStyle(
                     color: isUrgent ? AppColors.alert : AppColors.textPrimary,
-                    fontSize: 64,
+                    fontSize: 46,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 4,
                     fontFeatures: const [FontFeature.tabularFigures()],
@@ -497,38 +845,110 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
 
           const SizedBox(height: 20),
 
-          // ── Map Placeholder ──
+          // ── Live Map + Checkpoints ──
           Expanded(
             flex: 2,
-            child: Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: AppColors.border.withOpacity(0.5)),
-              ),
-              child: const Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.map_rounded,
-                        color: AppColors.textSecondary, size: 40),
-                    SizedBox(height: 8),
-                    Text(
-                      'Live Map View',
-                      style: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: Stack(
+                children: [
+                  GoogleMap(
+                    initialCameraPosition: _initialMapCamera,
+                    myLocationButtonEnabled: true,
+                    zoomControlsEnabled: false,
+                    mapToolbarEnabled: false,
+                    onMapCreated: (controller) {
+                      _mapController = controller;
+                    },
+                    onTap: _onMapTap,
+                    markers: _checkpoints,
+                  ),
+                  Positioned(
+                    top: 10,
+                    left: 10,
+                    child: ElevatedButton.icon(
+                      onPressed: _dropCheckpoint,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF16233A),
+                        foregroundColor: Colors.white,
+                        elevation: 2,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      icon: const Icon(Icons.fiber_manual_record,
+                          size: 10, color: Color(0xFF13C48A)),
+                      label: const Text(
+                        'DROP CHECKPOINTS',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.2,
+                          fontSize: 11,
+                        ),
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                  if (_selectedCheckpointId != null)
+                    Positioned(
+                      right: 10,
+                      bottom: 10,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.6),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          'Selected: ${_selectedCheckpointId!.replaceFirst('checkpoint_', '#')}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
 
           const SizedBox(height: 20),
+
+          // ── Bottom Feature Bars ──
+          _buildFeatureBar(
+            title: 'SafePath Navigation',
+            icon: Icons.navigation_rounded,
+            value: _checkpoints.isNotEmpty ? 'Enabled' : 'Standby',
+            valueColor: _checkpoints.isNotEmpty
+                ? AppColors.success
+                : AppColors.textSecondary,
+          ),
+          const SizedBox(height: 10),
+          _buildFeatureBar(
+            title: 'Community Reports',
+            icon: Icons.forum_rounded,
+            value: _liveSafetyLabel,
+            valueColor: _liveSafetyColor,
+          ),
+          const SizedBox(height: 10),
+          _buildFeatureBar(
+            title: 'SafePath Guardian Features',
+            icon: Icons.shield_moon_rounded,
+            value: _selectedContactIndices.isNotEmpty
+                ? '${_selectedContactIndices.length} linked'
+                : 'No contacts',
+            valueColor: _selectedContactIndices.isNotEmpty
+                ? AppColors.primary
+                : AppColors.textSecondary,
+          ),
 
           // ── Action Buttons Row ──
           Row(
@@ -582,7 +1002,7 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
                 ),
               ),
               const SizedBox(width: 10),
-              // SOS Button
+// SOS Button
               SizedBox(
                 width: 56,
                 height: 56,
@@ -604,6 +1024,55 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
             ],
           ),
           const SizedBox(height: 120), // Bottom nav clearance
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFeatureBar({
+    required String title,
+    required IconData icon,
+    required String value,
+    required Color valueColor,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border.withOpacity(0.55)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 17, color: AppColors.primary),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              color: valueColor,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
         ],
       ),
     );

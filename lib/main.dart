@@ -6,12 +6,21 @@ import 'core/services/tone_sos_bridge_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/services/diagnostics_service.dart';
-import 'src/config/app_config.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  MapboxOptions.setAccessToken(mapboxPublicToken);
   await _loadEnvironment();
+
+  final mapboxToken = (dotenv.env['MAPBOX_PUBLIC_TOKEN'] ??
+          const String.fromEnvironment(
+            'MAPBOX_PUBLIC_TOKEN',
+            defaultValue: '',
+          ))
+      .trim();
+  if (mapboxToken.isNotEmpty) {
+    MapboxOptions.setAccessToken(mapboxToken);
+  }
+
   await Supabase.initialize(
     url: _readRequiredConfig('SUPABASE_URL'),
     anonKey: _readRequiredConfig('SUPABASE_KEY'),
