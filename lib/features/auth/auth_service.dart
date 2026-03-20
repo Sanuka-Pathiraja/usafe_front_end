@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:usafe_front_end/core/services/push_notification_service.dart';
 
 class EmergencyApiException implements Exception {
   final int statusCode;
@@ -56,6 +57,7 @@ class AuthService {
       // Prevent stale profile data from previous sessions.
       await prefs.remove(_userKey);
     }
+    await PushNotificationService.syncTokenWithBackend();
   }
 
   static Future<String> getToken() async {
@@ -378,6 +380,7 @@ class AuthService {
   }
 
   static Future<void> logout() async {
+    await PushNotificationService.unregisterTokenFromBackend();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
     await prefs.remove('token');

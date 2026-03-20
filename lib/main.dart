@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'app.dart';
+import 'core/services/push_notification_service.dart';
 import 'features/auth/auth_service.dart';
 import 'core/services/tone_sos_bridge_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -10,6 +13,10 @@ import 'core/services/diagnostics_service.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await _loadEnvironment();
+  await Firebase.initializeApp();
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  await PushNotificationService.initialize();
+  await PushNotificationService.syncTokenWithBackend();
 
   final mapboxToken = (dotenv.env['MAPBOX_PUBLIC_TOKEN'] ??
           const String.fromEnvironment(

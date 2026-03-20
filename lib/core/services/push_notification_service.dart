@@ -30,6 +30,10 @@ class PushNotificationService {
 
   static bool _initialized = false;
 
+  static Future<void> initializeLocalAlertsOnly() async {
+    await _initializeLocalNotifications();
+  }
+
   static Future<void> initialize() async {
     if (_initialized) return;
 
@@ -149,6 +153,34 @@ class PushNotificationService {
     }
   }
 
+  static Future<void> disableRemotePushNotifications() async {
+    try {
+      await Firebase.initializeApp();
+    } catch (_) {
+      // Firebase may already be initialized in some runtimes.
+    }
+
+    try {
+      final authToken = await _currentAuthToken();
+      final pushToken = (await _messaging.getToken())?.trim() ?? '';
+      if (pushToken.isNotEmpty && authToken.isNotEmpty) {
+        await _unregisterTokenFromBackend(
+          pushToken: pushToken,
+          authToken: authToken,
+        );
+      }
+
+      await _messaging.deleteToken();
+      await _messaging.setAutoInitEnabled(false);
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_cachedPushTokenKey);
+      await prefs.remove(_pendingPayloadKey);
+    } catch (e) {
+      debugPrint('[PushNotification] Failed to disable remote push: $e');
+    }
+  }
+
   static Future<void> processPendingLaunchPayload() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_pendingPayloadKey) ?? '';
@@ -180,10 +212,24 @@ class PushNotificationService {
         channelDescription: _channelDescription,
         importance: Importance.max,
         priority: Priority.high,
+        color: Color(0xFFD32F2F),
+        colorized: true,
         category: AndroidNotificationCategory.alarm,
         visibility: NotificationVisibility.public,
         playSound: true,
-        ticker: 'USafe emergency alert',
+        enableLights: true,
+        enableVibration: true,
+        ledColor: Color(0xFFD32F2F),
+        ledOnMs: 1200,
+        ledOffMs: 400,
+        ticker: 'USafe danger alert',
+        icon: '@mipmap/ic_launcher',
+        subText: 'USafe Caution Alert',
+        styleInformation: BigTextStyleInformation(
+          'Your live safety score is critically low. Open USafe now and activate Emergency if you feel unsafe.',
+          contentTitle: 'Danger Nearby',
+          summaryText: 'Immediate action recommended',
+        ),
       ),
       iOS: DarwinNotificationDetails(
         presentAlert: true,
@@ -194,8 +240,8 @@ class PushNotificationService {
 
     await _localNotifications.show(
       DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      title,
-      body,
+      'USafe Danger Alert',
+      'Safety score is critically low. Tap to open Emergency.',
       details,
       payload: jsonEncode(payload),
     );
@@ -331,6 +377,38 @@ class PushNotificationService {
   static Future<void> _storePendingPayload(Map<String, dynamic> payload) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_pendingPayloadKey, jsonEncode(payload));
+  }
+
+  static Future<void> _unregisterTokenFromBackend({
+    required String pushToken,
+    required String authToken,
+  }) async {
+    const endpoints = <String>[
+      '/notification/device-token',
+      '/notifications/device-token',
+      '/user/device-token',
+      '/push/device-token',
+    ];
+
+    for (final path in endpoints) {
+      try {
+        final resp = await http.delete(
+          Uri.parse('$_backendUrl$path'),
+          headers: <String, String>{
+            'Authorization': 'Bearer $authToken',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode(<String, dynamic>{'token': pushToken}),
+        );
+
+        if (resp.statusCode == 404 || resp.statusCode == 405) {
+          continue;
+        }
+        return;
+      } catch (_) {
+        return;
+      }
+    }
   }
 
   static String get _platformLabel {

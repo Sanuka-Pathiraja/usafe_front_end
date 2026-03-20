@@ -6,6 +6,7 @@ import 'package:battery_plus/battery_plus.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:usafe_front_end/core/services/api_service.dart';
+import 'package:usafe_front_end/core/services/push_notification_service.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
 import 'package:usafe_front_end/features/auth/screens/login_screen.dart';
 import 'community_reports_portal_screen.dart';
@@ -28,6 +29,12 @@ class SafetyScoreScreen extends StatefulWidget {
 }
 
 class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
+  static const int _lowSafetyThreshold = 40;
+  static const int _notificationCooldownMs = 15 * 60 * 1000;
+  static const String _lastSafetyScoreKey = 'last_safety_score_value';
+  static const String _lastLowSafetyNotificationAtKey =
+      'last_low_safety_notification_at';
+
   int? _safetyScore;
   String _status = 'Calculating...';
   List<String> _tips = [];
@@ -41,6 +48,7 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
   @override
   void initState() {
     super.initState();
+    PushNotificationService.initializeLocalAlertsOnly();
     _fetchSafetyData();
     _startLiveRefresh();
   }
@@ -113,12 +121,13 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
         isLocationEnabled: serviceEnabled && position != null,
         jwt: token,
       );
+      final currentScore = (response['score'] is num)
+          ? (response['score'] as num).toInt()
+          : int.tryParse(response['score']?.toString() ?? '');
 
       if (mounted) {
         setState(() {
-          _safetyScore = (response['score'] is num)
-              ? (response['score'] as num).toInt()
-              : int.tryParse(response['score']?.toString() ?? '');
+          _safetyScore = currentScore;
           _status = response['status']?.toString() ?? 'Unknown';
           _fullResponse = response;
           if (response['tips'] != null) {
@@ -130,6 +139,8 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
           _requiresLogin = false;
         });
       }
+
+      await _maybeTriggerLowSafetyLocalNotification(currentScore);
     } catch (e) {
       final isAuthError = _isAuthError(e);
       if (isAuthError) {
@@ -168,6 +179,40 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
   Future<void> _setShareLocationPref(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool("share_location", value);
+  }
+
+  Future<void> _maybeTriggerLowSafetyLocalNotification(int? score) async {
+    final prefs = await SharedPreferences.getInstance();
+    final previousScore = prefs.getInt(_lastSafetyScoreKey);
+    await prefs.setInt(_lastSafetyScoreKey, score ?? -1);
+
+    if (score == null || score >= _lowSafetyThreshold) {
+      return;
+    }
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final lastNotifiedAt = prefs.getInt(_lastLowSafetyNotificationAtKey) ?? 0;
+    final wasPreviouslyLow =
+        previousScore != null &&
+        previousScore >= 0 &&
+        previousScore < _lowSafetyThreshold;
+    final cooldownPassed = (now - lastNotifiedAt) >= _notificationCooldownMs;
+
+    if (wasPreviouslyLow && !cooldownPassed) {
+      return;
+    }
+
+    await PushNotificationService.showLocalLowSafetyNotification(
+      title: 'Safety Score Is Low',
+      body: 'Your safety score dropped below 40. Activate Emergency now.',
+      payload: <String, dynamic>{
+        'type': 'low_safety_score',
+        'score': score.toString(),
+        'threshold': _lowSafetyThreshold.toString(),
+        'source': 'local_safety_score_check',
+      },
+    );
+    await prefs.setInt(_lastLowSafetyNotificationAtKey, now);
   }
 
   Future<Position?> _getSafePosition() async {

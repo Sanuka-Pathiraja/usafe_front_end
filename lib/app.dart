@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'core/services/app_navigation_service.dart';
+import 'core/services/push_notification_service.dart';
 import 'core/theme/app_theme.dart';
 import 'src/pages/splash_screen.dart';
 import 'widgets/sos_screen.dart';
@@ -13,7 +15,6 @@ class USafeApp extends StatefulWidget {
 }
 
 class _USafeAppState extends State<USafeApp> with WidgetsBindingObserver {
-  final GlobalKey<NavigatorState> _navKey = GlobalKey<NavigatorState>();
   static const MethodChannel _sosChannel =
       MethodChannel('com.usafe_frontend/sos');
   bool _handlingSos = false;
@@ -24,6 +25,9 @@ class _USafeAppState extends State<USafeApp> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _sosChannel.setMethodCallHandler(_handleSosMethodCall);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      PushNotificationService.processPendingLaunchPayload();
+    });
   }
 
   @override
@@ -50,7 +54,7 @@ class _USafeAppState extends State<USafeApp> with WidgetsBindingObserver {
 
   Future<void> _startSosFlow({String? source}) async {
     if (_handlingSos) return;
-    final nav = _navKey.currentState;
+    final nav = appNavigatorKey.currentState;
     if (nav == null) return;
 
     _handlingSos = true;
@@ -112,7 +116,7 @@ class _USafeAppState extends State<USafeApp> with WidgetsBindingObserver {
     return MaterialApp(
       title: 'USafe',
       debugShowCheckedModeBanner: false,
-      navigatorKey: _navKey,
+      navigatorKey: appNavigatorKey,
 
       // Injecting the new Design System
       theme: AppTheme.darkTheme, // 👉 Locks in the new Master Theme
