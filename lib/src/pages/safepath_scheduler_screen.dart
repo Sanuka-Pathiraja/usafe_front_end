@@ -162,12 +162,14 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
         }
       }
 
+      final token = await AuthService.getToken();
       final response = await ApiService.fetchSafetyScore(
         latitude: position?.latitude ?? _initialMapCamera.target.latitude,
         longitude: position?.longitude ?? _initialMapCamera.target.longitude,
         batteryLevel: batteryLevel,
         isLocationEnabled: isLocationEnabled && position != null,
         isSafePathActive: _isTripActive,
+        jwt: token.isEmpty ? null : token,
       );
 
       final rawScore = response['score'];

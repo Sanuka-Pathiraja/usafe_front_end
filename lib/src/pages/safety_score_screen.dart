@@ -6,6 +6,7 @@ import 'package:battery_plus/battery_plus.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:usafe_front_end/core/services/api_service.dart';
+import 'package:usafe_front_end/features/auth/auth_service.dart';
 import 'safepath_scheduler_screen.dart';
 import 'score_detail_page.dart';
 
@@ -95,10 +96,13 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
           await _getSafePosition() ?? await Geolocator.getLastKnownPosition();
       final latitude = position?.latitude ?? 37.7749;
       final longitude = position?.longitude ?? -122.4194;
+      final token = await AuthService.getToken();
       final response = await ApiService.fetchSafetyScore(
         latitude: latitude,
         longitude: longitude,
         batteryLevel: batteryLevel,
+        isLocationEnabled: serviceEnabled && position != null,
+        jwt: token.isEmpty ? null : token,
       );
 
       if (mounted) {
@@ -493,25 +497,36 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
             ),
             const SizedBox(width: 14),
             Expanded(
-              child: Text(
-                title,
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.3,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    summary,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: summaryColor,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
               ),
             ),
-            Text(
-              summary,
-              style: TextStyle(
-                color: summaryColor,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 8),
             const Icon(
               Icons.chevron_right_rounded,
               color: AppColors.textSecondary,
@@ -548,7 +563,7 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
                       children: [
                         const Icon(Icons.error_outline,
                             color: AppColors.alert, size: 48),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 24),
                         Text(
                           _errorMessage,
                           textAlign: TextAlign.center,
@@ -565,7 +580,7 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
                     ),
                   ),
                 )
-              : Padding(
+              : SingleChildScrollView(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                   child: Column(
@@ -721,7 +736,6 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
                         onTap: _navigateToSafePathGuardian,
                       ),
 
-                      const Spacer(),
 
                       // ── Quick Actions hint ──
                       if (_tips.isEmpty) ...[
@@ -790,6 +804,7 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
                           ),
                         ),
                       ],
+                      const SizedBox(height: 24),
                     ],
                   ),
                 ),
