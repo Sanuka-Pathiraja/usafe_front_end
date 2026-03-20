@@ -125,9 +125,13 @@ class SafetyMonitorService : Service() {
     private val hits100 = ArrayDeque<Long>()
     private val audioSources = intArrayOf(
         MediaRecorder.AudioSource.MIC,
+        MediaRecorder.AudioSource.VOICE_RECOGNITION,
+        MediaRecorder.AudioSource.DEFAULT,
+        MediaRecorder.AudioSource.CAMCORDER,
     )
     private var audioSourceIndex = 0
     private var lastDanger = false
+    private var lastProbability = 0.0
 
     @Volatile
     private var lastAudioAtMs: Long = 0L
@@ -264,6 +268,7 @@ class SafetyMonitorService : Service() {
             val buffer = ShortArray(2048)
             var lastFingerprint: AudioFingerprint? = null
             var lastDistinctAudioAtMs = System.currentTimeMillis()
+            var lastNonZeroAudioAtMs = lastDistinctAudioAtMs
             val recorderStartedAt = System.currentTimeMillis()
             var startupInferenceReady = false
 
@@ -278,11 +283,26 @@ class SafetyMonitorService : Service() {
                     val now = System.currentTimeMillis()
 
                     if (read > 0) {
-                        Log.d(TAG, "AudioRecord.read() -> $read")
+                        Log.d(
+                            TAG,
+                            "AudioRecord.read() -> $read lastProbability=$lastProbability " +
+                                "hits90=${hits90.size} hits95=${hits95.size} hits100=${hits100.size} " +
+                                "captureState=$captureState",
+                        )
                         lastAudioAtMs = now
                         val meanAbsAmplitude = meanAbsoluteAmplitude(buffer, read)
+                        val allZeroBuffer = isAllZeroBuffer(buffer, read)
                         val fingerprint = fingerprint(buffer, read, meanAbsAmplitude)
                         val inStartupGrace = isInitialStartup && now - recorderStartedAt < STARTUP_GRACE_MS
+                        if (!allZeroBuffer) {
+                            lastNonZeroAudioAtMs = now
+                        } else if (!inStartupGrace && now - lastNonZeroAudioAtMs > STAGNANT_AUDIO_MS) {
+                            Log.w(
+                                TAG,
+                                "Audio stream returned all-zero buffers for ${now - lastNonZeroAudioAtMs}ms; forcing recovery",
+                            )
+                            break
+                        }
                         if (lastFingerprint == null || lastFingerprint != fingerprint) {
                             lastFingerprint = fingerprint
                             lastDistinctAudioAtMs = now
@@ -379,6 +399,7 @@ class SafetyMonitorService : Service() {
                                 Log.e(TAG, "Inference failed", e)
                                 continue
                             }
+                            lastProbability = probability
                             if (isInitialStartup && startupInferenceReady && now - recorderStartedAt >= STARTUP_GRACE_MS) {
                                 isInitialStartup = false
                                 Log.d(TAG, "Initial startup grace phase complete; switching to steady-state monitoring")
@@ -609,6 +630,7 @@ class SafetyMonitorService : Service() {
         recoveryFingerprintCount = 0
         lastRecoveryMeanAbs = 0.0
         lastAudioAtMs = System.currentTimeMillis()
+        lastProbability = 0.0
         isInitialStartup = true
     }
 
@@ -860,6 +882,16 @@ class SafetyMonitorService : Service() {
             sum += kotlin.math.abs(buffer[i].toInt()) / 32768.0
         }
         return sum / read
+    }
+
+    private fun isAllZeroBuffer(buffer: ShortArray, read: Int): Boolean {
+        if (read <= 0) return true
+        for (i in 0 until read) {
+            if (buffer[i].toInt() != 0) {
+                return false
+            }
+        }
+        return true
     }
 
     private fun enterStuckState(fromManualRestart: Boolean) {
