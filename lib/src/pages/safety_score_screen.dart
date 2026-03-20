@@ -7,7 +7,9 @@ import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:usafe_front_end/core/services/api_service.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
+import 'package:usafe_front_end/features/auth/screens/login_screen.dart';
 import 'safepath_scheduler_screen.dart';
+import 'safe_route_navigation_screen.dart'; // ← NEW import
 import 'score_detail_page.dart';
 
 class SafetyScoreScreen extends StatefulWidget {
@@ -30,6 +32,7 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
   List<String> _tips = [];
   bool _isLoading = true;
   bool _isRefreshing = false;
+  bool _requiresLogin = false;
   String _errorMessage = '';
   Map<String, dynamic> _fullResponse = {};
   Timer? _liveRefreshTimer;
@@ -61,11 +64,17 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
       setState(() {
         _isLoading = true;
         _errorMessage = '';
+        _requiresLogin = false;
       });
     }
 
     _isRefreshing = true;
     try {
+      final token = await AuthService.getToken();
+      if (token.isEmpty) {
+        throw Exception('Session expired. Please re-login.');
+      }
+
       final battery = Battery();
       final batteryLevel = await battery.batteryLevel;
 
@@ -96,13 +105,12 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
           await _getSafePosition() ?? await Geolocator.getLastKnownPosition();
       final latitude = position?.latitude ?? 37.7749;
       final longitude = position?.longitude ?? -122.4194;
-      final token = await AuthService.getToken();
       final response = await ApiService.fetchSafetyScore(
         latitude: latitude,
         longitude: longitude,
         batteryLevel: batteryLevel,
         isLocationEnabled: serviceEnabled && position != null,
-        jwt: token.isEmpty ? null : token,
+        jwt: token,
       );
 
       if (mounted) {
@@ -118,18 +126,42 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
           }
           _isLoading = false;
           _errorMessage = '';
+          _requiresLogin = false;
         });
       }
-    } catch (e, stacktrace) {
+    } catch (e) {
+      final isAuthError = _isAuthError(e);
+      if (isAuthError) {
+        _liveRefreshTimer?.cancel();
+      }
       if (mounted) {
         setState(() {
-          _errorMessage = '${e.toString()}\n\n$stacktrace';
+          _errorMessage =
+              isAuthError ? 'Session expired. Please re-login.' : e.toString();
           _isLoading = false;
+          _requiresLogin = isAuthError;
         });
       }
     } finally {
       _isRefreshing = false;
     }
+  }
+
+  bool _isAuthError(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('401') ||
+        message.contains('unauthorized') ||
+        message.contains('no token provided') ||
+        message.contains('re-login');
+  }
+
+  Future<void> _goToLogin() async {
+    _liveRefreshTimer?.cancel();
+    await AuthService.logout();
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+    );
   }
 
   Future<void> _setShareLocationPref(bool value) async {
@@ -354,6 +386,8 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
     return 0;
   }
 
+  // ── Navigation handlers ───────────────────────────────────────────────────
+
   void _navigateToCommunityReports() {
     Navigator.push(
       context,
@@ -385,11 +419,12 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
     );
   }
 
+  /// Tapping "Safepath Navigation" now opens SafeRouteNavigationScreen.
   void _navigateToSafePathNavigation() {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => const SafePathSchedulerScreen(),
+        builder: (_) => const SafeRouteNavigationScreen(),
       ),
     );
   }
@@ -461,6 +496,8 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
       ),
     );
   }
+
+  // ── Shared card widget ────────────────────────────────────────────────────
 
   Widget _buildScoreBar({
     required String title,
@@ -538,10 +575,38 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
     );
   }
 
+  // ── Build ─────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
+      // ── AppBar with Back to Home button ──────────────────────────────────
+      appBar: AppBar(
+        backgroundColor: AppColors.background,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+          onPressed: () {
+            if (widget.onBackHome != null) {
+              widget.onBackHome!();
+              return;
+            }
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            }
+          },
+        ),
+        title: const Text(
+          'Safety Score',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        centerTitle: true,
+      ),
+      // ─────────────────────────────────────────────────────────────────────
       body: _isLoading
           ? const Center(
               child: Column(
@@ -572,9 +637,13 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
                         const SizedBox(height: 24),
                         ElevatedButton(
                           onPressed: () {
+                            if (_requiresLogin) {
+                              _goToLogin();
+                              return;
+                            }
                             _fetchSafetyData();
                           },
-                          child: const Text('Retry'),
+                          child: Text(_requiresLogin ? 'Re-Login' : 'Retry'),
                         )
                       ],
                     ),
@@ -587,15 +656,6 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // ── Header ──
-                      const Text(
-                        'Safety Score',
-                        style: TextStyle(
-                          color: AppColors.textPrimary,
-                          fontSize: 28,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
                       const SizedBox(height: 4),
                       const Text(
                         'Your current safety overview',
@@ -639,7 +699,6 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
                         ),
                         child: Column(
                           children: [
-                            // Shield icon
                             Container(
                               padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
@@ -653,8 +712,6 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
                               ),
                             ),
                             const SizedBox(height: 20),
-
-                            // Big score number
                             Text(
                               '${_safetyScore ?? 0}',
                               style: const TextStyle(
@@ -666,8 +723,7 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
                               ),
                             ),
                             const SizedBox(height: 16),
-
-                            // Status badge (tap to view live score parameters)
+                            // Status badge → Safety Score Details
                             GestureDetector(
                               onTap: _navigateToSafetyScoreDetails,
                               child: Container(
@@ -700,9 +756,9 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
                       const SizedBox(height: 40),
 
                       // ── Breakdown Section ──
-                      Text(
+                      const Text(
                         'Breakdown',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppColors.textPrimary,
                           fontSize: 18,
                           fontWeight: FontWeight.w800,
@@ -711,7 +767,7 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      // ── Score Category Bars - Navigate to Details ──
+                      // 1. Community Reports
                       _buildScoreBar(
                         title: 'Community Reports',
                         icon: Icons.forum_rounded,
@@ -720,6 +776,8 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
                         onTap: _navigateToCommunityReports,
                       ),
                       const SizedBox(height: 12),
+
+                      // 2. Safepath Navigation → SafeRouteNavigationScreen
                       _buildScoreBar(
                         title: 'Safepath Navigation',
                         icon: Icons.navigation_rounded,
@@ -728,6 +786,8 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
                         onTap: _navigateToSafePathNavigation,
                       ),
                       const SizedBox(height: 12),
+
+                      // 3. Safepath Guardian
                       _buildScoreBar(
                         title: 'Safepath Guardian',
                         icon: Icons.shield_rounded,
@@ -736,8 +796,7 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
                         onTap: _navigateToSafePathGuardian,
                       ),
 
-
-                      // ── Quick Actions hint ──
+                      // ── Quick Actions hint (shown when no tips) ──
                       if (_tips.isEmpty) ...[
                         const SizedBox(height: 16),
                         GestureDetector(
@@ -745,8 +804,7 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) =>
-                                    const SafePathSchedulerScreen(),
+                                builder: (_) => const SafePathSchedulerScreen(),
                               ),
                             );
                           },

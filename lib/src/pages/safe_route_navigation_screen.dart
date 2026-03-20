@@ -4,7 +4,7 @@ import 'package:geocoding/geocoding.dart' as geocoding;
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:location/location.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
-import 'package:usafe_front_end/src/config/app_config.dart'; // For mapboxPublicToken
+import 'package:usafe_front_end/src/config/app_config.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'dart:math';
@@ -22,14 +22,16 @@ class SafeRouteNavigationScreen extends StatefulWidget {
 }
 
 class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
+  // ── Map controllers ──────────────────────────────────────────────────────
   MapboxMap? _mapController;
   PolylineAnnotationManager? _polylineManager;
   PointAnnotationManager? _pointAnnotationManager;
   CircleAnnotationManager? _userLocationManager;
   CircleAnnotation? _userLocationAnnotation;
-  static const double _myLocationZoomOutLevel = 14.5;
-  late final Widget _mapView;
 
+  static const double _myLocationZoomOutLevel = 14.5;
+
+  // ── Search ───────────────────────────────────────────────────────────────
   final TextEditingController _destinationController = TextEditingController();
   final Location _location = Location();
 
@@ -40,6 +42,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   String? _selectedDestinationMapboxId;
   Position? _selectedDestinationPosition;
 
+  // ── Route state ──────────────────────────────────────────────────────────
   LocationData? _currentPosition;
   String _distanceText = "Distance: --";
   String _durationText = "Estimated Time: --";
@@ -47,18 +50,37 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   bool _hasActiveRoute = false;
   StreamSubscription<LocationData>? _locationSubscription;
   int _suggestionRequestId = 0;
+
+  // ── Pin-pick state ───────────────────────────────────────────────────────
   bool _isPickingDestination = false;
   Position? _pendingPinnedPosition;
   Position? _confirmedPinnedPosition;
   Uint8List? _destinationMarkerBytes;
+
+  // ── Sheet state ──────────────────────────────────────────────────────────
   double _sheetExtent = 0.12;
 
+  // ── Computed ─────────────────────────────────────────────────────────────
   bool get _hasSelectedDestination =>
       _confirmedPinnedPosition != null ||
       _selectedDestinationPosition != null ||
       _destinationController.text.trim().isNotEmpty;
 
   bool get _showRouteDetails => _hasSelectedDestination && _hasActiveRoute;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Lifecycle
+  // ─────────────────────────────────────────────────────────────────────────
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshSearchSessionToken();
+    // FIX 1 ─ Set the Mapbox access token here, synchronously, before the
+    // first frame renders the MapWidget.  This is the correct place when the
+    // screen is pushed via Navigator (i.e. NOT set at app startup in main()).
+    MapboxOptions.setAccessToken(mapboxToken);
+  }
 
   @override
   void dispose() {
@@ -68,46 +90,25 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     super.dispose();
   }
 
-  @override
-  void initState() {
-    super.initState();
-    _refreshSearchSessionToken();
-    _mapView = RepaintBoundary(
-      child: MapWidget(
-        key: const ValueKey("mapbox_map"),
-        styleUri: MapboxStyles.STANDARD,
-        cameraOptions: CameraOptions(
-          center: Point(
-            coordinates: Position(80.7718, 7.8731),
-          ),
-          zoom: 7,
-        ),
-        onTapListener: (_) async {
-          if (!mounted) return;
-          FocusScope.of(context).unfocus();
-        },
-        onCameraChangeListener: (event) {
-          if (!_isPickingDestination) return;
-          _pendingPinnedPosition = _positionFromPoint(event.cameraState.center);
-        },
-        onMapIdleListener: (_) {
-          if (!mounted || !_isPickingDestination) return;
-          setState(() {});
-        },
-        onMapCreated: (map) async {
-          _mapController = map;
-          _polylineManager =
-              await map.annotations.createPolylineAnnotationManager();
-          _pointAnnotationManager =
-              await map.annotations.createPointAnnotationManager();
-          _userLocationManager =
-              await map.annotations.createCircleAnnotationManager();
+  // ─────────────────────────────────────────────────────────────────────────
+  // Map creation callback  ← FIX 2: map is built in build(), not initState()
+  // ─────────────────────────────────────────────────────────────────────────
 
-          await _startUserLocationTracking();
-        },
-      ),
-    );
+  Future<void> _onMapCreated(MapboxMap map) async {
+    _mapController = map;
+
+    _polylineManager = await map.annotations.createPolylineAnnotationManager();
+    _pointAnnotationManager =
+        await map.annotations.createPointAnnotationManager();
+    _userLocationManager =
+        await map.annotations.createCircleAnnotationManager();
+
+    await _startUserLocationTracking();
   }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Location helpers
+  // ─────────────────────────────────────────────────────────────────────────
 
   void _showSnackBar(String message) {
     if (!mounted) return;
@@ -117,12 +118,12 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
 
   void _refreshSearchSessionToken() {
     final random = Random.secure();
-    final bytes =
-        List<int>.generate(16, (_) => random.nextInt(256)).map((value) {
-      return value.toRadixString(16).padLeft(2, '0');
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256)).map((v) {
+      return v.toRadixString(16).padLeft(2, '0');
     }).join();
-    _searchSessionToken =
-        '${bytes.substring(0, 8)}-${bytes.substring(8, 12)}-${bytes.substring(12, 16)}-${bytes.substring(16, 20)}-${bytes.substring(20, 32)}';
+    _searchSessionToken = '${bytes.substring(0, 8)}-${bytes.substring(8, 12)}-'
+        '${bytes.substring(12, 16)}-${bytes.substring(16, 20)}-'
+        '${bytes.substring(20, 32)}';
   }
 
   String _buildSearchBoxCommonParams() {
@@ -133,34 +134,28 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       'language=en',
       'country=LK',
     ];
-
-    if (_currentPosition?.longitude != null && _currentPosition?.latitude != null) {
+    if (_currentPosition?.longitude != null &&
+        _currentPosition?.latitude != null) {
       params.add(
-        'proximity=${_currentPosition!.longitude},${_currentPosition!.latitude}',
-      );
+          'proximity=${_currentPosition!.longitude},${_currentPosition!.latitude}');
     }
-
     return params.join('&');
   }
 
-  Position _positionFromLocation(LocationData location) {
-    return Position(location.longitude!, location.latitude!);
-  }
+  Position _positionFromLocation(LocationData loc) =>
+      Position(loc.longitude!, loc.latitude!);
 
-  Position _positionFromPoint(Point point) {
-    return point.coordinates;
-  }
+  Position _positionFromPoint(Point point) => point.coordinates;
 
-  CircleAnnotationOptions _buildUserLocationMarker(Position position) {
-    return CircleAnnotationOptions(
-      geometry: Point(coordinates: position),
-      circleColor: Colors.blue.value,
-      circleRadius: 8.0,
-      circleStrokeWidth: 2.0,
-      circleStrokeColor: Colors.white.value,
-      circleSortKey: 100,
-    );
-  }
+  CircleAnnotationOptions _buildUserLocationMarker(Position pos) =>
+      CircleAnnotationOptions(
+        geometry: Point(coordinates: pos),
+        circleColor: Colors.blue.value,
+        circleRadius: 8.0,
+        circleStrokeWidth: 2.0,
+        circleStrokeColor: Colors.white.value,
+        circleSortKey: 100,
+      );
 
   Future<bool> _ensureLocationAccess() async {
     bool serviceEnabled = await _location.serviceEnabled();
@@ -168,12 +163,10 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       serviceEnabled = await _location.requestService();
       if (!serviceEnabled) return false;
     }
-
     PermissionStatus permission = await _location.hasPermission();
     if (permission == PermissionStatus.denied) {
       permission = await _location.requestPermission();
     }
-
     return permission == PermissionStatus.granted;
   }
 
@@ -182,14 +175,12 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     double zoom = _myLocationZoomOutLevel,
   }) async {
     if (_mapController == null) return;
-
     await _mapController!.flyTo(
       CameraOptions(
-        center: Point(coordinates: position),
-        zoom: zoom,
-        pitch: 0,
-        bearing: 0,
-      ),
+          center: Point(coordinates: position),
+          zoom: zoom,
+          pitch: 0,
+          bearing: 0),
       MapAnimationOptions(duration: 1000),
     );
   }
@@ -200,23 +191,19 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   }) async {
     if (_userLocationManager == null ||
         location.latitude == null ||
-        location.longitude == null) {
-      return;
-    }
+        location.longitude == null) return;
 
     final position = _positionFromLocation(location);
 
     if (_userLocationAnnotation == null) {
-      _userLocationAnnotation =
-          await _userLocationManager!.create(_buildUserLocationMarker(position));
+      _userLocationAnnotation = await _userLocationManager!
+          .create(_buildUserLocationMarker(position));
     } else {
       _userLocationAnnotation!.geometry = Point(coordinates: position);
       await _userLocationManager!.update(_userLocationAnnotation!);
     }
 
-    if (moveCamera) {
-      await _moveCameraToPosition(position);
-    }
+    if (moveCamera) await _moveCameraToPosition(position);
   }
 
   Future<void> _startUserLocationTracking() async {
@@ -224,10 +211,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     if (!hasAccess) return;
 
     await _location.changeSettings(
-      accuracy: LocationAccuracy.high,
-      interval: 2000,
-      distanceFilter: 5,
-    );
+        accuracy: LocationAccuracy.high, interval: 2000, distanceFilter: 5);
 
     final initialLocation = await _location.getLocation();
     _currentPosition = initialLocation;
@@ -236,10 +220,8 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     _locationSubscription?.cancel();
     _locationSubscription =
         _location.onLocationChanged.listen((location) async {
-      if (!mounted || location.latitude == null || location.longitude == null) {
+      if (!mounted || location.latitude == null || location.longitude == null)
         return;
-      }
-
       _currentPosition = location;
       await _syncUserLocationMarker(location: location);
     });
@@ -248,7 +230,6 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   Future<void> _getRealLocation() async {
     final hasAccess = await _ensureLocationAccess();
     if (!hasAccess) return;
-
     _currentPosition = await _location.getLocation();
     await _syncUserLocationMarker(location: _currentPosition!);
   }
@@ -257,58 +238,46 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     if (_mapController == null) return;
     if (_currentPosition == null) await _getRealLocation();
     if (_currentPosition == null) return;
-
     await _moveCameraToPosition(
-      Position(
-        _currentPosition!.longitude!,
-        _currentPosition!.latitude!,
-      ),
-    );
+        Position(_currentPosition!.longitude!, _currentPosition!.latitude!));
   }
 
-  String _pinnedLocationLabel(Position position) {
-    return 'Pinned point (${position.lat.toStringAsFixed(5)}, ${position.lng.toStringAsFixed(5)})';
-  }
+  // ─────────────────────────────────────────────────────────────────────────
+  // Pin-pick helpers
+  // ─────────────────────────────────────────────────────────────────────────
+
+  String _pinnedLocationLabel(Position position) =>
+      'Pinned (${position.lat.toStringAsFixed(5)}, '
+      '${position.lng.toStringAsFixed(5)})';
 
   Future<Uint8List> _loadDestinationMarkerBytes() async {
-    final existing = _destinationMarkerBytes;
-    if (existing != null) {
-      return existing;
-    }
-
+    if (_destinationMarkerBytes != null) return _destinationMarkerBytes!;
     final bytes = await rootBundle.load('assets/red-pin bg r.png');
-    final markerBytes = bytes.buffer.asUint8List();
-    _destinationMarkerBytes = markerBytes;
-    return markerBytes;
+    _destinationMarkerBytes = bytes.buffer.asUint8List();
+    return _destinationMarkerBytes!;
   }
 
   Future<void> _showDestinationPin(Position position) async {
-    final pointManager = _pointAnnotationManager;
-    if (pointManager == null) return;
-
-    await pointManager.deleteAll();
+    final pm = _pointAnnotationManager;
+    if (pm == null) return;
+    await pm.deleteAll();
     final markerBytes = await _loadDestinationMarkerBytes();
-    await pointManager.create(
-      PointAnnotationOptions(
-        geometry: Point(coordinates: position),
-        image: markerBytes,
-        iconSize: 0.2,
-        iconAnchor: IconAnchor.BOTTOM,
-      ),
-    );
+    await pm.create(PointAnnotationOptions(
+      geometry: Point(coordinates: position),
+      image: markerBytes,
+      iconSize: 0.2,
+      iconAnchor: IconAnchor.BOTTOM,
+    ));
   }
 
   Future<void> _enableMapPickMode() async {
     FocusScope.of(context).unfocus();
-
-    Position? initialPin = _confirmedPinnedPosition ?? _selectedDestinationPosition;
+    Position? initialPin =
+        _confirmedPinnedPosition ?? _selectedDestinationPosition;
     if (initialPin == null && _currentPosition != null) {
-      initialPin = Position(
-        _currentPosition!.longitude!,
-        _currentPosition!.latitude!,
-      );
+      initialPin =
+          Position(_currentPosition!.longitude!, _currentPosition!.latitude!);
     }
-
     if (initialPin != null) {
       _pendingPinnedPosition = initialPin;
       await _moveCameraToPosition(initialPin);
@@ -316,11 +285,8 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       final cameraState = await _mapController!.getCameraState();
       _pendingPinnedPosition = _positionFromPoint(cameraState.center);
     }
-
     if (!mounted) return;
-    setState(() {
-      _isPickingDestination = true;
-    });
+    setState(() => _isPickingDestination = true);
   }
 
   void _cancelMapPickMode() {
@@ -333,33 +299,32 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
 
   Future<void> _confirmPinnedDestination() async {
     Position? position = _pendingPinnedPosition;
-
     if (position == null && _mapController != null) {
       final cameraState = await _mapController!.getCameraState();
       position = _positionFromPoint(cameraState.center);
     }
-
     if (position == null) {
       _showSnackBar('Move the map to choose a destination.');
       return;
     }
-
-    final confirmedPosition = position;
-
-    await _showDestinationPin(confirmedPosition);
-
+    final confirmed = position;
+    await _showDestinationPin(confirmed);
     if (!mounted) return;
     setState(() {
-      _confirmedPinnedPosition = confirmedPosition;
-      _selectedDestinationPosition = confirmedPosition;
+      _confirmedPinnedPosition = confirmed;
+      _selectedDestinationPosition = confirmed;
       _selectedDestinationMapboxId = null;
       _destinationSuggestions = [];
-      _destinationController.text = _pinnedLocationLabel(confirmedPosition);
+      _destinationController.text = _pinnedLocationLabel(confirmed);
       _hasActiveRoute = false;
       _isPickingDestination = false;
       _pendingPinnedPosition = null;
     });
   }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Route helpers
+  // ─────────────────────────────────────────────────────────────────────────
 
   Future<void> _handleFindRoute() async {
     FocusScope.of(context).unfocus();
@@ -368,9 +333,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       _hasActiveRoute = false;
     });
     try {
-      if (_currentPosition == null) {
-        await _getRealLocation();
-      }
+      if (_currentPosition == null) await _getRealLocation();
       if (_currentPosition == null) {
         _showSnackBar("Current location unavailable.");
         return;
@@ -386,18 +349,12 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
         return;
       }
       await drawRoute(
-        Position(
-          _currentPosition!.longitude!,
-          _currentPosition!.latitude!,
-        ),
-        destination,
-      );
+          Position(_currentPosition!.longitude!, _currentPosition!.latitude!),
+          destination);
     } catch (e) {
       _showSnackBar("Route error: $e");
     } finally {
-      if (mounted) {
-        setState(() => _isCalculatingRoute = false);
-      }
+      if (mounted) setState(() => _isCalculatingRoute = false);
     }
   }
 
@@ -421,34 +378,29 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     setState(() => _isSearchingSuggestions = true);
 
     try {
-      var parsedSuggestions = <Map<String, dynamic>>[];
-
+      var parsed = <Map<String, dynamic>>[];
       final geocodingSuggestion =
           await _geocodingFallbackSuggestion(trimmedQuery);
       if (geocodingSuggestion != null) {
-        parsedSuggestions = [geocodingSuggestion];
+        parsed = [geocodingSuggestion];
       } else {
         final url = Uri.parse(
-          "https://api.mapbox.com/search/searchbox/v1/suggest"
-          "?q=${Uri.encodeComponent(trimmedQuery)}&${_buildSearchBoxCommonParams()}",
-        );
+            "https://api.mapbox.com/search/searchbox/v1/suggest"
+            "?q=${Uri.encodeComponent(trimmedQuery)}&${_buildSearchBoxCommonParams()}");
         final response = await http.get(url);
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body);
           final suggestions = data['suggestions'];
-          parsedSuggestions = suggestions is List
+          parsed = suggestions is List
               ? suggestions
                   .whereType<Map>()
-                  .map((feature) => Map<String, dynamic>.from(feature))
+                  .map((f) => Map<String, dynamic>.from(f))
                   .toList()
-              : <Map<String, dynamic>>[];
+              : [];
         }
       }
-
       if (!mounted || requestId != _suggestionRequestId) return;
-      setState(() {
-        _destinationSuggestions = parsedSuggestions;
-      });
+      setState(() => _destinationSuggestions = parsed);
     } catch (e) {
       debugPrint("Suggestions Error: $e");
       if (!mounted || requestId != _suggestionRequestId) return;
@@ -461,17 +413,13 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
 
   Future<Map<String, dynamic>?> _retrieveSuggestion(String mapboxId) async {
     final url = Uri.parse(
-      "https://api.mapbox.com/search/searchbox/v1/retrieve/"
-      "$mapboxId?access_token=$mapboxToken&session_token=$_searchSessionToken&language=en",
-    );
-
+        "https://api.mapbox.com/search/searchbox/v1/retrieve/$mapboxId"
+        "?access_token=$mapboxToken&session_token=$_searchSessionToken&language=en");
     final response = await http.get(url);
     if (response.statusCode != 200) return null;
-
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     final features = data['features'];
     if (features is! List || features.isEmpty) return null;
-
     final feature = features.first;
     return feature is Map<String, dynamic>
         ? feature
@@ -486,71 +434,56 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       'autocomplete=true',
       'country=LK',
     ];
-
-    if (_currentPosition?.longitude != null && _currentPosition?.latitude != null) {
+    if (_currentPosition?.longitude != null &&
+        _currentPosition?.latitude != null) {
       params.add(
-        'proximity=${_currentPosition!.longitude},${_currentPosition!.latitude}',
-      );
+          'proximity=${_currentPosition!.longitude},${_currentPosition!.latitude}');
     }
-
-    final url = Uri.parse(
-      "https://api.mapbox.com/search/searchbox/v1/forward"
-      "?q=${Uri.encodeComponent(place.trim())}&${params.join('&')}",
-    );
-
+    final url = Uri.parse("https://api.mapbox.com/search/searchbox/v1/forward"
+        "?q=${Uri.encodeComponent(place.trim())}&${params.join('&')}");
     final response = await http.get(url);
     if (response.statusCode != 200) return null;
-
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     final features = data['features'];
     if (features is! List || features.isEmpty) return null;
-
-    final feature = features.first;
-    final featureMap = feature is Map<String, dynamic>
-        ? feature
-        : Map<String, dynamic>.from(feature as Map);
-    final geometry = featureMap['geometry'];
-    final coordinates =
-        geometry is Map<String, dynamic> ? geometry['coordinates'] : null;
-    if (coordinates is List && coordinates.length >= 2) {
+    final featureMap = features.first is Map<String, dynamic>
+        ? features.first as Map<String, dynamic>
+        : Map<String, dynamic>.from(features.first as Map);
+    final coords =
+        (featureMap['geometry'] as Map<String, dynamic>?)?['coordinates'];
+    if (coords is List && coords.length >= 2) {
       return Position(
-        (coordinates[0] as num).toDouble(),
-        (coordinates[1] as num).toDouble(),
-      );
+          (coords[0] as num).toDouble(), (coords[1] as num).toDouble());
     }
-
     return null;
   }
 
   Future<Position?> _geocodingFallbackDestination(String place) async {
     try {
-      final results = await geocoding.locationFromAddress(place.trim())
+      final results = await geocoding
+          .locationFromAddress(place.trim())
           .timeout(const Duration(seconds: 8));
       if (results.isEmpty) return null;
-
-      final best = results.first;
-      return Position(best.longitude, best.latitude);
+      return Position(results.first.longitude, results.first.latitude);
     } catch (_) {
       return null;
     }
   }
 
   Future<Map<String, dynamic>?> _geocodingFallbackSuggestion(
-    String place,
-  ) async {
+      String place) async {
     try {
-      final results = await geocoding.locationFromAddress(place.trim())
+      final results = await geocoding
+          .locationFromAddress(place.trim())
           .timeout(const Duration(seconds: 8));
       if (results.isEmpty) return null;
-
-      final best = results.first;
       return <String, dynamic>{
         'name': place.trim(),
         'full_address': place.trim(),
         'feature_type': 'place',
         'source': 'geocoding_fallback',
-        'fallback_lat': best.latitude,
-        'fallback_lng': best.longitude,
+        'fallback_lat': results.first.latitude,
+        'fallback_lng': results.first.longitude,
       };
     } catch (_) {
       return null;
@@ -561,55 +494,40 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     if (_selectedDestinationPosition != null) {
       return _selectedDestinationPosition;
     }
-
     var mapboxId = _selectedDestinationMapboxId;
-
     if (mapboxId == null || mapboxId.isEmpty) {
       final suggestUrl = Uri.parse(
-        "https://api.mapbox.com/search/searchbox/v1/suggest"
-        "?q=${Uri.encodeComponent(place.trim())}&${_buildSearchBoxCommonParams()}",
-      );
+          "https://api.mapbox.com/search/searchbox/v1/suggest"
+          "?q=${Uri.encodeComponent(place.trim())}&${_buildSearchBoxCommonParams()}");
       final suggestResponse = await http.get(suggestUrl);
       if (suggestResponse.statusCode != 200) {
-        return await _resolveDestinationFallback(place);
+        return _resolveDestinationFallback(place);
       }
-
-      final suggestData = jsonDecode(suggestResponse.body) as Map<String, dynamic>;
+      final suggestData =
+          jsonDecode(suggestResponse.body) as Map<String, dynamic>;
       final suggestions = suggestData['suggestions'];
       if (suggestions is! List || suggestions.isEmpty) {
-        return await _resolveDestinationFallback(place);
+        return _resolveDestinationFallback(place);
       }
       mapboxId = suggestions.first['mapbox_id']?.toString();
     }
-
     if (mapboxId == null || mapboxId.isEmpty) {
-      return await _resolveDestinationFallback(place);
+      return _resolveDestinationFallback(place);
     }
-
     final feature = await _retrieveSuggestion(mapboxId);
-    if (feature == null) {
-      return await _resolveDestinationFallback(place);
-    }
-
-    final geometry = feature['geometry'];
-    final coordinates = geometry is Map<String, dynamic> ? geometry['coordinates'] : null;
-    if (coordinates is List && coordinates.length >= 2) {
+    if (feature == null) return _resolveDestinationFallback(place);
+    final coords =
+        (feature['geometry'] as Map<String, dynamic>?)?['coordinates'];
+    if (coords is List && coords.length >= 2) {
       return Position(
-        (coordinates[0] as num).toDouble(),
-        (coordinates[1] as num).toDouble(),
-      );
+          (coords[0] as num).toDouble(), (coords[1] as num).toDouble());
     }
-
-    return await _resolveDestinationFallback(place);
+    return _resolveDestinationFallback(place);
   }
 
   Future<Position?> _resolveDestinationFallback(String place) async {
-    final forwardPosition = await _forwardSearchDestination(place);
-    if (forwardPosition != null) {
-      return forwardPosition;
-    }
-
-    return _geocodingFallbackDestination(place);
+    return await _forwardSearchDestination(place) ??
+        await _geocodingFallbackDestination(place);
   }
 
   Future<void> drawRoute(Position start, Position end) async {
@@ -617,76 +535,63 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
         _polylineManager == null ||
         _pointAnnotationManager == null) return;
 
-    final url = Uri.parse(
-        "https://api.mapbox.com/directions/v5/mapbox/driving/${start.lng},${start.lat};${end.lng},${end.lat}?geometries=geojson&overview=full&alternatives=false&access_token=$mapboxToken");
-
+    final url = Uri.parse("https://api.mapbox.com/directions/v5/mapbox/driving/"
+        "${start.lng},${start.lat};${end.lng},${end.lat}"
+        "?geometries=geojson&overview=full&alternatives=false"
+        "&access_token=$mapboxToken");
     final response = await http.get(url);
-
     if (response.statusCode != 200) {
       _showSnackBar("Directions API failed: ${response.statusCode}");
       return;
     }
 
     final data = jsonDecode(response.body);
-    final geometry = data['routes'][0]['geometry'];
-    final routeCoordinates = (geometry['coordinates'] as List<dynamic>)
-        .map((c) =>
-            Position((c[0] as num).toDouble(), (c[1] as num).toDouble()))
+    final routeCoords = (data['routes'][0]['geometry']['coordinates']
+            as List<dynamic>)
+        .map(
+            (c) => Position((c[0] as num).toDouble(), (c[1] as num).toDouble()))
         .toList();
 
     await _polylineManager!.deleteAll();
     await _pointAnnotationManager!.deleteAll();
 
-    await _polylineManager!.create(
-      PolylineAnnotationOptions(
-        geometry: LineString(coordinates: routeCoordinates),
-        lineColor: const Color(0xFF2962FF).value,
-        lineWidth: 5.0,
-      ),
-    );
+    await _polylineManager!.create(PolylineAnnotationOptions(
+      geometry: LineString(coordinates: routeCoords),
+      lineColor: const Color(0xFF2962FF).value,
+      lineWidth: 5.0,
+    ));
 
-    final Uint8List list = await _loadDestinationMarkerBytes();
+    final markerBytes = await _loadDestinationMarkerBytes();
+    await _pointAnnotationManager!.create(PointAnnotationOptions(
+      geometry: Point(coordinates: end),
+      image: markerBytes,
+      iconSize: 0.2,
+      iconAnchor: IconAnchor.BOTTOM,
+    ));
 
-    await _pointAnnotationManager!.create(
-      PointAnnotationOptions(
-        geometry: Point(coordinates: end),
-        image: list,
-        iconSize: 0.2,
-        iconAnchor: IconAnchor.BOTTOM,
-      ),
-    );
-
-    final routeDistanceMeters =
-        (data['routes'][0]['distance'] as num?)?.toDouble() ?? 0.0;
-    final routeDurationSeconds =
-        (data['routes'][0]['duration'] as num?)?.toDouble() ?? 0.0;
+    final distM = (data['routes'][0]['distance'] as num?)?.toDouble() ?? 0.0;
+    final durS = (data['routes'][0]['duration'] as num?)?.toDouble() ?? 0.0;
 
     if (mounted) {
       setState(() {
         _confirmedPinnedPosition = end;
         _selectedDestinationPosition = end;
-        _distanceText =
-            "Distance: ${(routeDistanceMeters / 1000).toStringAsFixed(1)} km";
+        _distanceText = "Distance: ${(distM / 1000).toStringAsFixed(1)} km";
         _durationText =
-            "Estimated Time: ${(routeDurationSeconds / 60).toStringAsFixed(0)} mins";
+            "Estimated Time: ${(durS / 60).toStringAsFixed(0)} mins";
         _hasActiveRoute = true;
       });
     }
 
     await _mapController!.flyTo(
-      CameraOptions(
-        center: Point(coordinates: end),
-        zoom: 12.5,
-      ),
+      CameraOptions(center: Point(coordinates: end), zoom: 12.5),
       MapAnimationOptions(duration: 1200),
     );
   }
 
-  // __________ CLEAR ROUTE __________
   Future<void> _clearRoute() async {
     await _polylineManager?.deleteAll();
     await _pointAnnotationManager?.deleteAll();
-
     if (mounted) {
       setState(() {
         _destinationController.clear();
@@ -703,6 +608,10 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     }
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Suggestion UI helpers
+  // ─────────────────────────────────────────────────────────────────────────
+
   IconData _getIconForType(List<dynamic>? types) {
     if (types == null || types.isEmpty) return Icons.location_on;
     if (types.contains('poi')) return Icons.place;
@@ -712,10 +621,9 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     return Icons.location_on;
   }
 
-  List<dynamic>? _suggestionTypes(Map<String, dynamic> suggestion) {
-    final featureType = suggestion['feature_type']?.toString();
-    final poiCategory = suggestion['poi_category'];
-
+  List<dynamic>? _suggestionTypes(Map<String, dynamic> s) {
+    final featureType = s['feature_type']?.toString();
+    final poiCategory = s['poi_category'];
     if (poiCategory is List && poiCategory.isNotEmpty) {
       return ['poi', ...poiCategory];
     }
@@ -723,9 +631,9 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     return [featureType];
   }
 
-  String _suggestionLabel(Map<String, dynamic> suggestion) {
-    final name = suggestion['name']?.toString().trim() ?? '';
-    final address = suggestion['full_address']?.toString().trim() ?? '';
+  String _suggestionLabel(Map<String, dynamic> s) {
+    final name = s['name']?.toString().trim() ?? '';
+    final address = s['full_address']?.toString().trim() ?? '';
     if (address.isEmpty) return name;
     if (name.isEmpty) return address;
     if (address.startsWith(name)) return address;
@@ -736,287 +644,338 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     if (types == null || types.isEmpty) return 'Location';
     return types
         .whereType<String>()
-        .map((type) => type.replaceAll('_', ' '))
-        .map(
-          (type) => type.isEmpty
-              ? type
-              : "${type[0].toUpperCase()}${type.substring(1)}",
-        )
+        .map((t) => t.replaceAll('_', ' '))
+        .map((t) => t.isEmpty ? t : '${t[0].toUpperCase()}${t.substring(1)}')
         .join(', ');
   }
 
-  Text _buildRichText(String fullText, String query) {
-    return Text(
-      fullText,
-      maxLines: 2,
-      overflow: TextOverflow.ellipsis,
-      style: const TextStyle(
-        fontWeight: FontWeight.w600,
-        color: Colors.black87,
+  // ─────────────────────────────────────────────────────────────────────────
+  // Reusable FAB tile
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Widget _buildFab({
+    required Color color,
+    required Color borderColor,
+    required Color shadowColor,
+    required IconData icon,
+    required VoidCallback? onTap,
+    double iconOpacity = 1.0,
+    double iconSize = 26,
+  }) {
+    return Container(
+      width: 56,
+      height: 56,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: borderColor),
+        boxShadow: [
+          BoxShadow(
+              color: shadowColor, blurRadius: 18, offset: const Offset(0, 8)),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: onTap,
+          child: Icon(icon,
+              color: Colors.white.withOpacity(iconOpacity), size: iconSize),
+        ),
       ),
     );
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Build
+  // ─────────────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
-    // your UI code here (unchanged)
+    // Top padding = status bar + AppBar height
+    final topPad = MediaQuery.of(context).padding.top + kToolbarHeight + 12;
+
     return Scaffold(
       backgroundColor: AppColors.background,
+      // extendBodyBehindAppBar lets the map fill the whole screen
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text("Safe Route Navigation"),
         backgroundColor: Colors.transparent,
         elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: const Text(
+          "Safe Route Navigation",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+        ),
+        centerTitle: true,
       ),
       body: Stack(
         children: [
-          // ---------------- MAPBOX MAP ----------------
-          _mapView,
+          // ── FIX 2: MapWidget lives directly in build(), NOT in initState ──
+          // This ensures the platform view always attaches to the live tree
+          // when the screen is pushed via Navigator.push.
+          Positioned.fill(
+            child: MapWidget(
+              key: const ValueKey("mapbox_safe_route"),
+              styleUri: MapboxStyles.STANDARD,
+              cameraOptions: CameraOptions(
+                center: Point(coordinates: Position(80.7718, 7.8731)),
+                zoom: 7,
+              ),
+              onTapListener: (_) async {
+                if (!mounted) return;
+                FocusScope.of(context).unfocus();
+              },
+              onCameraChangeListener: (event) {
+                if (!_isPickingDestination) return;
+                _pendingPinnedPosition =
+                    _positionFromPoint(event.cameraState.center);
+              },
+              onMapIdleListener: (_) {
+                if (!mounted || !_isPickingDestination) return;
+                setState(() {});
+              },
+              onMapCreated: _onMapCreated,
+            ),
+          ),
 
-          // ---------------- SEARCH PANEL ----------------
+          // ── Search panel ─────────────────────────────────────────────────
           Positioned(
-            top: 16,
+            top: topPad,
             left: 16,
             right: 16,
-            child: SafeArea(
-              bottom: false,
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF102348).withOpacity(0.92),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: Colors.white.withOpacity(0.06)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.16),
-                      blurRadius: 18,
-                      offset: const Offset(0, 8),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF102348).withOpacity(0.92),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: Colors.white.withOpacity(0.06)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.16),
+                    blurRadius: 18,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // ── Search field ────────────────────────────────────────
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.07),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.white.withOpacity(0.06)),
                     ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.07),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.06),
-                        ),
-                      ),
-                      child: Column(
-                        children: [
-                          TextField(
-                            controller: _destinationController,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
+                    child: Column(
+                      children: [
+                        TextField(
+                          controller: _destinationController,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedDestinationMapboxId = null;
+                              _selectedDestinationPosition = null;
+                              _confirmedPinnedPosition = null;
+                              _hasActiveRoute = false;
+                            });
+                            _debounce?.cancel();
+                            _debounce =
+                                Timer(const Duration(milliseconds: 500), () {
+                              fetchSuggestions(value);
+                            });
+                          },
+                          decoration: InputDecoration(
+                            hintText: "Enter destination",
+                            hintStyle: TextStyle(
+                                color: Colors.white.withOpacity(0.62)),
+                            prefixIcon: const Icon(
+                              Icons.location_on_rounded,
+                              color: Color(0xFFFF6B57),
                             ),
-                            onChanged: (value) {
-                              setState(() {
-                                _selectedDestinationMapboxId = null;
-                                _selectedDestinationPosition = null;
-                                _confirmedPinnedPosition = null;
-                                _hasActiveRoute = false;
-                              });
-                              if (_debounce?.isActive ?? false) {
-                                _debounce!.cancel();
-                              }
-                              _debounce =
-                                  Timer(const Duration(milliseconds: 500), () {
-                                fetchSuggestions(value);
-                              });
-                            },
-                            decoration: InputDecoration(
-                              hintText: "Enter destination",
-                              hintStyle: TextStyle(
-                                color: Colors.white.withOpacity(0.62),
-                              ),
-                              prefixIcon: const Icon(
-                                Icons.location_on_rounded,
-                                color: Color(0xFFFF6B57),
-                              ),
-                              suffixIcon: _destinationController.text.isEmpty
-                                  ? IconButton(
-                                      onPressed: _isCalculatingRoute
-                                          ? null
-                                          : _handleFindRoute,
-                                      icon: Icon(
-                                        Icons.search_rounded,
-                                        color: Colors.white.withOpacity(0.72),
-                                        size: 19,
-                                      ),
-                                    )
-                                  : Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        IconButton(
-                                          onPressed: _isCalculatingRoute
-                                              ? null
-                                              : _handleFindRoute,
-                                          icon: Icon(
-                                            Icons.search_rounded,
-                                            color:
-                                                Colors.white.withOpacity(0.72),
-                                            size: 19,
-                                          ),
-                                        ),
-                                        IconButton(
-                                          onPressed: _clearRoute,
-                                          icon: Icon(
-                                            Icons.close_rounded,
-                                            color:
-                                                Colors.white.withOpacity(0.62),
-                                            size: 18,
-                                          ),
-                                        ),
-                                      ],
+                            suffixIcon: _destinationController.text.isEmpty
+                                ? IconButton(
+                                    onPressed: _isCalculatingRoute
+                                        ? null
+                                        : _handleFindRoute,
+                                    icon: Icon(
+                                      Icons.search_rounded,
+                                      color: Colors.white.withOpacity(0.72),
+                                      size: 19,
                                     ),
-                              border: InputBorder.none,
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 14,
+                                  )
+                                : Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        onPressed: _isCalculatingRoute
+                                            ? null
+                                            : _handleFindRoute,
+                                        icon: Icon(
+                                          Icons.search_rounded,
+                                          color: Colors.white.withOpacity(0.72),
+                                          size: 19,
+                                        ),
+                                      ),
+                                      IconButton(
+                                        onPressed: _clearRoute,
+                                        icon: Icon(
+                                          Icons.close_rounded,
+                                          color: Colors.white.withOpacity(0.62),
+                                          size: 18,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                            border: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 14),
+                          ),
+                        ),
+
+                        // Loading spinner
+                        if (_isSearchingSuggestions)
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 12),
+                            child: SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
                               ),
                             ),
                           ),
-                          if (_isSearchingSuggestions)
-                            const Padding(
-                              padding: EdgeInsets.only(bottom: 12),
-                              child: SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          if (_destinationSuggestions.isNotEmpty)
-                            Container(
-                              constraints: const BoxConstraints(maxHeight: 220),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              margin: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-                              child: ListView.separated(
-                                shrinkWrap: true,
-                                padding: EdgeInsets.zero,
-                                itemCount: _destinationSuggestions.length,
-                                separatorBuilder: (context, index) =>
-                                    const Divider(height: 1),
-                                itemBuilder: (context, index) {
-                                  final suggestion =
-                                      _destinationSuggestions[index];
-                                  final types = _suggestionTypes(suggestion);
 
-                                  return ListTile(
-                                    leading: Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF2962FF)
-                                            .withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                      child: Icon(
-                                        _getIconForType(types),
-                                        color: const Color(0xFF2962FF),
-                                        size: 20,
-                                      ),
+                        // Suggestion list
+                        if (_destinationSuggestions.isNotEmpty)
+                          Container(
+                            constraints: const BoxConstraints(maxHeight: 220),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            margin: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                            child: ListView.separated(
+                              shrinkWrap: true,
+                              padding: EdgeInsets.zero,
+                              itemCount: _destinationSuggestions.length,
+                              separatorBuilder: (_, __) =>
+                                  const Divider(height: 1),
+                              itemBuilder: (context, index) {
+                                final suggestion =
+                                    _destinationSuggestions[index];
+                                final types = _suggestionTypes(suggestion);
+                                return ListTile(
+                                  leading: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF2962FF)
+                                          .withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(10),
                                     ),
-                                    title: _buildRichText(
-                                      _suggestionLabel(suggestion),
-                                      _destinationController.text,
+                                    child: Icon(
+                                      _getIconForType(types),
+                                      color: const Color(0xFF2962FF),
+                                      size: 20,
                                     ),
-                                    subtitle: Text(
-                                      _formatPlaceType(types),
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey[600],
-                                      ),
+                                  ),
+                                  title: Text(
+                                    _suggestionLabel(suggestion),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.black87,
                                     ),
-                                    onTap: () async {
-                                      _selectedDestinationMapboxId =
-                                          suggestion['mapbox_id']?.toString();
-                                      final fallbackLat =
-                                          suggestion['fallback_lat'];
-                                      final fallbackLng =
-                                          suggestion['fallback_lng'];
-                                      _confirmedPinnedPosition = null;
-                                      _selectedDestinationPosition =
-                                          fallbackLat is num &&
-                                                  fallbackLng is num
-                                              ? Position(
-                                                  fallbackLng.toDouble(),
-                                                  fallbackLat.toDouble(),
-                                                )
-                                              : null;
-                                      _destinationController.text =
-                                          _suggestionLabel(suggestion);
-                                      setState(() {
-                                        _destinationSuggestions = [];
-                                        _hasActiveRoute = false;
-                                      });
-                                      _refreshSearchSessionToken();
-                                      FocusScope.of(context).unfocus();
-                                      await _handleFindRoute();
-                                    },
-                                  );
-                                },
+                                  ),
+                                  subtitle: Text(
+                                    _formatPlaceType(types),
+                                    style: TextStyle(
+                                        fontSize: 12, color: Colors.grey[600]),
+                                  ),
+                                  onTap: () async {
+                                    _selectedDestinationMapboxId =
+                                        suggestion['mapbox_id']?.toString();
+                                    final fallbackLat =
+                                        suggestion['fallback_lat'];
+                                    final fallbackLng =
+                                        suggestion['fallback_lng'];
+                                    _confirmedPinnedPosition = null;
+                                    _selectedDestinationPosition =
+                                        fallbackLat is num && fallbackLng is num
+                                            ? Position(fallbackLng.toDouble(),
+                                                fallbackLat.toDouble())
+                                            : null;
+                                    _destinationController.text =
+                                        _suggestionLabel(suggestion);
+                                    setState(() {
+                                      _destinationSuggestions = [];
+                                      _hasActiveRoute = false;
+                                    });
+                                    _refreshSearchSessionToken();
+                                    FocusScope.of(context).unfocus();
+                                    await _handleFindRoute();
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+
+                  // Pinned location label
+                  if (_confirmedPinnedPosition != null) ...[
+                    const SizedBox(height: 6),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      child: Row(
+                        children: [
+                          Icon(Icons.place_rounded,
+                              color: Colors.white.withOpacity(0.72), size: 14),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              _pinnedLocationLabel(_confirmedPinnedPosition!),
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.78),
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
+                          ),
                         ],
                       ),
                     ),
-                    if (_confirmedPinnedPosition != null) ...[
-                      const SizedBox(height: 6),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 2),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.place_rounded,
-                              color: Colors.white.withOpacity(0.72),
-                              size: 14,
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                _pinnedLocationLabel(_confirmedPinnedPosition!),
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.78),
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
                   ],
-                ),
+                ],
               ),
             ),
           ),
 
+          // ── Pin-mode crosshair ────────────────────────────────────────
           if (_isPickingDestination)
             IgnorePointer(
               child: Center(
                 child: Transform.translate(
                   offset: const Offset(0, -20),
-                  child: const Icon(
-                    Icons.location_on_rounded,
-                    size: 52,
-                    color: Colors.red,
-                  ),
+                  child: const Icon(Icons.location_on_rounded,
+                      size: 52, color: Colors.red),
                 ),
               ),
             ),
 
+          // ── Pin-mode confirm card ─────────────────────────────────────
           if (_isPickingDestination)
             Positioned(
               left: 16,
@@ -1049,11 +1008,8 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                             color: const Color(0xFFEEF3FF),
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          child: const Icon(
-                            Icons.push_pin_rounded,
-                            color: Color(0xFF2F6BFF),
-                            size: 18,
-                          ),
+                          child: const Icon(Icons.push_pin_rounded,
+                              color: Color(0xFF2F6BFF), size: 18),
                         ),
                         const SizedBox(width: 10),
                         const Expanded(
@@ -1074,9 +1030,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                           ? 'Drag the map until the pin is over your destination.'
                           : _pinnedLocationLabel(_pendingPinnedPosition!),
                       style: const TextStyle(
-                        color: Color(0xFF6B7280),
-                        fontSize: 12.5,
-                      ),
+                          color: Color(0xFF6B7280), fontSize: 12.5),
                     ),
                     const SizedBox(height: 10),
                     SizedBox(
@@ -1089,16 +1043,11 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                           elevation: 0,
                           padding: const EdgeInsets.symmetric(vertical: 13),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
+                              borderRadius: BorderRadius.circular(12)),
                         ),
-                        child: const Text(
-                          'Pin This Location',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 14,
-                          ),
-                        ),
+                        child: const Text('Pin This Location',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w700, fontSize: 14)),
                       ),
                     ),
                   ],
@@ -1106,6 +1055,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
               ),
             ),
 
+          // ── Find Route button ─────────────────────────────────────────
           AnimatedPositioned(
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOut,
@@ -1129,8 +1079,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                         shadowColor: Colors.black.withOpacity(0.18),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                        ),
+                            borderRadius: BorderRadius.circular(18)),
                       ),
                       onPressed: _isCalculatingRoute ? null : _handleFindRoute,
                       icon: _isCalculatingRoute
@@ -1139,20 +1088,15 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                               height: 18,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.white,
-                                ),
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
                               ),
                             )
                           : const Icon(Icons.alt_route_rounded),
                       label: Text(
-                        _isCalculatingRoute
-                            ? "Finding Route..."
-                            : "Find Route",
+                        _isCalculatingRoute ? "Finding Route..." : "Find Route",
                         style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
-                        ),
+                            fontWeight: FontWeight.w700, fontSize: 14),
                       ),
                     ),
                   ),
@@ -1161,13 +1105,12 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
             ),
           ),
 
-          // ---------------- DRAGGABLE PANEL ----------------
+          // ── Draggable bottom sheet ────────────────────────────────────
           NotificationListener<DraggableScrollableNotification>(
             onNotification: (notification) {
-              if ((_sheetExtent - notification.extent).abs() > 0.005 && mounted) {
-                setState(() {
-                  _sheetExtent = notification.extent;
-                });
+              if ((_sheetExtent - notification.extent).abs() > 0.005 &&
+                  mounted) {
+                setState(() => _sheetExtent = notification.extent);
               }
               return false;
             },
@@ -1179,9 +1122,8 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                 return Container(
                   decoration: BoxDecoration(
                     color: AppColors.background.withOpacity(0.96),
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(28),
-                    ),
+                    borderRadius:
+                        const BorderRadius.vertical(top: Radius.circular(28)),
                     border: Border.all(color: AppColors.glassBorder),
                     boxShadow: [
                       BoxShadow(
@@ -1207,14 +1149,12 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                         ),
                       ),
                       if (_showRouteDetails) ...[
-                        const Text(
-                          "Route Details",
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
+                        const Text("Route Details",
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary,
+                            )),
                         const SizedBox(height: 14),
                         Container(
                           padding: const EdgeInsets.all(16),
@@ -1222,8 +1162,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                             color: AppColors.surface,
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                              color: AppColors.primary.withOpacity(0.18),
-                            ),
+                                color: AppColors.primary.withOpacity(0.18)),
                             boxShadow: [
                               BoxShadow(
                                 color: AppColors.primary.withOpacity(0.08),
@@ -1235,23 +1174,17 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                _distanceText,
-                                style: const TextStyle(
-                                  color: AppColors.textPrimary,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
+                              Text(_distanceText,
+                                  style: const TextStyle(
+                                      color: AppColors.textPrimary,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600)),
                               const SizedBox(height: 8),
-                              Text(
-                                _durationText,
-                                style: const TextStyle(
-                                  color: AppColors.textPrimary,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
+                              Text(_durationText,
+                                  style: const TextStyle(
+                                      color: AppColors.textPrimary,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600)),
                             ],
                           ),
                         ),
@@ -1263,13 +1196,10 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                             foregroundColor: AppColors.textPrimary,
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
+                                borderRadius: BorderRadius.circular(12)),
                           ),
-                          child: const Text(
-                            "Start Navigation",
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
+                          child: const Text("Start Navigation",
+                              style: TextStyle(fontWeight: FontWeight.bold)),
                         ),
                       ] else ...[
                         Text(
@@ -1288,7 +1218,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
             ),
           ),
 
-          // __________ SOS BUTTON __________
+          // ── Right-side FABs ───────────────────────────────────────────
           AnimatedPositioned(
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOut,
@@ -1301,134 +1231,55 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                 ignoring: _sheetExtent > 0.17,
                 child: Column(
                   children: [
-                    Container(
-                      width: 56,
-                      height: 56,
-                      decoration: BoxDecoration(
-                        color: const Color(0xCCFF4B57),
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: const Color(0xFFFFD1D5)),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0x55FF4B57),
-                            blurRadius: 18,
-                            offset: const Offset(0, 8),
-                          ),
-                        ],
-                      ),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(18),
-                          onTap: () {},
-                          child: const Icon(
-                            Icons.warning_amber_rounded,
-                            color: Colors.white,
-                            size: 28,
-                          ),
-                        ),
-                      ),
+                    // SOS
+                    _buildFab(
+                      color: const Color(0xCCFF4B57),
+                      borderColor: const Color(0xFFFFD1D5),
+                      shadowColor: const Color(0x55FF4B57),
+                      icon: Icons.warning_amber_rounded,
+                      onTap: () {},
+                      iconSize: 28,
                     ),
                     const SizedBox(height: 10),
-                    Container(
-                      width: 56,
-                      height: 56,
-                      decoration: BoxDecoration(
-                        color: const Color(0xCC2F6BFF),
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: const Color(0xFFBED0FF)),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0x552F6BFF),
-                            blurRadius: 18,
-                            offset: const Offset(0, 8),
-                          ),
-                        ],
-                      ),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(18),
-                          onTap: _isPickingDestination
-                              ? _cancelMapPickMode
-                              : _enableMapPickMode,
-                          child: Icon(
-                            _isPickingDestination
-                                ? Icons.close_rounded
-                                : Icons.push_pin_rounded,
-                            color: Colors.white,
-                            size: 24,
-                          ),
-                        ),
-                      ),
+                    // Pin / cancel
+                    _buildFab(
+                      color: const Color(0xCC2F6BFF),
+                      borderColor: const Color(0xFFBED0FF),
+                      shadowColor: const Color(0x552F6BFF),
+                      icon: _isPickingDestination
+                          ? Icons.close_rounded
+                          : Icons.push_pin_rounded,
+                      onTap: _isPickingDestination
+                          ? _cancelMapPickMode
+                          : _enableMapPickMode,
+                      iconSize: 24,
                     ),
                     const SizedBox(height: 10),
-                    Container(
-                      width: 56,
-                      height: 56,
-                      decoration: BoxDecoration(
-                        color: const Color(0xCC65A2FF),
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: const Color(0xFFD7E7FF)),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0x5565A2FF),
-                            blurRadius: 18,
-                            offset: const Offset(0, 8),
-                          ),
-                        ],
-                      ),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(18),
-                          onTap: _goToMyLocation,
-                          child: const Icon(
-                            Icons.my_location_rounded,
-                            color: Colors.white,
-                            size: 26,
-                          ),
-                        ),
-                      ),
+                    // My location
+                    _buildFab(
+                      color: const Color(0xCC65A2FF),
+                      borderColor: const Color(0xFFD7E7FF),
+                      shadowColor: const Color(0x5565A2FF),
+                      icon: Icons.my_location_rounded,
+                      onTap: _goToMyLocation,
+                      iconSize: 26,
                     ),
                     const SizedBox(height: 10),
-                    Container(
-                      width: 56,
-                      height: 56,
-                      decoration: BoxDecoration(
-                        color: _hasSelectedDestination
-                            ? const Color(0xCCFF6B6B)
-                            : const Color(0xCC8E98A8),
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(
-                          color: _hasSelectedDestination
-                              ? const Color(0xFFFFD0D0)
-                              : const Color(0xFFD5DBE5),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: _hasSelectedDestination
-                                ? const Color(0x55FF6B6B)
-                                : const Color(0x338E98A8),
-                            blurRadius: 18,
-                            offset: const Offset(0, 8),
-                          ),
-                        ],
-                      ),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(18),
-                          onTap: _hasSelectedDestination ? _clearRoute : null,
-                          child: Icon(
-                            Icons.delete_outline_rounded,
-                            color: _hasSelectedDestination
-                                ? Colors.white
-                                : Colors.white.withOpacity(0.78),
-                            size: 24,
-                          ),
-                        ),
-                      ),
+                    // Clear
+                    _buildFab(
+                      color: _hasSelectedDestination
+                          ? const Color(0xCCFF6B6B)
+                          : const Color(0xCC8E98A8),
+                      borderColor: _hasSelectedDestination
+                          ? const Color(0xFFFFD0D0)
+                          : const Color(0xFFD5DBE5),
+                      shadowColor: _hasSelectedDestination
+                          ? const Color(0x55FF6B6B)
+                          : const Color(0x338E98A8),
+                      icon: Icons.delete_outline_rounded,
+                      onTap: _hasSelectedDestination ? _clearRoute : null,
+                      iconOpacity: _hasSelectedDestination ? 1.0 : 0.78,
+                      iconSize: 24,
                     ),
                   ],
                 ),

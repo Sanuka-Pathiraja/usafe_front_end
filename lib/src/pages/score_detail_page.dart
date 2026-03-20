@@ -84,6 +84,7 @@ class ScoreDetailPage extends StatelessWidget {
                     const SizedBox(height: 16),
                     Text(
                       categoryTitle,
+                      textAlign: TextAlign.center,
                       style: const TextStyle(
                         color: AppColors.textPrimary,
                         fontSize: 22,
@@ -118,7 +119,7 @@ class ScoreDetailPage extends StatelessWidget {
 
               const SizedBox(height: 32),
 
-              // ── Parameters Section ──
+              // ── Parameters Title ──
               const Text(
                 'Score Parameters',
                 style: TextStyle(
@@ -128,9 +129,10 @@ class ScoreDetailPage extends StatelessWidget {
                   letterSpacing: 0.5,
                 ),
               ),
+
               const SizedBox(height: 16),
 
-              // ── Parameter Cards ──
+              // ── Parameter List ──
               Expanded(
                 child: ListView.separated(
                   itemCount: parameters.length,
@@ -174,30 +176,47 @@ class ScoreDetailPage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 🔥 FIXED ROW (NO OVERFLOW)
           Row(
             children: [
+              // LABEL
               Expanded(
+                flex: 2,
                 child: Text(
                   label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: AppColors.textPrimary,
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
-                    letterSpacing: 0.3,
                   ),
                 ),
               ),
-              Text(
-                value,
-                style: TextStyle(
-                  color: color,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
+
+              const SizedBox(width: 10),
+
+              // VALUE (FIXED)
+              Flexible(
+                flex: 1,
+                child: Text(
+                  value,
+                  textAlign: TextAlign.end,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ],
           ),
+
           const SizedBox(height: 10),
+
+          // PROGRESS BAR
           ClipRRect(
             borderRadius: BorderRadius.circular(6),
             child: LinearProgressIndicator(
@@ -207,6 +226,8 @@ class ScoreDetailPage extends StatelessWidget {
               color: color,
             ),
           ),
+
+          // DESCRIPTION
           if (description != null && description.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(
@@ -214,7 +235,6 @@ class ScoreDetailPage extends StatelessWidget {
               style: const TextStyle(
                 color: AppColors.textSecondary,
                 fontSize: 12,
-                fontWeight: FontWeight.w500,
               ),
             ),
           ],
@@ -224,6 +244,7 @@ class ScoreDetailPage extends StatelessWidget {
   }
 }
 
+// MODEL CLASS
 class ScoreParameter {
   final String label;
   final String value;
