@@ -5,6 +5,14 @@ class ApiService {
   // Use 10.0.2.2 for Android emulator to connect to local backend
   static const String backendUrl = "http://10.0.2.2:5000";
 
+  static Map<String, dynamic> _decodeJsonMap(String body) {
+    if (body.trim().isEmpty) return <String, dynamic>{};
+    final decoded = jsonDecode(body);
+    if (decoded is Map<String, dynamic>) return decoded;
+    if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    return <String, dynamic>{'data': decoded};
+  }
+
   // Backend login (email/password)
   static Future<String> login(String email, String password) async {
     final resp = await http.post(Uri.parse('$backendUrl/user/login'),
@@ -39,6 +47,7 @@ class ApiService {
       throw Exception("PaymentIntent creation failed");
     }
   }
+
   // Send Distress Signal (SOS)
   static Future<void> sendDistressSignal(
       String event, double confidence, String jwt) async {
@@ -89,7 +98,99 @@ class ApiService {
     if (resp.statusCode == 200) {
       return jsonDecode(resp.body);
     } else {
-      throw Exception("Failed to fetch safety score: HTTP ${resp.statusCode} - ${resp.body}");
+      throw Exception(
+          "Failed to fetch safety score: HTTP ${resp.statusCode} - ${resp.body}");
     }
+  }
+
+  static Future<Map<String, dynamic>> startGuardianTracking({
+    required String tripName,
+    required int etaMinutes,
+    required List<Map<String, dynamic>> checkpoints,
+    required List<String> contactIds,
+    String? jwt,
+  }) async {
+    final headers = <String, String>{'Content-Type': 'application/json'};
+    if (jwt != null && jwt.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $jwt';
+    }
+
+    final resp = await http.post(
+      Uri.parse('$backendUrl/api/guardian/track'),
+      headers: headers,
+      body: jsonEncode({
+        'tripName': tripName,
+        'etaMinutes': etaMinutes,
+        'checkpoints': checkpoints,
+        'contactIds': contactIds,
+      }),
+    );
+
+    if (resp.statusCode >= 200 && resp.statusCode < 300) {
+      return _decodeJsonMap(resp.body);
+    }
+    throw Exception(
+      'Failed to start guardian tracking: HTTP ${resp.statusCode} - ${resp.body}',
+    );
+  }
+
+  static Future<Map<String, dynamic>> sendGuardianAlert({
+    required String tripId,
+    int? checkpointIndex,
+    required double lat,
+    required double lng,
+    required String message,
+    String? jwt,
+  }) async {
+    final headers = <String, String>{'Content-Type': 'application/json'};
+    if (jwt != null && jwt.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $jwt';
+    }
+
+    final resp = await http.post(
+      Uri.parse('$backendUrl/api/guardian/alert'),
+      headers: headers,
+      body: jsonEncode({
+        'tripId': tripId,
+        if (checkpointIndex != null) 'checkpointIndex': checkpointIndex,
+        'lat': lat,
+        'lng': lng,
+        'message': message,
+      }),
+    );
+
+    if (resp.statusCode >= 200 && resp.statusCode < 300) {
+      return _decodeJsonMap(resp.body);
+    }
+    throw Exception(
+      'Failed to send guardian alert: HTTP ${resp.statusCode} - ${resp.body}',
+    );
+  }
+
+  static Future<Map<String, dynamic>> fetchGuardianSafetyScore({
+    required double lat,
+    required double lng,
+    String? jwt,
+  }) async {
+    final uri = Uri.parse('$backendUrl/api/guardian/safety-score').replace(
+      queryParameters: {
+        'lat': lat.toString(),
+        'lng': lng.toString(),
+      },
+    );
+
+    final headers = <String, String>{'Content-Type': 'application/json'};
+    if (jwt != null && jwt.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $jwt';
+    }
+
+    final resp = await http.get(uri, headers: headers);
+
+    if (resp.statusCode >= 200 && resp.statusCode < 300) {
+      return _decodeJsonMap(resp.body);
+    }
+    throw Exception(
+      'Failed to fetch guardian safety score: HTTP ${resp.statusCode} - ${resp.body}',
+    );
   }
 }

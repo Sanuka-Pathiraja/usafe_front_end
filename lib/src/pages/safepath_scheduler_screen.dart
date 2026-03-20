@@ -28,11 +28,12 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
 
   // ── State toggle ──
   bool _isTripActive = false;
+  bool _isStartingTrip = false;
 
   // ── Setup State ──
   final _tripNameController = TextEditingController();
   int _selectedDurationMins = 30;
-  final List<int> _durationOptions = [15, 30, 45, 60, 90, 120];
+  final List<int> _durationOptions = [15, 30, 45, 60];
   List<Map<String, String>> _contacts = [];
   final Set<int> _selectedContactIndices = {};
   bool _loadingContacts = true;
@@ -41,12 +42,59 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
   int _remainingSeconds = 0;
   Timer? _countdownTimer;
   Timer? _scoreRefreshTimer;
+  StreamSubscription<Position>? _tripLocationSubscription;
   final Set<Marker> _checkpoints = <Marker>{};
+  final List<String> _checkpointOrder = <String>[];
+  final Map<String, LatLng> _checkpointLocations = <String, LatLng>{};
   int _checkpointSeed = 0;
   String? _selectedCheckpointId;
+  final Set<String> _passedCheckpointIds = <String>{};
+  final Set<String> _checkpointAlertInFlight = <String>{};
+  String? _activeTripId;
+  Position? _lastTrackedPosition;
   int? _backendSafetyScore;
   String _backendSafetyStatus = '';
   bool _isFetchingBackendScore = false;
+
+  static const double _checkpointPassRadiusMeters = 70;
+
+  List<Map<String, dynamic>> get _orderedCheckpointPayload {
+    final payload = <Map<String, dynamic>>[];
+    for (var i = 0; i < _checkpointOrder.length; i++) {
+      final id = _checkpointOrder[i];
+      final location = _checkpointLocations[id];
+      if (location == null) continue;
+      payload.add({
+        'index': i,
+        'order': i + 1,
+        'lat': location.latitude,
+        'lng': location.longitude,
+      });
+    }
+    return payload;
+  }
+
+  List<String> get _selectedContactIds {
+    final ids = <String>[];
+    for (final idx in _selectedContactIndices) {
+      if (idx < 0 || idx >= _contacts.length) continue;
+      final id = (_contacts[idx]['contactId'] ?? '').trim();
+      if (id.isNotEmpty) ids.add(id);
+    }
+    return ids;
+  }
+
+  String get _selectedContactsSummary {
+    if (_selectedContactIndices.isEmpty) return 'No contacts selected';
+    final names = <String>[];
+    for (final idx in _selectedContactIndices) {
+      if (idx < 0 || idx >= _contacts.length) continue;
+      final name = (_contacts[idx]['name'] ?? '').trim();
+      if (name.isNotEmpty) names.add(name);
+    }
+    if (names.isEmpty) return 'Contacts selected';
+    return names.join(', ');
+  }
 
   int get _configuredTripSeconds => _selectedDurationMins * 60;
 
@@ -119,6 +167,7 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
     _tripNameController.dispose();
     _countdownTimer?.cancel();
     _scoreRefreshTimer?.cancel();
+    _tripLocationSubscription?.cancel();
     super.dispose();
   }
 
@@ -126,51 +175,61 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
     _scoreRefreshTimer?.cancel();
     _scoreRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (!mounted || _isFetchingBackendScore) return;
-      _fetchBackendSafetyScore();
+      _fetchBackendSafetyScore(position: _lastTrackedPosition);
     });
   }
 
-  Future<void> _fetchBackendSafetyScore() async {
+  Future<void> _fetchBackendSafetyScore({Position? position}) async {
     if (_isFetchingBackendScore) return;
     _isFetchingBackendScore = true;
 
     try {
-      final battery = Battery();
-      final batteryLevel = await battery.batteryLevel;
+      Position? safePosition = position;
 
-      Position? position;
-      var isLocationEnabled = await Geolocator.isLocationServiceEnabled();
-      if (isLocationEnabled) {
-        var permission = await Geolocator.checkPermission();
-        if (permission == LocationPermission.denied) {
-          permission = await Geolocator.requestPermission();
-        }
-
-        final hasPermission = permission != LocationPermission.denied &&
-            permission != LocationPermission.deniedForever;
-        if (hasPermission) {
-          try {
-            position = await Geolocator.getCurrentPosition(
-              desiredAccuracy: LocationAccuracy.medium,
-              timeLimit: const Duration(seconds: 8),
-            );
-          } catch (_) {
-            position = await Geolocator.getLastKnownPosition();
+      if (safePosition == null) {
+        final isLocationEnabled = await Geolocator.isLocationServiceEnabled();
+        if (isLocationEnabled) {
+          var permission = await Geolocator.checkPermission();
+          if (permission == LocationPermission.denied) {
+            permission = await Geolocator.requestPermission();
           }
-        } else {
-          isLocationEnabled = false;
+
+          final hasPermission = permission != LocationPermission.denied &&
+              permission != LocationPermission.deniedForever;
+          if (hasPermission) {
+            try {
+              safePosition = await Geolocator.getCurrentPosition(
+                desiredAccuracy: LocationAccuracy.medium,
+                timeLimit: const Duration(seconds: 8),
+              );
+            } catch (_) {
+              safePosition = await Geolocator.getLastKnownPosition();
+            }
+          }
         }
       }
 
       final token = await AuthService.getToken();
-      final response = await ApiService.fetchSafetyScore(
-        latitude: position?.latitude ?? _initialMapCamera.target.latitude,
-        longitude: position?.longitude ?? _initialMapCamera.target.longitude,
-        batteryLevel: batteryLevel,
-        isLocationEnabled: isLocationEnabled && position != null,
-        isSafePathActive: _isTripActive,
-        jwt: token.isEmpty ? null : token,
-      );
+      Map<String, dynamic> response;
+      if (_isTripActive && safePosition != null) {
+        response = await ApiService.fetchGuardianSafetyScore(
+          lat: safePosition.latitude,
+          lng: safePosition.longitude,
+          jwt: token.isEmpty ? null : token,
+        );
+      } else {
+        final battery = Battery();
+        final batteryLevel = await battery.batteryLevel;
+        response = await ApiService.fetchSafetyScore(
+          latitude: safePosition?.latitude ?? _initialMapCamera.target.latitude,
+          longitude:
+              safePosition?.longitude ?? _initialMapCamera.target.longitude,
+          batteryLevel: batteryLevel,
+          isLocationEnabled: safePosition != null,
+          isSafePathActive: _isTripActive,
+          jwt: token.isEmpty ? null : token,
+        );
+      }
 
       final rawScore = response['score'];
       int? parsedScore;
@@ -200,6 +259,7 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
       setState(() {
         _contacts = remote
             .map((e) => <String, String>{
+                  'contactId': (e['contactId'] ?? '').toString(),
                   'name': (e['name'] ?? '').toString(),
                   'phone': (e['phone'] ?? '').toString(),
                 })
@@ -221,30 +281,313 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
   }
 
   void _startTrip() {
-    setState(() {
-      _isTripActive = true;
-      _remainingSeconds = _selectedDurationMins * 60;
-    });
-    _fetchBackendSafetyScore();
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_remainingSeconds <= 0) {
-        timer.cancel();
-        // TODO: Trigger SOS / timeout alert
-        return;
-      }
-      if (mounted) {
-        setState(() => _remainingSeconds--);
-      }
-    });
+    if (_isStartingTrip) return;
+
+    final tripName = _tripNameController.text.trim();
+    if (tripName.isEmpty) {
+      _showSnack('Trip name is required.', isError: true);
+      return;
+    }
+    if (_selectedDurationMins <= 0) {
+      _showSnack('Select an ETA to continue.', isError: true);
+      return;
+    }
+    if (_checkpointOrder.isEmpty) {
+      _showSnack('Add at least one checkpoint.', isError: true);
+      return;
+    }
+    if (_selectedContactIndices.isEmpty) {
+      _showSnack('Select at least one trusted contact.', isError: true);
+      return;
+    }
+
+    _startTripFlow();
   }
 
-  void _endTrip() {
-    _countdownTimer?.cancel();
+  Future<void> _startTripFlow() async {
+    setState(() => _isStartingTrip = true);
+
+    final tripName = _tripNameController.text.trim();
+    final contactIds = _selectedContactIds;
+    if (contactIds.isEmpty) {
+      setState(() => _isStartingTrip = false);
+      _showSnack(
+        'Selected contacts are missing contact IDs. Re-add contacts and retry.',
+        isError: true,
+      );
+      return;
+    }
+
+    try {
+      final token = await AuthService.getToken();
+      final trackResponse = await ApiService.startGuardianTracking(
+        tripName: tripName,
+        etaMinutes: _selectedDurationMins,
+        checkpoints: _orderedCheckpointPayload,
+        contactIds: contactIds,
+        jwt: token.isEmpty ? null : token,
+      );
+
+      final dynamic rawTripId = trackResponse['tripId'] ??
+          trackResponse['id'] ??
+          trackResponse['data']?['tripId'];
+      final tripId = rawTripId?.toString() ?? '';
+      if (tripId.isEmpty) {
+        throw Exception('Backend did not return tripId.');
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _activeTripId = tripId;
+        _isTripActive = true;
+        _remainingSeconds = _selectedDurationMins * 60;
+        _passedCheckpointIds.clear();
+        _checkpointAlertInFlight.clear();
+      });
+      _refreshCheckpointMarkerColors();
+
+      _showSnack(
+        'Trip started and contacts notified successfully.',
+        isError: false,
+      );
+
+      _fetchBackendSafetyScore();
+      await _startTripLocationTracking();
+
+      _countdownTimer?.cancel();
+      _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (_remainingSeconds <= 0) {
+          timer.cancel();
+          _endTrip(reason: 'ETA expired', sendCompletionAlert: true);
+          return;
+        }
+        if (mounted) {
+          setState(() => _remainingSeconds--);
+        }
+      });
+    } catch (error) {
+      _showRetrySnack(
+        message: 'Failed to start trip. Please retry.',
+        onRetry: _startTripFlow,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isStartingTrip = false);
+      }
+    }
+  }
+
+  Future<void> _endTrip({
+    String reason = 'Trip completed',
+    bool sendCompletionAlert = true,
+  }) async {
     setState(() {
       _isTripActive = false;
       _remainingSeconds = 0;
     });
+
+    _countdownTimer?.cancel();
+    await _stopTripLocationTracking();
+
+    if (sendCompletionAlert && (_activeTripId ?? '').isNotEmpty) {
+      final fallback = _checkpointOrder.isNotEmpty
+          ? _checkpointLocations[_checkpointOrder.last]
+          : _initialMapCamera.target;
+      final completionLat =
+          _lastTrackedPosition?.latitude ?? fallback?.latitude ?? 0;
+      final completionLng =
+          _lastTrackedPosition?.longitude ?? fallback?.longitude ?? 0;
+
+      try {
+        final token = await AuthService.getToken();
+        await ApiService.sendGuardianAlert(
+          tripId: _activeTripId!,
+          lat: completionLat,
+          lng: completionLng,
+          message: reason,
+          jwt: token.isEmpty ? null : token,
+        );
+      } catch (_) {
+        _showRetrySnack(
+          message: 'Failed to send completion alert. Please retry.',
+          onRetry: () => _endTrip(reason: reason, sendCompletionAlert: true),
+        );
+      }
+    }
+
+    setState(() {
+      _passedCheckpointIds.clear();
+      _checkpointAlertInFlight.clear();
+      _activeTripId = null;
+      _lastTrackedPosition = null;
+    });
+    _refreshCheckpointMarkerColors();
     _fetchBackendSafetyScore();
+
+    if (mounted) {
+      _showSnack(reason, isError: false);
+    }
+  }
+
+  Future<void> _startTripLocationTracking() async {
+    await _tripLocationSubscription?.cancel();
+
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      _showSnack(
+        'Location services are disabled. Enable location to continue tracking.',
+        isError: true,
+      );
+      return;
+    }
+
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+
+    final hasPermission = permission != LocationPermission.denied &&
+        permission != LocationPermission.deniedForever;
+    if (!hasPermission) {
+      _showSnack(
+        'Location permission denied. Grant permission for SafePath tracking.',
+        isError: true,
+      );
+      return;
+    }
+
+    const locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.bestForNavigation,
+      distanceFilter: 5,
+    );
+
+    _tripLocationSubscription = Geolocator.getPositionStream(
+      locationSettings: locationSettings,
+    ).listen(
+      _handleLivePosition,
+      onError: (_) {},
+      cancelOnError: false,
+    );
+  }
+
+  Future<void> _stopTripLocationTracking() async {
+    await _tripLocationSubscription?.cancel();
+    _tripLocationSubscription = null;
+  }
+
+  void _handleLivePosition(Position currentPosition) {
+    _lastTrackedPosition = currentPosition;
+    _fetchBackendSafetyScore(position: currentPosition);
+
+    if (!_isTripActive || _checkpoints.isEmpty) return;
+
+    for (final marker in _checkpoints.toList(growable: false)) {
+      final checkpointId = marker.markerId.value;
+      if (_passedCheckpointIds.contains(checkpointId) ||
+          _checkpointAlertInFlight.contains(checkpointId)) {
+        continue;
+      }
+
+      final distance = _haversineDistanceMeters(
+        currentPosition.latitude,
+        currentPosition.longitude,
+        marker.position.latitude,
+        marker.position.longitude,
+      );
+
+      if (distance <= _checkpointPassRadiusMeters) {
+        _onCheckpointPassed(
+          marker: marker,
+          currentPosition: currentPosition,
+          distanceMeters: distance,
+        );
+      }
+    }
+  }
+
+  Future<void> _onCheckpointPassed({
+    required Marker marker,
+    required Position currentPosition,
+    required double distanceMeters,
+  }) async {
+    final checkpointId = marker.markerId.value;
+    _checkpointAlertInFlight.add(checkpointId);
+
+    if (mounted) {
+      setState(() {
+        _passedCheckpointIds.add(checkpointId);
+      });
+      _refreshCheckpointMarkerColors();
+    }
+
+    try {
+      await _notifyCheckpointPassed(
+        checkpointId: checkpointId,
+        markerPosition: marker.position,
+        currentPosition: currentPosition,
+        distanceMeters: distanceMeters,
+      );
+
+      if (_passedCheckpointIds.length >= _checkpointOrder.length &&
+          _checkpointOrder.isNotEmpty) {
+        await _endTrip(
+          reason: 'Trip completed: all checkpoints reached',
+          sendCompletionAlert: true,
+        );
+      }
+    } finally {
+      _checkpointAlertInFlight.remove(checkpointId);
+    }
+  }
+
+  Future<void> _notifyCheckpointPassed({
+    required String checkpointId,
+    required LatLng markerPosition,
+    required Position currentPosition,
+    required double distanceMeters,
+  }) async {
+    final tripId = _activeTripId;
+    if (tripId == null || tripId.isEmpty) return;
+
+    final tripName = _tripNameController.text.trim().isEmpty
+        ? 'SafePath Trip'
+        : _tripNameController.text.trim();
+    final checkpointLabel = checkpointId.replaceFirst('checkpoint_', '#');
+    final reachedAt = DateTime.now().toIso8601String();
+
+    final message =
+        '$tripName update: I passed checkpoint $checkpointLabel. Current location: '
+        '${currentPosition.latitude.toStringAsFixed(6)}, ${currentPosition.longitude.toStringAsFixed(6)}. '
+        'Checkpoint: ${markerPosition.latitude.toStringAsFixed(6)}, ${markerPosition.longitude.toStringAsFixed(6)}. '
+        'Distance ${distanceMeters.toStringAsFixed(0)}m. Time: $reachedAt';
+
+    final checkpointIndex = _checkpointOrder.indexOf(checkpointId);
+
+    try {
+      final token = await AuthService.getToken();
+      await ApiService.sendGuardianAlert(
+        tripId: tripId,
+        checkpointIndex: checkpointIndex >= 0 ? checkpointIndex : null,
+        lat: currentPosition.latitude,
+        lng: currentPosition.longitude,
+        message: message,
+        jwt: token.isEmpty ? null : token,
+      );
+    } catch (_) {
+      _showRetrySnack(
+        message: 'Checkpoint alert failed. Retry suggested.',
+        onRetry: () => _notifyCheckpointPassed(
+          checkpointId: checkpointId,
+          markerPosition: markerPosition,
+          currentPosition: currentPosition,
+          distanceMeters: distanceMeters,
+        ),
+      );
+    }
+
+    if (!mounted) return;
+    final snack = 'Checkpoint $checkpointLabel reached and backend alerted.';
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(snack)));
   }
 
   void _addTime(int minutes) {
@@ -253,8 +596,22 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
     });
   }
 
-  void _dropCheckpoint() {
-    _addCheckpointAt(_initialMapCamera.target, animateCamera: true);
+  Future<void> _dropCheckpoint() async {
+    if (_mapController == null) {
+      _addCheckpointAt(_initialMapCamera.target, animateCamera: true);
+      return;
+    }
+
+    try {
+      final bounds = await _mapController!.getVisibleRegion();
+      final center = LatLng(
+        (bounds.northeast.latitude + bounds.southwest.latitude) / 2,
+        (bounds.northeast.longitude + bounds.southwest.longitude) / 2,
+      );
+      _addCheckpointAt(center, animateCamera: true);
+    } catch (_) {
+      _addCheckpointAt(_initialMapCamera.target, animateCamera: true);
+    }
   }
 
   void _addCheckpointAt(LatLng position, {bool animateCamera = false}) {
@@ -263,16 +620,17 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
 
     setState(() {
       _selectedCheckpointId = id;
+      _checkpointOrder.add(id);
+      _checkpointLocations[id] = position;
       _checkpoints
         ..removeWhere((m) => m.markerId == markerId)
         ..add(
           Marker(
             markerId: markerId,
             position: position,
-            infoWindow: InfoWindow(title: 'Checkpoint $_checkpointSeed'),
-            icon: BitmapDescriptor.defaultMarkerWithHue(
-              BitmapDescriptor.hueAzure,
-            ),
+            infoWindow:
+                InfoWindow(title: 'Checkpoint ${_checkpointOrder.length}'),
+            icon: _markerHueForCheckpoint(id),
             onTap: () => _selectCheckpoint(id),
           ),
         );
@@ -284,27 +642,47 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
         CameraUpdate.newLatLng(position),
       );
     }
+
+    _showSnack('${_checkpointLabel(id)} added on map.', isError: false);
   }
 
   Future<void> _onMapTap(LatLng position) async {
     _addCheckpointAt(position, animateCamera: false);
   }
 
+  Future<void> _onMapLongPress(LatLng position) async {
+    _addCheckpointAt(position, animateCamera: false);
+  }
+
   void _selectCheckpoint(String checkpointId) {
     setState(() {
       _selectedCheckpointId = checkpointId;
-      final updated = _checkpoints
-          .map(
-            (marker) => marker.copyWith(
-              iconParam: BitmapDescriptor.defaultMarkerWithHue(
-                marker.markerId.value == checkpointId
-                    ? BitmapDescriptor.hueAzure
-                    : BitmapDescriptor.hueRed,
-              ),
-            ),
-          )
-          .toSet();
+    });
+    _refreshCheckpointMarkerColors();
+  }
 
+  BitmapDescriptor _markerHueForCheckpoint(String checkpointId) {
+    if (_passedCheckpointIds.contains(checkpointId)) {
+      return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
+    }
+    if (_selectedCheckpointId == checkpointId) {
+      return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure);
+    }
+    return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed);
+  }
+
+  void _refreshCheckpointMarkerColors() {
+    if (_checkpoints.isEmpty) return;
+    final updated = _checkpoints
+        .map(
+          (marker) => marker.copyWith(
+            iconParam: _markerHueForCheckpoint(marker.markerId.value),
+          ),
+        )
+        .toSet();
+
+    if (!mounted) return;
+    setState(() {
       _checkpoints
         ..clear()
         ..addAll(updated);
@@ -322,6 +700,309 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
   }
 
   GoogleMapController? _mapController;
+
+  Set<Circle> get _checkpointCircles {
+    final circles = <Circle>{};
+    for (final id in _checkpointOrder) {
+      final location = _checkpointLocations[id];
+      if (location == null) continue;
+
+      final isPassed = _passedCheckpointIds.contains(id);
+      final isSelected = _selectedCheckpointId == id;
+      final color = isPassed
+          ? AppColors.success
+          : (isSelected ? const Color(0xFFFFC658) : AppColors.primary);
+
+      circles.add(
+        Circle(
+          circleId: CircleId('cp_circle_$id'),
+          center: location,
+          radius: _checkpointPassRadiusMeters,
+          fillColor: color.withOpacity(0.14),
+          strokeColor: color.withOpacity(0.7),
+          strokeWidth: 2,
+        ),
+      );
+    }
+    return circles;
+  }
+
+  String _checkpointLabel(String checkpointId) {
+    final index = _checkpointOrder.indexOf(checkpointId);
+    if (index < 0) return 'CP ?';
+    return 'CP ${index + 1}';
+  }
+
+  double _haversineDistanceMeters(
+    double startLat,
+    double startLng,
+    double endLat,
+    double endLng,
+  ) {
+    const earthRadius = 6371000.0;
+    final dLat = _degToRad(endLat - startLat);
+    final dLng = _degToRad(endLng - startLng);
+    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(_degToRad(startLat)) *
+            math.cos(_degToRad(endLat)) *
+            math.sin(dLng / 2) *
+            math.sin(dLng / 2);
+    final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    return earthRadius * c;
+  }
+
+  double _degToRad(double degree) => degree * (math.pi / 180);
+
+  void _showSnack(String message, {required bool isError}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? AppColors.alert : AppColors.success,
+      ),
+    );
+  }
+
+  void _showRetrySnack({
+    required String message,
+    required Future<void> Function() onRetry,
+  }) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$message Please retry.'),
+        action: SnackBarAction(
+          label: 'Retry',
+          onPressed: () {
+            onRetry();
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmEndTrip({required String reason}) async {
+    final shouldEnd = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: AppColors.surface,
+          title: const Text(
+            'End Trip?',
+            style: TextStyle(
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          content: const Text(
+            'This will stop live tracking and notify contacts that your trip is completed.',
+            style: TextStyle(color: AppColors.textSecondary),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.alert,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('End Trip'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldEnd == true) {
+      await _endTrip(reason: reason, sendCompletionAlert: true);
+    }
+  }
+
+  Widget _buildCheckpointProgressPanel() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border.withOpacity(0.55)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.flag_rounded,
+                  color: AppColors.primary, size: 18),
+              const SizedBox(width: 8),
+              const Text(
+                'Checkpoint Progress',
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${_passedCheckpointIds.length}/${_checkpointOrder.length}',
+                style: TextStyle(
+                  color: _checkpointOrder.isEmpty
+                      ? AppColors.textSecondary
+                      : AppColors.success,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (_checkpointOrder.isEmpty)
+            const Text(
+              'No checkpoints added yet.',
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            )
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (var i = 0; i < _checkpointOrder.length; i++)
+                  _buildCheckpointBadge(i, _checkpointOrder[i]),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCheckpointBadge(int index, String checkpointId) {
+    final isPassed = _passedCheckpointIds.contains(checkpointId);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: isPassed
+            ? AppColors.success.withOpacity(0.2)
+            : AppColors.surfaceElevated,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isPassed
+              ? AppColors.success.withOpacity(0.6)
+              : AppColors.border.withOpacity(0.45),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isPassed
+                ? Icons.check_circle_rounded
+                : Icons.radio_button_unchecked,
+            size: 14,
+            color: isPassed ? AppColors.success : AppColors.textSecondary,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            'CP ${index + 1}',
+            style: TextStyle(
+              color: isPassed ? AppColors.success : AppColors.textSecondary,
+              fontWeight: FontWeight.w700,
+              fontSize: 11,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSetupCheckpointStrip() {
+    if (_checkpointOrder.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.border.withOpacity(0.5)),
+        ),
+        child: const Text(
+          'No checkpoints selected. Tap or long-press the map to add one.',
+          style: TextStyle(
+            color: AppColors.textSecondary,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: 42,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: _checkpointOrder.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final id = _checkpointOrder[index];
+          final location = _checkpointLocations[id];
+          final isSelected = _selectedCheckpointId == id;
+          final subtitle = location == null
+              ? ''
+              : '${location.latitude.toStringAsFixed(4)}, ${location.longitude.toStringAsFixed(4)}';
+          return GestureDetector(
+            onTap: () => _selectCheckpoint(id),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? AppColors.primary.withOpacity(0.22)
+                    : AppColors.surface,
+                borderRadius: BorderRadius.circular(11),
+                border: Border.all(
+                  color: isSelected
+                      ? AppColors.primary
+                      : AppColors.border.withOpacity(0.55),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _checkpointLabel(id),
+                    style: TextStyle(
+                      color: isSelected
+                          ? AppColors.primary
+                          : AppColors.textPrimary,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 11,
+                    ),
+                  ),
+                  if (subtitle.isNotEmpty) ...[
+                    const SizedBox(width: 6),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 10,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -468,13 +1149,16 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
                   GoogleMap(
                     initialCameraPosition: _initialMapCamera,
                     myLocationButtonEnabled: true,
+                    myLocationEnabled: true,
                     zoomControlsEnabled: false,
                     mapToolbarEnabled: false,
                     onMapCreated: (controller) {
                       _mapController = controller;
                     },
                     onTap: _onMapTap,
+                    onLongPress: _onMapLongPress,
                     markers: _checkpoints,
+                    circles: _checkpointCircles,
                   ),
                   Positioned(
                     top: 10,
@@ -532,6 +1216,9 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
             ),
           ),
 
+          const SizedBox(height: 10),
+          _buildSetupCheckpointStrip(),
+
           const SizedBox(height: 20),
 
           // ── Emergency Contacts ──
@@ -541,6 +1228,19 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1.0)),
+          const SizedBox(height: 10),
+          Text(
+            _selectedContactsSummary,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: _selectedContactIndices.isEmpty
+                  ? AppColors.alert
+                  : AppColors.textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 10),
           SizedBox(
             height: 44,
@@ -650,9 +1350,20 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(20)),
               ),
-              icon: const Icon(Icons.navigation_rounded, size: 24),
-              label: const Text(
-                'START TRIP & NOTIFY CONTACTS',
+              icon: _isStartingTrip
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.navigation_rounded, size: 24),
+              label: Text(
+                _isStartingTrip
+                    ? 'STARTING...'
+                    : 'START TRIP & NOTIFY CONTACTS',
                 style: TextStyle(
                   fontWeight: FontWeight.w900,
                   fontSize: 16,
@@ -857,13 +1568,16 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
                   GoogleMap(
                     initialCameraPosition: _initialMapCamera,
                     myLocationButtonEnabled: true,
+                    myLocationEnabled: true,
                     zoomControlsEnabled: false,
                     mapToolbarEnabled: false,
                     onMapCreated: (controller) {
                       _mapController = controller;
                     },
                     onTap: _onMapTap,
+                    onLongPress: _onMapLongPress,
                     markers: _checkpoints,
+                    circles: _checkpointCircles,
                   ),
                   Positioned(
                     top: 10,
@@ -951,6 +1665,8 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
                 ? AppColors.primary
                 : AppColors.textSecondary,
           ),
+          const SizedBox(height: 10),
+          _buildCheckpointProgressPanel(),
 
           // ── Action Buttons Row ──
           Row(
@@ -961,7 +1677,9 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
                 child: SizedBox(
                   height: 56,
                   child: ElevatedButton.icon(
-                    onPressed: _endTrip,
+                    onPressed: () => _confirmEndTrip(
+                      reason: 'Trip completed by user',
+                    ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.success,
                       foregroundColor: Colors.white,
