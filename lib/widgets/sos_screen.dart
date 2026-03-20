@@ -1,7 +1,10 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:usafe_front_end/core/services/contact_alert_service.dart';
@@ -201,7 +204,9 @@ class _SOSScreenState extends State<SOSScreen>
     }
     Map<String, dynamic> response;
     try {
-      response = await AuthService.startEmergency();
+      response = await AuthService.startEmergency(
+        payload: await _buildEmergencyStartPayload(),
+      );
     } catch (e) {
       if (await _handleUnauthorizedError(e)) {
         return const EmergencyActionResult(
@@ -371,6 +376,146 @@ class _SOSScreenState extends State<SOSScreen>
       success: ok,
       message: response['message']?.toString() ?? 'Emergency process cancelled.',
     );
+  }
+
+  Future<Map<String, dynamic>> _buildEmergencyStartPayload() async {
+    final payload = <String, dynamic>{};
+
+    final currentUser = await AuthService.getCurrentUser();
+    _debugEmergencyPayload('currentUser=$currentUser');
+    final userName = _displayNameFromUser(currentUser);
+    if (userName.isNotEmpty) {
+      payload['userName'] = userName;
+      _debugEmergencyPayload('resolved userName=$userName');
+    } else {
+      _debugEmergencyPayload('userName unavailable');
+    }
+
+    final position = await _getEmergencyPosition();
+    if (position != null) {
+      payload['latitude'] = position.latitude;
+      payload['longitude'] = position.longitude;
+      _debugEmergencyPayload(
+        'resolved coordinates lat=${position.latitude}, lng=${position.longitude}',
+      );
+
+      final approximateAddress = await _resolveApproximateAddress(position);
+      if (approximateAddress.isNotEmpty) {
+        payload['approximateAddress'] = approximateAddress;
+        _debugEmergencyPayload(
+          'resolved approximateAddress=$approximateAddress',
+        );
+      } else {
+        _debugEmergencyPayload('approximateAddress unavailable');
+      }
+    } else {
+      _debugEmergencyPayload('coordinates unavailable');
+    }
+
+    _debugEmergencyPayload('final payload=$payload');
+    return payload;
+  }
+
+  void _debugEmergencyPayload(String message) {
+    if (kDebugMode) {
+      debugPrint('[EmergencyStartPayload] $message');
+    }
+  }
+
+  String _displayNameFromUser(Map<String, dynamic>? user) {
+    if (user == null) return '';
+    final first = '${user['firstName'] ?? ''}'.trim();
+    final last = '${user['lastName'] ?? ''}'.trim();
+    final full = [first, last]
+        .where((value) => value.isNotEmpty)
+        .join(' ')
+        .trim();
+    if (full.isNotEmpty) return full;
+    final fallbackName = '${user['name'] ?? ''}'.trim();
+    return fallbackName;
+  }
+
+  Future<Position?> _getEmergencyPosition() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        _debugEmergencyPayload(
+          'location service disabled, falling back to last known position',
+        );
+        return Geolocator.getLastKnownPosition();
+      }
+
+      var permission = await Geolocator.checkPermission();
+      _debugEmergencyPayload('location permission status=$permission');
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        _debugEmergencyPayload(
+          'location permission after request=$permission',
+        );
+      }
+
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        _debugEmergencyPayload(
+          'location permission denied, falling back to last known position',
+        );
+        return Geolocator.getLastKnownPosition();
+      }
+
+      try {
+        return await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.medium,
+          timeLimit: const Duration(seconds: 8),
+        );
+      } catch (e) {
+        _debugEmergencyPayload(
+          'getCurrentPosition failed: $e, falling back to last known position',
+        );
+        return Geolocator.getLastKnownPosition();
+      }
+    } catch (e) {
+      _debugEmergencyPayload('_getEmergencyPosition failed: $e');
+      return null;
+    }
+  }
+
+  Future<String> _resolveApproximateAddress(Position position) async {
+    try {
+      final placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      ).timeout(const Duration(seconds: 8));
+      if (placemarks.isEmpty) return '';
+
+      final place = placemarks.first;
+      final parts = <String>[];
+      if ((place.street ?? '').trim().isNotEmpty) {
+        parts.add(place.street!.trim());
+      }
+      if ((place.subLocality ?? '').trim().isNotEmpty) {
+        parts.add(place.subLocality!.trim());
+      }
+      if ((place.locality ?? '').trim().isNotEmpty) {
+        parts.add(place.locality!.trim());
+      }
+      if ((place.subAdministrativeArea ?? '').trim().isNotEmpty) {
+        parts.add(place.subAdministrativeArea!.trim());
+      }
+      if ((place.administrativeArea ?? '').trim().isNotEmpty) {
+        parts.add(place.administrativeArea!.trim());
+      }
+      if ((place.postalCode ?? '').trim().isNotEmpty) {
+        parts.add(place.postalCode!.trim());
+      }
+      if ((place.country ?? '').trim().isNotEmpty) {
+        parts.add(place.country!.trim());
+      }
+
+      return parts.join(', ');
+    } catch (e) {
+      _debugEmergencyPayload('_resolveApproximateAddress failed: $e');
+      return '';
+    }
   }
 
   Future<bool> _handleUnauthorizedError(Object error) async {

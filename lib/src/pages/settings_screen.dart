@@ -33,6 +33,7 @@ class _SettingsPageState extends State<SettingsPage>
   bool shareLocation = true;
   bool notificationsEnabled = false;
   bool activeMicrophoneListening = false;
+  bool contactEmergencyAuthorities = true;
   final GlobalKey _locationTileKey = GlobalKey();
   final ScrollController _scrollController = ScrollController();
   AnimationController? _highlightController;
@@ -89,6 +90,8 @@ class _SettingsPageState extends State<SettingsPage>
       notificationsEnabled = notificationStatus.isGranted;
       activeMicrophoneListening =
           prefs.getBool("active_microphone_listening") ?? false;
+      contactEmergencyAuthorities =
+          prefs.getBool("contact_emergency_authorities") ?? true;
     });
   }
 
@@ -170,6 +173,19 @@ class _SettingsPageState extends State<SettingsPage>
       value
           ? "Active microphone listening enabled"
           : "Active microphone listening disabled",
+    );
+  }
+
+  Future<void> _toggleContactEmergencyAuthorities(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool("contact_emergency_authorities", value);
+
+    if (!mounted) return;
+    setState(() => contactEmergencyAuthorities = value);
+    _showSnack(
+      value
+          ? "Emergency authority calling enabled"
+          : "Emergency authority calling disabled",
     );
   }
 
@@ -552,6 +568,14 @@ class _SettingsPageState extends State<SettingsPage>
               fontSize: 12,
               height: 1.4,
             ),
+          ),
+          const SizedBox(height: 14),
+          _premiumToggleTile(
+            icon: Icons.local_phone_outlined,
+            title: "Contact 119 Authorities",
+            subtitle: "Automatically call 119 during emergency processes",
+            value: contactEmergencyAuthorities,
+            onChanged: _toggleContactEmergencyAuthorities,
           ),
           const SizedBox(height: 14),
           SizedBox(

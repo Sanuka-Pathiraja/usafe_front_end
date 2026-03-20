@@ -700,15 +700,23 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       // extendBodyBehindAppBar lets the map fill the whole screen
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: AppColors.background.withOpacity(0.92),
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: AppColors.textPrimary,
+            size: 20,
+          ),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text(
           "Safe Route Navigation",
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+          style: TextStyle(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.w800,
+            fontSize: 20,
+          ),
         ),
         centerTitle: true,
       ),
@@ -1231,16 +1239,6 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                 ignoring: _sheetExtent > 0.17,
                 child: Column(
                   children: [
-                    // SOS
-                    _buildFab(
-                      color: const Color(0xCCFF4B57),
-                      borderColor: const Color(0xFFFFD1D5),
-                      shadowColor: const Color(0x55FF4B57),
-                      icon: Icons.warning_amber_rounded,
-                      onTap: () {},
-                      iconSize: 28,
-                    ),
-                    const SizedBox(height: 10),
                     // Pin / cancel
                     _buildFab(
                       color: const Color(0xCC2F6BFF),

@@ -735,8 +735,33 @@ class AuthService {
     }
   }
 
-  static Future<Map<String, dynamic>> startEmergency() async {
-    return _authorizedRequest(method: 'POST', path: '/emergency/start');
+  static Future<Map<String, dynamic>> startEmergency({
+    Map<String, dynamic>? payload,
+  }) async {
+    Map<String, dynamic>? sanitizedPayload;
+    if (payload != null) {
+      sanitizedPayload = Map<String, dynamic>.from(payload);
+      sanitizedPayload.removeWhere(
+        (_, value) => value == null || '$value'.trim().isEmpty,
+      );
+    }
+    if (kDebugMode) {
+      final payloadEntries = sanitizedPayload == null
+          ? <String>[]
+          : sanitizedPayload.entries
+              .map((entry) => '${entry.key}=${entry.value}')
+              .toList(growable: false);
+      debugPrint(
+        '[EmergencyStart] sending payload values: ${jsonEncode(payloadEntries)}',
+      );
+    }
+    return _authorizedRequest(
+      method: 'POST',
+      path: '/emergency/start',
+      body: sanitizedPayload == null || sanitizedPayload.isEmpty
+          ? null
+          : sanitizedPayload,
+    );
   }
 
   static EmergencyStartAssessment assessEmergencyStartResponse(
@@ -774,11 +799,33 @@ class AuthService {
     required String sessionId,
     required int contactIndex,
     int? timeoutSec,
+    Map<String, dynamic>? payload,
   }) async {
+    Map<String, dynamic>? requestBody;
+    if (payload != null) {
+      requestBody = Map<String, dynamic>.from(payload);
+      requestBody.removeWhere(
+        (_, value) => value == null || '$value'.trim().isEmpty,
+      );
+    }
+    if (timeoutSec != null) {
+      requestBody ??= <String, dynamic>{};
+      requestBody['timeoutSec'] = timeoutSec;
+    }
+    if (kDebugMode) {
+      final payloadEntries = requestBody == null
+          ? <String>[]
+          : requestBody.entries
+              .map((entry) => '${entry.key}=${entry.value}')
+              .toList(growable: false);
+      debugPrint(
+        '[EmergencyCallContact] sending payload values: ${jsonEncode(payloadEntries)}',
+      );
+    }
     return _authorizedRequest(
       method: 'POST',
       path: '/emergency/$sessionId/call/$contactIndex/attempt',
-      body: timeoutSec == null ? null : {'timeoutSec': timeoutSec},
+      body: requestBody == null || requestBody.isEmpty ? null : requestBody,
     );
   }
 
@@ -803,10 +850,31 @@ class AuthService {
 
   static Future<Map<String, dynamic>> callEmergency119({
     required String sessionId,
+    Map<String, dynamic>? payload,
   }) async {
+    Map<String, dynamic>? sanitizedPayload;
+    if (payload != null) {
+      sanitizedPayload = Map<String, dynamic>.from(payload);
+      sanitizedPayload.removeWhere(
+        (_, value) => value == null || '$value'.trim().isEmpty,
+      );
+    }
+    if (kDebugMode) {
+      final payloadEntries = sanitizedPayload == null
+          ? <String>[]
+          : sanitizedPayload.entries
+              .map((entry) => '${entry.key}=${entry.value}')
+              .toList(growable: false);
+      debugPrint(
+        '[EmergencyCall119] sending payload values: ${jsonEncode(payloadEntries)}',
+      );
+    }
     return _authorizedRequest(
       method: 'POST',
       path: '/emergency/$sessionId/call-119',
+      body: sanitizedPayload == null || sanitizedPayload.isEmpty
+          ? null
+          : sanitizedPayload,
     );
   }
 

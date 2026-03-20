@@ -1,13 +1,21 @@
 import 'dart:async';
+import 'package:battery_plus/battery_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/services/api_service.dart';
 import '../../features/auth/auth_service.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/onboarding/onboarding_controller.dart';
 import 'contacts_screen.dart';
 import 'emergency_process_screen.dart';
 import 'package:usafe_front_end/src/pages/profile_screen.dart'; // Adjust path
+import 'score_detail_page.dart';
 import 'safety_score_gate_screen.dart';
+import 'safety_score_screen.dart';
 import 'safepath_scheduler_screen.dart';
 import 'package:showcaseview/showcaseview.dart';
 import 'settings_screen.dart'; // ← SettingsPage lives here
@@ -236,12 +244,19 @@ class SOSDashboard extends StatefulWidget {
 
 class _SOSDashboardState extends State<SOSDashboard>
     with TickerProviderStateMixin {
+  static const Duration _safetyRefreshInterval = Duration(seconds: 30);
   bool isSOSActive = false;
   bool _openingEmergencyProcess = false;
   String? _emergencySessionId;
   Timer? _statusPollTimer;
+  Timer? _safetyRefreshTimer;
   bool _sessionAnswered = false;
   Map<String, dynamic>? _latestSessionStatus;
+  Map<String, dynamic>? _emergencyContextPayload;
+  int? _safetyScore;
+  String _safetyStatus = 'Checking';
+  Map<String, dynamic> _safetyResponse = const {};
+  bool _isFetchingSafety = false;
 
   static const Duration _sosDuration = Duration(minutes: 3);
   static const Duration _statusPollInterval = Duration(seconds: 3);
@@ -249,9 +264,17 @@ class _SOSDashboardState extends State<SOSDashboard>
   Duration _remaining = _sosDuration;
 
   @override
+  void initState() {
+    super.initState();
+    _fetchSafetySnapshot();
+    _startSafetyRefresh();
+  }
+
+  @override
   void dispose() {
     _sosTimer?.cancel();
     _statusPollTimer?.cancel();
+    _safetyRefreshTimer?.cancel();
     super.dispose();
   }
 
@@ -301,35 +324,408 @@ class _SOSDashboardState extends State<SOSDashboard>
   }
 
   Widget _buildStatusPill() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceElevated.withOpacity(0.5),
+    final statusColor = _getSafetyStatusColor();
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.border.withOpacity(0.5)),
+        onTap: _openSafetyDetails,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceElevated.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.border.withOpacity(0.5)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: statusColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                _safetyStatusLabel,
+                style: TextStyle(
+                  color: statusColor,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 14,
+                  letterSpacing: 1.0,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 10,
-            height: 10,
-            decoration: const BoxDecoration(
-              color: AppColors.success, // High contrast safe green
-              shape: BoxShape.circle,
+    );
+  }
+
+  void _startSafetyRefresh() {
+    _safetyRefreshTimer?.cancel();
+    _safetyRefreshTimer = Timer.periodic(_safetyRefreshInterval, (_) {
+      if (!mounted || _isFetchingSafety) return;
+      _fetchSafetySnapshot();
+    });
+  }
+
+  Future<void> _fetchSafetySnapshot() async {
+    if (_isFetchingSafety) return;
+    _isFetchingSafety = true;
+    try {
+      final token = await AuthService.getToken();
+      if (token.isEmpty) {
+        throw Exception('No session');
+      }
+
+      final batteryLevel = await Battery().batteryLevel;
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        throw Exception('Location disabled');
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        throw Exception('Location denied');
+      }
+
+      final position =
+          await _getSafePosition() ?? await Geolocator.getLastKnownPosition();
+      if (position == null) {
+        throw Exception('Location unavailable');
+      }
+
+      final response = await ApiService.fetchSafetyScore(
+        latitude: position.latitude,
+        longitude: position.longitude,
+        batteryLevel: batteryLevel,
+        isLocationEnabled: true,
+        jwt: token,
+      );
+
+      final parsedScore = (response['score'] is num)
+          ? (response['score'] as num).toInt()
+          : int.tryParse(response['score']?.toString() ?? '');
+
+      if (!mounted) return;
+      setState(() {
+        _safetyScore = parsedScore;
+        _safetyStatus = response['status']?.toString() ?? 'Unknown';
+        _safetyResponse = response;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _safetyStatus = _fallbackSafetyStatus();
+      });
+    } finally {
+      _isFetchingSafety = false;
+    }
+  }
+
+  Future<Position?> _getSafePosition() async {
+    try {
+      return Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
+        timeLimit: const Duration(seconds: 8),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String get _safetyStatusLabel {
+    final raw = _safetyStatus.trim();
+    if (raw.isEmpty || raw.toLowerCase() == 'unknown') {
+      return _fallbackSafetyStatus();
+    }
+    return raw.toUpperCase();
+  }
+
+  String _fallbackSafetyStatus() {
+    final score = _safetyScore;
+    if (score == null) return 'CHECKING';
+    if (score >= 80) return 'SAFE';
+    if (score >= 60) return 'CAUTION';
+    return 'DANGER';
+  }
+
+  Color _getSafetyStatusColor() {
+    switch (_safetyStatusLabel.toLowerCase()) {
+      case 'safe':
+      case 'success':
+      case 'good':
+        return AppColors.success;
+      case 'caution':
+      case 'moderate':
+        return Colors.orange;
+      case 'danger':
+      case 'high risk':
+        return AppColors.alert;
+      default:
+        return AppColors.primary;
+    }
+  }
+
+  Map<String, dynamic> _nestedSafetyMap(String key) {
+    final nested = _safetyResponse[key];
+    if (nested is Map<String, dynamic>) return nested;
+    return const {};
+  }
+
+  dynamic _lookupSafetyValue(List<String> keys) {
+    for (final key in keys) {
+      if (_safetyResponse.containsKey(key)) {
+        return _safetyResponse[key];
+      }
+    }
+
+    final details = _nestedSafetyMap('details');
+    for (final key in keys) {
+      if (details.containsKey(key)) {
+        return details[key];
+      }
+    }
+
+    final factors = _nestedSafetyMap('factors');
+    for (final key in keys) {
+      if (factors.containsKey(key)) {
+        return factors[key];
+      }
+    }
+
+    return null;
+  }
+
+  double? _lookupSafetyDouble(List<String> keys) {
+    final value = _lookupSafetyValue(keys);
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    return null;
+  }
+
+  String? _lookupSafetyString(List<String> keys) {
+    final value = _lookupSafetyValue(keys);
+    if (value == null) return null;
+    return value.toString();
+  }
+
+  double? get _closestHospitalKm => _lookupSafetyDouble([
+        'closestHospitalKm',
+        'closest_hospital_km',
+        'hospitalKm',
+        'hospital_km',
+        'nearestHospitalKm',
+        'nearest_hospital_km',
+        'hospitalDistanceKm',
+        'hospital_distance_km',
+      ]);
+
+  double? get _closestPoliceKm => _lookupSafetyDouble([
+        'closestPoliceStationKm',
+        'closest_police_station_km',
+        'policeStationKm',
+        'police_station_km',
+        'nearestPoliceStationKm',
+        'nearest_police_station_km',
+        'policeDistanceKm',
+        'police_distance_km',
+      ]);
+
+  String get _timeOfDayLabel {
+    final backendValue = _lookupSafetyString([
+      'timeOfDay',
+      'time_of_day',
+      'dayPeriod',
+      'day_period',
+    ]);
+    if (backendValue != null && backendValue.trim().isNotEmpty) {
+      return backendValue;
+    }
+
+    final hour = DateTime.now().hour;
+    if (hour >= 5 && hour < 12) return 'Morning';
+    if (hour >= 12 && hour < 17) return 'Afternoon';
+    if (hour >= 17 && hour < 21) return 'Evening';
+    return 'Night';
+  }
+
+  double? get _populationDensity => _lookupSafetyDouble([
+        'populationDensityPerKm2',
+        'population_density_per_km2',
+        'populationDensity',
+        'population_density',
+        'populationPerKm2',
+        'population_per_km2',
+      ]);
+
+  String? get _trafficLevel => _lookupSafetyString([
+        'trafficLevel',
+        'traffic_level',
+        'traffic',
+      ]);
+
+  String _formatDistance(double? km) {
+    if (km == null) return 'N/A';
+    return '${km.toStringAsFixed(1)} km';
+  }
+
+  String get _populationLabel {
+    final density = _populationDensity;
+    if (density == null) return 'N/A';
+    return '${density.toStringAsFixed(0)}/km2';
+  }
+
+  String get _trafficLabel {
+    final traffic = _trafficLevel;
+    if (traffic == null || traffic.trim().isEmpty) return 'N/A';
+    return traffic;
+  }
+
+  Color _distanceColor(double? km) {
+    if (km == null) return AppColors.textSecondary;
+    if (km <= 2.5) return AppColors.success;
+    if (km <= 8.0) return Colors.orange;
+    return AppColors.alert;
+  }
+
+  Color get _timeOfDayColor {
+    final normalized = _timeOfDayLabel.toLowerCase();
+    if (normalized.contains('night')) return AppColors.alert;
+    if (normalized.contains('evening')) return Colors.orange;
+    return AppColors.success;
+  }
+
+  Color get _populationColor {
+    final density = _populationDensity;
+    if (density == null) return AppColors.textSecondary;
+    if (density <= 2500) return AppColors.success;
+    if (density <= 6000) return Colors.orange;
+    return AppColors.alert;
+  }
+
+  Color get _trafficColor {
+    final traffic = _trafficLevel?.toLowerCase() ?? '';
+    if (traffic.isEmpty) return AppColors.textSecondary;
+    if (traffic.contains('low') || traffic.contains('light')) {
+      return AppColors.success;
+    }
+    if (traffic.contains('moderate') || traffic.contains('medium')) {
+      return Colors.orange;
+    }
+    if (traffic.contains('high') || traffic.contains('heavy')) {
+      return AppColors.alert;
+    }
+    return AppColors.primary;
+  }
+
+  double _distanceProgress(double? km) {
+    if (km == null) return 0;
+    final progress = 1 - (km / 12);
+    return progress.clamp(0.0, 1.0);
+  }
+
+  double get _timeOfDayProgress {
+    final normalized = _timeOfDayLabel.toLowerCase();
+    if (normalized.contains('night')) return 0.35;
+    if (normalized.contains('evening')) return 0.6;
+    return 0.88;
+  }
+
+  double get _populationProgress {
+    final density = _populationDensity;
+    if (density == null) return 0;
+    if (density <= 2500) return 0.9;
+    if (density <= 6000) return 0.62;
+    return 0.35;
+  }
+
+  double get _trafficProgress {
+    final traffic = _trafficLevel?.toLowerCase() ?? '';
+    if (traffic.contains('low') || traffic.contains('light')) return 0.9;
+    if (traffic.contains('moderate') || traffic.contains('medium')) return 0.58;
+    if (traffic.contains('high') || traffic.contains('heavy')) return 0.3;
+    final numeric = double.tryParse(_trafficLevel ?? '');
+    if (numeric != null) {
+      return (1 - (numeric / 100)).clamp(0.0, 1.0);
+    }
+    return 0;
+  }
+
+  void _openSafetyDetails() {
+    if (_safetyScore == null && _safetyResponse.isEmpty) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const SafetyScoreScreen(showBottomNav: false),
+        ),
+      );
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ScoreDetailPage(
+          categoryKey: 'safety_score',
+          categoryTitle: 'Safety Score Parameters',
+          icon: Icons.shield_rounded,
+          status: _safetyStatusLabel,
+          statusColor: _getSafetyStatusColor(),
+          parameters: [
+            ScoreParameter(
+              label: 'Live Safety Score',
+              value: '${_safetyScore ?? 0}',
+              progress: ((_safetyScore ?? 0) / 100).clamp(0.0, 1.0).toDouble(),
+              color: _getSafetyStatusColor(),
+              description: 'Current overall safety score from backend',
             ),
-          ),
-          const SizedBox(width: 8),
-          const Text(
-            'SAFE',
-            style: TextStyle(
-              color: AppColors.success,
-              fontWeight: FontWeight.w900,
-              fontSize: 14,
-              letterSpacing: 1.0,
+            ScoreParameter(
+              label: 'Closest Hospital',
+              value: _formatDistance(_closestHospitalKm),
+              progress: _distanceProgress(_closestHospitalKm),
+              color: _distanceColor(_closestHospitalKm),
+              description: 'Distance to nearest hospital',
             ),
-          ),
-        ],
+            ScoreParameter(
+              label: 'Closest Police Station',
+              value: _formatDistance(_closestPoliceKm),
+              progress: _distanceProgress(_closestPoliceKm),
+              color: _distanceColor(_closestPoliceKm),
+              description: 'Distance to nearest police station',
+            ),
+            ScoreParameter(
+              label: 'Time of Day',
+              value: _timeOfDayLabel,
+              progress: _timeOfDayProgress,
+              color: _timeOfDayColor,
+              description: 'Current day period used by risk model',
+            ),
+            ScoreParameter(
+              label: 'Population Density',
+              value: _populationLabel,
+              progress: _populationProgress,
+              color: _populationColor,
+              description: 'People per square kilometer in your area',
+            ),
+            ScoreParameter(
+              label: 'Traffic Level',
+              value: _trafficLabel,
+              progress: _trafficProgress,
+              color: _trafficColor,
+              description: 'Current traffic congestion status',
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -557,12 +953,15 @@ class _SOSDashboardState extends State<SOSDashboard>
     _emergencySessionId = null;
     _sessionAnswered = false;
     _latestSessionStatus = null;
+    _emergencyContextPayload = null;
     _statusPollTimer?.cancel();
+    final contactAuthorities = await _isAuthorityCallingEnabled();
 
     await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => EmergencyProcessScreen(
+          contactAuthoritiesDuringEmergency: contactAuthorities,
           onMessageAllContacts: _onMessageAllContacts,
           onCallContact: _onCallContact,
           onCall119: _onCall119,
@@ -576,6 +975,7 @@ class _SOSDashboardState extends State<SOSDashboard>
     _emergencySessionId = null;
     _sessionAnswered = false;
     _latestSessionStatus = null;
+    _emergencyContextPayload = null;
     _openingEmergencyProcess = false;
     if (!mounted) return;
     _resetSosCountdown();
@@ -627,7 +1027,10 @@ class _SOSDashboardState extends State<SOSDashboard>
   Future<EmergencyActionResult> _onMessageAllContacts() async {
     Map<String, dynamic> response;
     try {
-      response = await AuthService.startEmergency();
+      final emergencyPayload = await _getOrCreateEmergencyContextPayload();
+      response = await AuthService.startEmergency(
+        payload: emergencyPayload,
+      );
     } catch (e) {
       if (await _handleUnauthorizedError(e)) {
         return const EmergencyActionResult(
@@ -652,6 +1055,165 @@ class _SOSDashboardState extends State<SOSDashboard>
     return EmergencyActionResult(success: true, message: assessment.message);
   }
 
+  Future<Map<String, dynamic>> _buildEmergencyStartPayload() async {
+    final payload = <String, dynamic>{};
+    payload['triggeredAt'] = DateTime.now().toIso8601String();
+    _debugEmergencyPayload('resolved triggeredAt=${payload['triggeredAt']}');
+
+    final currentUser = await AuthService.getCurrentUser();
+    _debugEmergencyPayload('currentUser=$currentUser');
+    final userName = _displayNameFromUser(currentUser);
+    if (userName.isNotEmpty) {
+      payload['userName'] = userName;
+      _debugEmergencyPayload('resolved userName=$userName');
+    } else {
+      _debugEmergencyPayload('userName unavailable');
+    }
+
+    final position = await _getEmergencyPosition();
+    if (position != null) {
+      payload['latitude'] = position.latitude;
+      payload['longitude'] = position.longitude;
+      _debugEmergencyPayload(
+        'resolved coordinates lat=${position.latitude}, lng=${position.longitude}',
+      );
+
+      final approximateAddress = await _resolveApproximateAddress(position);
+      if (approximateAddress.isNotEmpty) {
+        payload['approximateAddress'] = approximateAddress;
+        _debugEmergencyPayload(
+          'resolved approximateAddress=$approximateAddress',
+        );
+      } else {
+        _debugEmergencyPayload('approximateAddress unavailable');
+      }
+    } else {
+      _debugEmergencyPayload('coordinates unavailable');
+    }
+
+    _debugEmergencyPayload('final payload=$payload');
+    return payload;
+  }
+
+  Future<bool> _isAuthorityCallingEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('contact_emergency_authorities') ?? true;
+  }
+
+  Future<Map<String, dynamic>> _getOrCreateEmergencyContextPayload() async {
+    final cachedPayload = _emergencyContextPayload;
+    if (cachedPayload != null && cachedPayload.isNotEmpty) {
+      _debugEmergencyPayload('reusing cached emergency payload=$cachedPayload');
+      return Map<String, dynamic>.from(cachedPayload);
+    }
+
+    final payload = await _buildEmergencyStartPayload();
+    _emergencyContextPayload = Map<String, dynamic>.from(payload);
+    return payload;
+  }
+
+  void _debugEmergencyPayload(String message) {
+    if (kDebugMode) {
+      debugPrint('[EmergencyStartPayload] $message');
+    }
+  }
+
+  String _displayNameFromUser(Map<String, dynamic>? user) {
+    if (user == null) return '';
+    final first = '${user['firstName'] ?? ''}'.trim();
+    final last = '${user['lastName'] ?? ''}'.trim();
+    final full = [first, last]
+        .where((value) => value.isNotEmpty)
+        .join(' ')
+        .trim();
+    if (full.isNotEmpty) return full;
+    final fallbackName = '${user['name'] ?? ''}'.trim();
+    return fallbackName;
+  }
+
+  Future<Position?> _getEmergencyPosition() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        _debugEmergencyPayload(
+          'location service disabled, falling back to last known position',
+        );
+        return Geolocator.getLastKnownPosition();
+      }
+
+      var permission = await Geolocator.checkPermission();
+      _debugEmergencyPayload('location permission status=$permission');
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        _debugEmergencyPayload(
+          'location permission after request=$permission',
+        );
+      }
+
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        _debugEmergencyPayload(
+          'location permission denied, falling back to last known position',
+        );
+        return Geolocator.getLastKnownPosition();
+      }
+
+      try {
+        return await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.medium,
+          timeLimit: const Duration(seconds: 8),
+        );
+      } catch (e) {
+        _debugEmergencyPayload(
+          'getCurrentPosition failed: $e, falling back to last known position',
+        );
+        return Geolocator.getLastKnownPosition();
+      }
+    } catch (e) {
+      _debugEmergencyPayload('_getEmergencyPosition failed: $e');
+      return null;
+    }
+  }
+
+  Future<String> _resolveApproximateAddress(Position position) async {
+    try {
+      final placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      ).timeout(const Duration(seconds: 8));
+      if (placemarks.isEmpty) return '';
+
+      final place = placemarks.first;
+      final parts = <String>[];
+      if ((place.street ?? '').trim().isNotEmpty) {
+        parts.add(place.street!.trim());
+      }
+      if ((place.subLocality ?? '').trim().isNotEmpty) {
+        parts.add(place.subLocality!.trim());
+      }
+      if ((place.locality ?? '').trim().isNotEmpty) {
+        parts.add(place.locality!.trim());
+      }
+      if ((place.subAdministrativeArea ?? '').trim().isNotEmpty) {
+        parts.add(place.subAdministrativeArea!.trim());
+      }
+      if ((place.administrativeArea ?? '').trim().isNotEmpty) {
+        parts.add(place.administrativeArea!.trim());
+      }
+      if ((place.postalCode ?? '').trim().isNotEmpty) {
+        parts.add(place.postalCode!.trim());
+      }
+      if ((place.country ?? '').trim().isNotEmpty) {
+        parts.add(place.country!.trim());
+      }
+
+      return parts.join(', ');
+    } catch (e) {
+      _debugEmergencyPayload('_resolveApproximateAddress failed: $e');
+      return '';
+    }
+  }
+
   Future<EmergencyCallResult> _onCallContact(int contactIndex) async {
     if (_sessionAnswered) {
       return const EmergencyCallResult(success: true, answered: true);
@@ -669,10 +1231,12 @@ class _SOSDashboardState extends State<SOSDashboard>
 
     Map<String, dynamic> response;
     try {
+      final emergencyPayload = await _getOrCreateEmergencyContextPayload();
       response = await AuthService.attemptEmergencyContactCall(
         sessionId: sessionId,
         contactIndex: contactIndex,
         timeoutSec: 30,
+        payload: emergencyPayload,
       );
     } catch (e) {
       if (await _handleUnauthorizedError(e)) {
@@ -729,7 +1293,11 @@ class _SOSDashboardState extends State<SOSDashboard>
 
     Map<String, dynamic> response;
     try {
-      response = await AuthService.callEmergency119(sessionId: sessionId);
+      final emergencyPayload = await _getOrCreateEmergencyContextPayload();
+      response = await AuthService.callEmergency119(
+        sessionId: sessionId,
+        payload: emergencyPayload,
+      );
     } catch (e) {
       if (await _handleUnauthorizedError(e)) {
         return const EmergencyActionResult(
@@ -838,8 +1406,9 @@ class SOSHoldInteraction extends StatefulWidget {
 }
 
 class _SOSHoldInteractionState extends State<SOSHoldInteraction>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late AnimationController _controller;
+  late AnimationController _rippleController;
 
   @override
   void initState() {
@@ -854,10 +1423,15 @@ class _SOSHoldInteractionState extends State<SOSHoldInteraction>
         _controller.reset();
       }
     });
+    _rippleController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat();
   }
 
   @override
   void dispose() {
+    _rippleController.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -873,6 +1447,35 @@ class _SOSHoldInteractionState extends State<SOSHoldInteraction>
       child: Stack(
         alignment: Alignment.center,
         children: [
+          AnimatedBuilder(
+            animation: _rippleController,
+            builder: (context, child) {
+              return Stack(
+                alignment: Alignment.center,
+                children: List.generate(2, (index) {
+                  final double progress =
+                      (_rippleController.value + (index * 0.5)) % 1;
+                  final double size = 260 + (progress * 90);
+                  final double opacity = (1 - progress) * 0.24;
+
+                  return IgnorePointer(
+                    child: Container(
+                      width: size,
+                      height: size,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: widget.accentColor.withOpacity(opacity),
+                          width: 2.5 - progress,
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              );
+            },
+          ),
+
           // Outer subtle pulse ring
           Container(
             width: 290,
