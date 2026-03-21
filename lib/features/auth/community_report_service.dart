@@ -6,6 +6,28 @@ import 'package:usafe_front_end/features/auth/auth_service.dart';
 class CommunityReportService {
   static const String baseUrl = "http://10.0.2.2:5000";
 
+  static List<Map<String, dynamic>> _decodeReportList(dynamic decoded) {
+    if (decoded is Map<String, dynamic> && decoded['reports'] is List) {
+      return (decoded['reports'] as List)
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    }
+    if (decoded is Map<String, dynamic> && decoded['data'] is List) {
+      return (decoded['data'] as List)
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    }
+    if (decoded is List) {
+      return decoded
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    }
+    return <Map<String, dynamic>>[];
+  }
+
   /* ================= SUBMIT COMMUNITY REPORT ================= */
   static Future<Map<String, dynamic>> submitReport({
     required String reportContent,
@@ -123,18 +145,49 @@ class CommunityReportService {
       throw Exception('Failed to load reports (${response.statusCode})');
     }
 
-    final decoded = jsonDecode(response.body);
-    if (decoded is Map<String, dynamic> && decoded['reports'] is List) {
-      return (decoded['reports'] as List)
-          .map((e) => Map<String, dynamic>.from(e as Map))
-          .toList();
+    return _decodeReportList(jsonDecode(response.body));
+  }
+
+  static Future<List<Map<String, dynamic>>> getCommunityFeed() async {
+    final token = await AuthService.getToken();
+    if (token.isEmpty) {
+      throw Exception('Session expired. Please login again.');
     }
-    if (decoded is List) {
-      return decoded
-          .map((e) => Map<String, dynamic>.from(e as Map))
-          .toList();
+
+    final endpoints = <String>[
+      '$baseUrl/report/feed',
+      '$baseUrl/report/all-reports',
+      '$baseUrl/report/all',
+    ];
+
+    http.Response? lastResponse;
+    for (final endpoint in endpoints) {
+      final response = await http.get(
+        Uri.parse(endpoint),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      lastResponse = response;
+
+      if (response.statusCode == 401) {
+        await AuthService.logout();
+        throw Exception('Invalid or expired token. Please re-login.');
+      }
+
+      if (response.statusCode == 404 || response.statusCode == 405) {
+        continue;
+      }
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return _decodeReportList(jsonDecode(response.body));
+      }
+
+      throw Exception('Failed to load community reports (${response.statusCode})');
     }
-    return <Map<String, dynamic>>[];
+
+    throw Exception(
+      'Public community feed endpoint is not available'
+      ' (${lastResponse?.statusCode ?? 'no-response'}).',
+    );
   }
 
   static Future<Map<String, dynamic>> getReportDetails(int reportId) async {

@@ -138,18 +138,16 @@ class _CommunityReportsPortalScreenState
 
     try {
       final currentUser = await AuthService.getCurrentUser();
-      final myReports = await CommunityReportService.getMyReports();
-      final myPosts = myReports
+      final feedReports = await CommunityReportService.getCommunityFeed();
+      final feedPosts = feedReports
           .map((report) => _CommunityPortalPost.fromUserReport(
                 report: report,
-                fallbackUser: currentUser,
+                currentUser: currentUser,
               ))
           .toList();
 
-      final merged = <_CommunityPortalPost>[
-        ..._seedPosts(),
-        ...myPosts,
-      ]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      final merged = _dedupePosts(feedPosts)
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
       if (!mounted) return;
       setState(() {
@@ -158,61 +156,43 @@ class _CommunityReportsPortalScreenState
         _isLoading = false;
       });
     } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _currentUser = null;
-        _posts = _seedPosts();
-        _feedError = e.toString().replaceFirst('Exception: ', '');
-        _isLoading = false;
-      });
+      try {
+        final currentUser = await AuthService.getCurrentUser();
+        final myReports = await CommunityReportService.getMyReports();
+        final myPosts = myReports
+            .map((report) => _CommunityPortalPost.fromUserReport(
+                  report: report,
+                  currentUser: currentUser,
+                ))
+            .toList();
+
+        myPosts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+        if (!mounted) return;
+        setState(() {
+          _currentUser = currentUser;
+          _posts = _dedupePosts(myPosts);
+          _feedError = e.toString().replaceFirst('Exception: ', '');
+          _isLoading = false;
+        });
+      } catch (_) {
+        if (!mounted) return;
+        setState(() {
+          _currentUser = null;
+          _posts = <_CommunityPortalPost>[];
+          _feedError = e.toString().replaceFirst('Exception: ', '');
+          _isLoading = false;
+        });
+      }
     }
   }
 
-  List<_CommunityPortalPost> _seedPosts() {
-    return <_CommunityPortalPost>[
-      _CommunityPortalPost(
-        id: 'seed-1',
-        username: 'Ayesha K',
-        avatarUrl: '',
-        locationLabel: 'Main Street, Colombo 03',
-        reportText:
-            'Street lights are out near the bus stop. The area gets very dark after 8 PM, so please stay alert if you are walking alone.',
-        issueTags: const <String>['Street Lighting'],
-        createdAt: DateTime.now().subtract(const Duration(minutes: 42)),
-        likeCount: 18,
-        comments: <_PostComment>[
-          _PostComment(
-            username: 'Nimal P',
-            text: 'Saw this too. It has been dark for two nights now.',
-            createdAt: DateTime.now().subtract(const Duration(minutes: 24)),
-          ),
-        ],
-      ),
-      _CommunityPortalPost(
-        id: 'seed-2',
-        username: 'SafeWalk LK',
-        avatarUrl: '',
-        locationLabel: 'Kandy Lake Round',
-        reportText:
-            'Heavy traffic and poor sidewalk access on the lake side this evening. If possible, use the opposite lane or wait until traffic clears.',
-        issueTags: const <String>['Road Issue', 'Infrastructure'],
-        createdAt:
-            DateTime.now().subtract(const Duration(hours: 2, minutes: 5)),
-        likeCount: 32,
-        comments: <_PostComment>[
-          _PostComment(
-            username: 'Tharushi M',
-            text: 'Thanks for posting this. The crossing was blocked today.',
-            createdAt: DateTime.now().subtract(const Duration(hours: 1)),
-          ),
-          _PostComment(
-            username: 'User_197',
-            text: 'A traffic officer arrived around 6:30 PM.',
-            createdAt: DateTime.now().subtract(const Duration(minutes: 55)),
-          ),
-        ],
-      ),
-    ];
+  List<_CommunityPortalPost> _dedupePosts(List<_CommunityPortalPost> posts) {
+    final byId = <String, _CommunityPortalPost>{};
+    for (final post in posts) {
+      byId[post.id] = post;
+    }
+    return byId.values.toList();
   }
 
   void _showSnack(String message, {bool error = false}) {
@@ -315,6 +295,24 @@ class _CommunityReportsPortalScreenState
       _descriptionController.clear();
       return;
     }
+
+    final draftLocation = (_selectedLocationLabel ?? '').trim().isNotEmpty
+        ? _selectedLocationLabel!.trim()
+        : 'this area';
+    final issueTitles = _selectedIssueIndices
+        .map((index) => _issueTypes[index].title)
+        .toList(growable: false);
+    final issueSummary = issueTitles.length == 1
+        ? issueTitles.first
+        : '${issueTitles.sublist(0, issueTitles.length - 1).join(', ')} and ${issueTitles.last}';
+    final draftText =
+        'Reporting $issueSummary near $draftLocation. Please add what happened, when you noticed it, and anything others should watch out for.';
+
+    _descriptionController.value = TextEditingValue(
+      text: draftText,
+      selection: TextSelection.collapsed(offset: draftText.length),
+    );
+    return;
 
     final locationText = (_selectedLocationLabel ?? '').trim().isNotEmpty
         ? _selectedLocationLabel!.trim()
@@ -907,7 +905,7 @@ class _CommunityReportsPortalScreenState
               icon: Icons.cloud_off_rounded,
               title: 'Feed fallback active',
               subtitle:
-                  'Showing sample community activity and your synced reports. $_feedError',
+                  'Showing available synced reports only. $_feedError',
             ),
           ],
           const SizedBox(height: 18),
@@ -951,7 +949,7 @@ class _CommunityReportsPortalScreenState
                     ),
                     SizedBox(height: 6),
                     Text(
-                      'Live-style community safety posts from uSafe users, plus your own reports in one place.',
+                      'Community safety posts from all uSafe users in one place.',
                       style: TextStyle(
                         color: AppColors.textSecondary,
                         height: 1.45,
@@ -2012,7 +2010,7 @@ class _CommunityPortalPost {
 
   factory _CommunityPortalPost.fromUserReport({
     required Map<String, dynamic> report,
-    Map<String, dynamic>? fallbackUser,
+    Map<String, dynamic>? currentUser,
   }) {
     final imageUrls = <String>[];
     final rawImages = report['images_proofs'];
@@ -2032,29 +2030,55 @@ class _CommunityPortalPost {
       }
     }
 
+    final reportUser = report['user'] is Map
+        ? Map<String, dynamic>.from(report['user'] as Map)
+        : <String, dynamic>{};
     final userName = [
-      '${fallbackUser?['firstName'] ?? ''}'.trim(),
-      '${fallbackUser?['lastName'] ?? ''}'.trim(),
+      '${reportUser['firstName'] ?? reportUser['first_name'] ?? ''}'.trim(),
+      '${reportUser['lastName'] ?? reportUser['last_name'] ?? ''}'.trim(),
     ].where((part) => part.isNotEmpty).join(' ').trim();
+    final fallbackName = '${reportUser['name'] ?? reportUser['username'] ?? ''}'
+        .trim();
+    final currentUserName = [
+      '${currentUser?['firstName'] ?? ''}'.trim(),
+      '${currentUser?['lastName'] ?? ''}'.trim(),
+    ].where((part) => part.isNotEmpty).join(' ').trim();
+    final ownerId =
+        '${reportUser['userId'] ?? reportUser['id'] ?? report['userId'] ?? report['ownerId'] ?? ''}'
+            .trim();
+    final currentUserId =
+        '${currentUser?['userId'] ?? currentUser?['id'] ?? ''}'.trim();
+    final ownerEmail =
+        '${reportUser['email'] ?? report['email'] ?? report['userEmail'] ?? ''}'
+            .trim()
+            .toLowerCase();
+    final currentUserEmail =
+        '${currentUser?['email'] ?? ''}'.trim().toLowerCase();
+    final isOwnedByCurrentUser =
+        (ownerId.isNotEmpty && ownerId == currentUserId) ||
+            (ownerEmail.isNotEmpty && ownerEmail == currentUserEmail);
 
     return _CommunityPortalPost(
       id: '${report['reportId'] ?? report['id'] ?? DateTime.now().millisecondsSinceEpoch}',
       username: userName.isNotEmpty
           ? userName
-          : ('${fallbackUser?['name'] ?? ''}'.trim().isNotEmpty
-              ? '${fallbackUser?['name']}'.trim()
-              : 'uSafe User'),
+          : (fallbackName.isNotEmpty
+              ? fallbackName
+              : (currentUserName.isNotEmpty && isOwnedByCurrentUser
+                  ? currentUserName
+                  : 'uSafe User')),
       avatarUrl:
-          '${fallbackUser?['picture'] ?? fallbackUser?['photoUrl'] ?? fallbackUser?['avatarUrl'] ?? ''}',
+          '${reportUser['avatarUrl'] ?? reportUser['avatar'] ?? reportUser['photoUrl'] ?? reportUser['picture'] ?? ''}',
       locationLabel: '${report['location'] ?? 'Reported location'}'.trim(),
       reportText: '${report['reportContent'] ?? ''}'.trim(),
       imageUrls: imageUrls,
       issueTags: issueTags,
       createdAt: DateTime.tryParse('${report['reportDate_time'] ?? ''}') ??
           DateTime.now(),
-      likeCount: 0,
+      likeCount: int.tryParse('${report['likeCount'] ?? 0}') ?? 0,
+      isLiked: report['isLikedByCurrentUser'] == true,
       comments: <_PostComment>[],
-      isOwnedByCurrentUser: true,
+      isOwnedByCurrentUser: isOwnedByCurrentUser,
     );
   }
 }
