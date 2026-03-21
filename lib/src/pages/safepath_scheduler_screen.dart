@@ -757,7 +757,10 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
     );
 
     if (!mounted || picked == null) return;
-    _addCheckpointAt(LatLng(picked!.lat, picked!.lng), animateCamera: true);
+    _addCheckpointAt(
+      LatLng(picked!.lat.toDouble(), picked!.lng.toDouble()),
+      animateCamera: true,
+    );
   }
 
   void _addCheckpointAt(LatLng position, {bool animateCamera = false}) {
