@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:battery_plus/battery_plus.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -1150,8 +1152,17 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
                     initialCameraPosition: _initialMapCamera,
                     myLocationButtonEnabled: true,
                     myLocationEnabled: true,
+                    scrollGesturesEnabled: true,
+                    zoomGesturesEnabled: true,
+                    rotateGesturesEnabled: true,
+                    tiltGesturesEnabled: true,
                     zoomControlsEnabled: false,
                     mapToolbarEnabled: false,
+                    gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+                      Factory<OneSequenceGestureRecognizer>(
+                        () => EagerGestureRecognizer(),
+                      ),
+                    },
                     onMapCreated: (controller) {
                       _mapController = controller;
                     },
@@ -1569,8 +1580,17 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
                     initialCameraPosition: _initialMapCamera,
                     myLocationButtonEnabled: true,
                     myLocationEnabled: true,
+                    scrollGesturesEnabled: true,
+                    zoomGesturesEnabled: true,
+                    rotateGesturesEnabled: true,
+                    tiltGesturesEnabled: true,
                     zoomControlsEnabled: false,
                     mapToolbarEnabled: false,
+                    gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+                      Factory<OneSequenceGestureRecognizer>(
+                        () => EagerGestureRecognizer(),
+                      ),
+                    },
                     onMapCreated: (controller) {
                       _mapController = controller;
                     },
