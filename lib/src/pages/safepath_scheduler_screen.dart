@@ -1313,11 +1313,6 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
                     tiltGesturesEnabled: true,
                     zoomControlsEnabled: false,
                     mapToolbarEnabled: false,
-                    gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
-                      Factory<OneSequenceGestureRecognizer>(
-                        () => EagerGestureRecognizer(),
-                      ),
-                    },
                     onMapCreated: (controller) {
                       _mapController = controller;
                     },
@@ -1775,11 +1770,6 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
                     tiltGesturesEnabled: true,
                     zoomControlsEnabled: false,
                     mapToolbarEnabled: false,
-                    gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
-                      Factory<OneSequenceGestureRecognizer>(
-                        () => EagerGestureRecognizer(),
-                      ),
-                    },
                     onMapCreated: (controller) {
                       _mapController = controller;
                     },
