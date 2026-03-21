@@ -1174,28 +1174,31 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
                   Positioned(
                     top: 10,
                     left: 10,
-                    child: ElevatedButton.icon(
-                      onPressed: _dropCheckpoint,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF16233A),
-                        foregroundColor: Colors.white,
-                        elevation: 2,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
+                    child: SizedBox(
+                      width: 170,
+                      child: ElevatedButton.icon(
+                        onPressed: _dropCheckpoint,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF16233A),
+                          foregroundColor: Colors.white,
+                          elevation: 2,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      icon: const Icon(Icons.fiber_manual_record,
-                          size: 10, color: Color(0xFF13C48A)),
-                      label: const Text(
-                        'DROP CHECKPOINTS',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.2,
-                          fontSize: 11,
+                        icon: const Icon(Icons.fiber_manual_record,
+                            size: 10, color: Color(0xFF13C48A)),
+                        label: const Text(
+                          'DROP CHECKPOINTS',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.2,
+                            fontSize: 11,
+                          ),
                         ),
                       ),
                     ),
@@ -1602,28 +1605,31 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
                   Positioned(
                     top: 10,
                     left: 10,
-                    child: ElevatedButton.icon(
-                      onPressed: _dropCheckpoint,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF16233A),
-                        foregroundColor: Colors.white,
-                        elevation: 2,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
+                    child: SizedBox(
+                      width: 170,
+                      child: ElevatedButton.icon(
+                        onPressed: _dropCheckpoint,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF16233A),
+                          foregroundColor: Colors.white,
+                          elevation: 2,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      icon: const Icon(Icons.fiber_manual_record,
-                          size: 10, color: Color(0xFF13C48A)),
-                      label: const Text(
-                        'DROP CHECKPOINTS',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.2,
-                          fontSize: 11,
+                        icon: const Icon(Icons.fiber_manual_record,
+                            size: 10, color: Color(0xFF13C48A)),
+                        label: const Text(
+                          'DROP CHECKPOINTS',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.2,
+                            fontSize: 11,
+                          ),
                         ),
                       ),
                     ),
