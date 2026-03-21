@@ -1185,337 +1185,343 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
   // STATE 1: SETUP SCREEN
   // ═══════════════════════════════════════════════════════
   Widget _buildSetupView() {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final setupMapHeight = screenHeight * 0.56;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 8),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 8),
 
-          // ── Trip Name ──
-          const Text('Trip Name',
-              style: TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.0)),
-          const SizedBox(height: 10),
-          TextFormField(
-            controller: _tripNameController,
-            style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 16,
-                fontWeight: FontWeight.w500),
-            decoration: InputDecoration(
-              hintText: 'e.g. Walking to the car',
-              hintStyle: TextStyle(
-                  color: AppColors.textSecondary.withOpacity(0.6),
-                  fontWeight: FontWeight.w400),
-              filled: true,
-              fillColor: AppColors.surface,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide.none,
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide:
-                    BorderSide(color: AppColors.border.withOpacity(0.5)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide:
-                    const BorderSide(color: AppColors.primary, width: 1.5),
-              ),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-              prefixIcon: const Icon(Icons.edit_road_rounded,
-                  color: AppColors.textSecondary, size: 22),
-            ),
-          ),
-
-          const SizedBox(height: 24),
-
-          const Text('Add 4-5 checkpoints (or more) on map',
-              style: TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.4)),
-          const SizedBox(height: 14),
-
-          // ── Setup Map + Checkpoints ──
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: Stack(
-                children: [
-                  GoogleMap(
-                    initialCameraPosition: _initialMapCamera,
-                    myLocationButtonEnabled: true,
-                    myLocationEnabled: true,
-                    scrollGesturesEnabled: true,
-                    zoomGesturesEnabled: true,
-                    rotateGesturesEnabled: true,
-                    tiltGesturesEnabled: true,
-                    zoomControlsEnabled: false,
-                    mapToolbarEnabled: false,
-                    onMapCreated: (controller) {
-                      _mapController = controller;
-                    },
-                    onTap: _onMapTap,
-                    onLongPress: _onMapLongPress,
-                    markers: _checkpoints,
-                    circles: _checkpointCircles,
-                  ),
-                  Positioned(
-                    top: 10,
-                    left: 10,
-                    child: SizedBox(
-                      width: 170,
-                      child: ElevatedButton.icon(
-                        onPressed: _dropCheckpoint,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF16233A),
-                          foregroundColor: Colors.white,
-                          elevation: 2,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        icon: const Icon(Icons.fiber_manual_record,
-                            size: 10, color: Color(0xFF13C48A)),
-                        label: const Text(
-                          'DROP CHECKPOINTS',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.2,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    right: 10,
-                    top: 10,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.6),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        '${_checkpoints.length} checkpoint${_checkpoints.length == 1 ? '' : 's'}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    left: 10,
-                    bottom: 10,
-                    child: SizedBox(
-                      width: 150,
-                      child: ElevatedButton.icon(
-                        onPressed: _openMapboxCheckpointPicker,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF0F6AB5),
-                          foregroundColor: Colors.white,
-                          elevation: 2,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 8,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        icon: const Icon(Icons.map_rounded, size: 14),
-                        label: const Text(
-                          'MAPBOX PICKER',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 10,
-                            letterSpacing: 0.2,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 10),
-          _buildSetupCheckpointStrip(),
-
-          const SizedBox(height: 14),
-
-          // ── Emergency Contacts ──
-          const Text('NOTIFY CONTACTS',
-              style: TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.0)),
-          const SizedBox(height: 10),
-          Text(
-            _selectedContactsSummary,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: _selectedContactIndices.isEmpty
-                  ? AppColors.alert
-                  : AppColors.textSecondary,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            height: 44,
-            child: _loadingContacts
-                ? const Center(
-                    child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: AppColors.primary)))
-                : _contacts.isEmpty
-                    ? Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: AppColors.alert.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                              color: AppColors.alert.withOpacity(0.3)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.warning_amber_rounded,
-                                color: AppColors.alert.withOpacity(0.9),
-                                size: 18),
-                            const SizedBox(width: 8),
-                            Text('No trusted contacts yet',
-                                style: TextStyle(
-                                    color: AppColors.alert.withOpacity(0.9),
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 13)),
-                          ],
-                        ),
-                      )
-                    : ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: _contacts.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 8),
-                        itemBuilder: (context, index) {
-                          final name = _contacts[index]['name'] ?? '?';
-                          final isSelected =
-                              _selectedContactIndices.contains(index);
-                          return FilterChip(
-                            label: Text(name),
-                            selected: isSelected,
-                            onSelected: (selected) {
-                              setState(() {
-                                if (selected) {
-                                  _selectedContactIndices.add(index);
-                                } else {
-                                  _selectedContactIndices.remove(index);
-                                }
-                              });
-                            },
-                            selectedColor: AppColors.primary.withOpacity(0.3),
-                            backgroundColor: AppColors.surface,
-                            side: BorderSide(
-                              color: isSelected
-                                  ? AppColors.primary
-                                  : AppColors.border.withOpacity(0.5),
-                            ),
-                            labelStyle: TextStyle(
-                              color: isSelected
-                                  ? Colors.white
-                                  : AppColors.textSecondary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            avatar: CircleAvatar(
-                              backgroundColor: isSelected
-                                  ? AppColors.primary
-                                  : AppColors.surfaceElevated,
-                              child: Text(
-                                name.isNotEmpty ? name[0].toUpperCase() : '?',
-                                style: TextStyle(
-                                  color: isSelected
-                                      ? Colors.white
-                                      : AppColors.textSecondary,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            showCheckmark: false,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 4, vertical: 6),
-                          );
-                        },
-                      ),
-          ),
-
-          const SizedBox(height: 14),
-
-          // ── Start Trip Button ──
-          SizedBox(
-            width: double.infinity,
-            height: 64,
-            child: ElevatedButton.icon(
-              onPressed: _startTrip,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.success,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20)),
-              ),
-              icon: _isStartingTrip
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.navigation_rounded, size: 24),
-              label: Text(
-                _isStartingTrip
-                    ? 'STARTING...'
-                    : 'START TRIP & NOTIFY CONTACTS',
+            // ── Trip Name ──
+            const Text('Trip Name',
                 style: TextStyle(
-                  fontWeight: FontWeight.w900,
+                    color: AppColors.textSecondary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.0)),
+            const SizedBox(height: 10),
+            TextFormField(
+              controller: _tripNameController,
+              style: const TextStyle(
+                  color: AppColors.textPrimary,
                   fontSize: 16,
-                  letterSpacing: 0.5,
+                  fontWeight: FontWeight.w500),
+              decoration: InputDecoration(
+                hintText: 'e.g. Walking to the car',
+                hintStyle: TextStyle(
+                    color: AppColors.textSecondary.withOpacity(0.6),
+                    fontWeight: FontWeight.w400),
+                filled: true,
+                fillColor: AppColors.surface,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide:
+                      BorderSide(color: AppColors.border.withOpacity(0.5)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide:
+                      const BorderSide(color: AppColors.primary, width: 1.5),
+                ),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+                prefixIcon: const Icon(Icons.edit_road_rounded,
+                    color: AppColors.textSecondary, size: 22),
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            const Text('Add 4-5 checkpoints (or more) on map',
+                style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.4)),
+            const SizedBox(height: 14),
+
+            // ── Setup Map + Checkpoints ──
+            SizedBox(
+              height: setupMapHeight,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: Stack(
+                  children: [
+                    GoogleMap(
+                      initialCameraPosition: _initialMapCamera,
+                      myLocationButtonEnabled: true,
+                      myLocationEnabled: true,
+                      scrollGesturesEnabled: true,
+                      zoomGesturesEnabled: true,
+                      rotateGesturesEnabled: true,
+                      tiltGesturesEnabled: true,
+                      zoomControlsEnabled: false,
+                      mapToolbarEnabled: false,
+                      onMapCreated: (controller) {
+                        _mapController = controller;
+                      },
+                      onTap: _onMapTap,
+                      onLongPress: _onMapLongPress,
+                      markers: _checkpoints,
+                      circles: _checkpointCircles,
+                    ),
+                    Positioned(
+                      top: 10,
+                      left: 10,
+                      child: SizedBox(
+                        width: 170,
+                        child: ElevatedButton.icon(
+                          onPressed: _dropCheckpoint,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF16233A),
+                            foregroundColor: Colors.white,
+                            elevation: 2,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          icon: const Icon(Icons.fiber_manual_record,
+                              size: 10, color: Color(0xFF13C48A)),
+                          label: const Text(
+                            'DROP CHECKPOINTS',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.2,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      right: 10,
+                      top: 10,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.6),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '${_checkpoints.length} checkpoint${_checkpoints.length == 1 ? '' : 's'}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: 10,
+                      bottom: 10,
+                      child: SizedBox(
+                        width: 150,
+                        child: ElevatedButton.icon(
+                          onPressed: _openMapboxCheckpointPicker,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF0F6AB5),
+                            foregroundColor: Colors.white,
+                            elevation: 2,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 8,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          icon: const Icon(Icons.map_rounded, size: 14),
+                          label: const Text(
+                            'MAPBOX PICKER',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 10,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: 72), // Bottom nav clearance
-        ],
+
+            const SizedBox(height: 10),
+            _buildSetupCheckpointStrip(),
+
+            const SizedBox(height: 14),
+
+            // ── Emergency Contacts ──
+            const Text('NOTIFY CONTACTS',
+                style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.0)),
+            const SizedBox(height: 10),
+            Text(
+              _selectedContactsSummary,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: _selectedContactIndices.isEmpty
+                    ? AppColors.alert
+                    : AppColors.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 44,
+              child: _loadingContacts
+                  ? const Center(
+                      child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: AppColors.primary)))
+                  : _contacts.isEmpty
+                      ? Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: AppColors.alert.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                                color: AppColors.alert.withOpacity(0.3)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.warning_amber_rounded,
+                                  color: AppColors.alert.withOpacity(0.9),
+                                  size: 18),
+                              const SizedBox(width: 8),
+                              Text('No trusted contacts yet',
+                                  style: TextStyle(
+                                      color: AppColors.alert.withOpacity(0.9),
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13)),
+                            ],
+                          ),
+                        )
+                      : ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: _contacts.length,
+                          separatorBuilder: (_, __) => const SizedBox(width: 8),
+                          itemBuilder: (context, index) {
+                            final name = _contacts[index]['name'] ?? '?';
+                            final isSelected =
+                                _selectedContactIndices.contains(index);
+                            return FilterChip(
+                              label: Text(name),
+                              selected: isSelected,
+                              onSelected: (selected) {
+                                setState(() {
+                                  if (selected) {
+                                    _selectedContactIndices.add(index);
+                                  } else {
+                                    _selectedContactIndices.remove(index);
+                                  }
+                                });
+                              },
+                              selectedColor: AppColors.primary.withOpacity(0.3),
+                              backgroundColor: AppColors.surface,
+                              side: BorderSide(
+                                color: isSelected
+                                    ? AppColors.primary
+                                    : AppColors.border.withOpacity(0.5),
+                              ),
+                              labelStyle: TextStyle(
+                                color: isSelected
+                                    ? Colors.white
+                                    : AppColors.textSecondary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              avatar: CircleAvatar(
+                                backgroundColor: isSelected
+                                    ? AppColors.primary
+                                    : AppColors.surfaceElevated,
+                                child: Text(
+                                  name.isNotEmpty ? name[0].toUpperCase() : '?',
+                                  style: TextStyle(
+                                    color: isSelected
+                                        ? Colors.white
+                                        : AppColors.textSecondary,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              showCheckmark: false,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 4, vertical: 6),
+                            );
+                          },
+                        ),
+            ),
+
+            const SizedBox(height: 14),
+
+            // ── Start Trip Button ──
+            SizedBox(
+              width: double.infinity,
+              height: 64,
+              child: ElevatedButton.icon(
+                onPressed: _startTrip,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.success,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20)),
+                ),
+                icon: _isStartingTrip
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.navigation_rounded, size: 24),
+                label: Text(
+                  _isStartingTrip
+                      ? 'STARTING...'
+                      : 'START TRIP & NOTIFY CONTACTS',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 16,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 40), // Bottom nav clearance
+          ],
+        ),
       ),
     );
   }
@@ -1651,7 +1657,7 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
 
           // ── Live Map + Checkpoints ──
           Expanded(
-            flex: 2,
+            flex: 3,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(24),
               child: Stack(
