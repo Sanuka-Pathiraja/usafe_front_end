@@ -622,6 +622,7 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
   }
 
   Future<void> _openMapboxCheckpointPicker() async {
+    mb.MapboxMap? pickerMap;
     mb.Position? picked;
 
     final seed = _checkpointOrder.isNotEmpty
@@ -630,7 +631,7 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
     final seedLat = seed?.latitude ?? _initialMapCamera.target.latitude;
     final seedLng = seed?.longitude ?? _initialMapCamera.target.longitude;
 
-    await showModalBottomSheet<void>(
+    final selectedPosition = await showModalBottomSheet<mb.Position>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -660,6 +661,7 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
                             zoom: 14,
                           ),
                           onMapCreated: (map) async {
+                            pickerMap = map;
                             final cameraState = await map.getCameraState();
                             picked = cameraState.center.coordinates;
                             if (mounted) setModalState(() {});
@@ -686,7 +688,7 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
                       top: 12,
                       left: 12,
                       child: IconButton(
-                        onPressed: () => Navigator.of(context).pop(),
+                        onPressed: () => Navigator.of(context).pop(null),
                         style: IconButton.styleFrom(
                           backgroundColor: Colors.black.withOpacity(0.42),
                           foregroundColor: Colors.white,
@@ -733,9 +735,15 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
                             SizedBox(
                               width: double.infinity,
                               child: ElevatedButton(
-                                onPressed: picked == null
-                                    ? null
-                                    : () => Navigator.of(context).pop(),
+                                onPressed: () async {
+                                  mb.Position? selected = picked;
+                                  if (selected == null && pickerMap != null) {
+                                    final cameraState =
+                                        await pickerMap!.getCameraState();
+                                    selected = cameraState.center.coordinates;
+                                  }
+                                  Navigator.of(context).pop(selected);
+                                },
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: AppColors.success,
                                   foregroundColor: Colors.white,
@@ -756,9 +764,9 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
       },
     );
 
-    if (!mounted || picked == null) return;
+    if (!mounted || selectedPosition == null) return;
     _addCheckpointAt(
-      LatLng(picked!.lat.toDouble(), picked!.lng.toDouble()),
+      LatLng(selectedPosition.lat.toDouble(), selectedPosition.lng.toDouble()),
       animateCamera: true,
     );
   }
@@ -1375,27 +1383,30 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
                   Positioned(
                     left: 10,
                     bottom: 10,
-                    child: ElevatedButton.icon(
-                      onPressed: _openMapboxCheckpointPicker,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0F6AB5),
-                        foregroundColor: Colors.white,
-                        elevation: 2,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 8,
+                    child: SizedBox(
+                      width: 150,
+                      child: ElevatedButton.icon(
+                        onPressed: _openMapboxCheckpointPicker,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF0F6AB5),
+                          foregroundColor: Colors.white,
+                          elevation: 2,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 8,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      icon: const Icon(Icons.map_rounded, size: 14),
-                      label: const Text(
-                        'MAPBOX PICKER',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 10,
-                          letterSpacing: 0.2,
+                        icon: const Icon(Icons.map_rounded, size: 14),
+                        label: const Text(
+                          'MAPBOX PICKER',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 10,
+                            letterSpacing: 0.2,
+                          ),
                         ),
                       ),
                     ),
@@ -1835,27 +1846,30 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
                   Positioned(
                     left: 10,
                     bottom: 10,
-                    child: ElevatedButton.icon(
-                      onPressed: _openMapboxCheckpointPicker,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0F6AB5),
-                        foregroundColor: Colors.white,
-                        elevation: 2,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 8,
+                    child: SizedBox(
+                      width: 150,
+                      child: ElevatedButton.icon(
+                        onPressed: _openMapboxCheckpointPicker,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF0F6AB5),
+                          foregroundColor: Colors.white,
+                          elevation: 2,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 8,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      icon: const Icon(Icons.map_rounded, size: 14),
-                      label: const Text(
-                        'MAPBOX PICKER',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 10,
-                          letterSpacing: 0.2,
+                        icon: const Icon(Icons.map_rounded, size: 14),
+                        label: const Text(
+                          'MAPBOX PICKER',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 10,
+                            letterSpacing: 0.2,
+                          ),
                         ),
                       ),
                     ),
