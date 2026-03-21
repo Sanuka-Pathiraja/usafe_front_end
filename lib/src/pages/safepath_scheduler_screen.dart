@@ -8,9 +8,13 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mb;
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:usafe_front_end/core/services/api_service.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
+import 'package:usafe_front_end/src/config/app_config.dart';
+
+const String _safePathMapboxToken = mapboxPublicToken;
 
 class SafePathSchedulerScreen extends StatefulWidget {
   final VoidCallback? onBack;
@@ -158,6 +162,7 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
   @override
   void initState() {
     super.initState();
+    mb.MapboxOptions.setAccessToken(_safePathMapboxToken);
     _loadContacts();
     _fetchBackendSafetyScore();
     _startBackendScoreRefresh();
@@ -614,6 +619,145 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
     } catch (_) {
       _addCheckpointAt(_initialMapCamera.target, animateCamera: true);
     }
+  }
+
+  Future<void> _openMapboxCheckpointPicker() async {
+    mb.Position? picked;
+
+    final seed = _checkpointOrder.isNotEmpty
+        ? _checkpointLocations[_checkpointOrder.last]
+        : _initialMapCamera.target;
+    final seedLat = seed?.latitude ?? _initialMapCamera.target.latitude;
+    final seedLng = seed?.longitude ?? _initialMapCamera.target.longitude;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return FractionallySizedBox(
+              heightFactor: 0.92,
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: AppColors.background,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+                ),
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: ClipRRect(
+                        borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(18)),
+                        child: mb.MapWidget(
+                          key: const ValueKey('safepath_mapbox_picker'),
+                          styleUri: mb.MapboxStyles.STANDARD,
+                          cameraOptions: mb.CameraOptions(
+                            center: mb.Point(
+                              coordinates: mb.Position(seedLng, seedLat),
+                            ),
+                            zoom: 14,
+                          ),
+                          onMapCreated: (map) async {
+                            final cameraState = await map.getCameraState();
+                            picked = cameraState.center.coordinates;
+                            if (mounted) setModalState(() {});
+                          },
+                          onCameraChangeListener: (event) {
+                            picked = event.cameraState.center.coordinates;
+                          },
+                          onMapIdleListener: (_) {
+                            if (mounted) setModalState(() {});
+                          },
+                        ),
+                      ),
+                    ),
+                    const IgnorePointer(
+                      child: Center(
+                        child: Icon(
+                          Icons.location_on_rounded,
+                          color: AppColors.alert,
+                          size: 38,
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 12,
+                      left: 12,
+                      child: IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.black.withOpacity(0.42),
+                          foregroundColor: Colors.white,
+                        ),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ),
+                    Positioned(
+                      left: 12,
+                      right: 12,
+                      bottom: 14,
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppColors.surface.withOpacity(0.95),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                              color: AppColors.border.withOpacity(0.5)),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Move map and confirm checkpoint',
+                              style: TextStyle(
+                                color: AppColors.textPrimary,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              picked == null
+                                  ? 'Waiting for map...'
+                                  : 'Lat ${picked!.lat.toStringAsFixed(5)}, Lng ${picked!.lng.toStringAsFixed(5)}',
+                              style: const TextStyle(
+                                color: AppColors.textSecondary,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                onPressed: picked == null
+                                    ? null
+                                    : () => Navigator.of(context).pop(),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.success,
+                                  foregroundColor: Colors.white,
+                                ),
+                                child: const Text('Use This Checkpoint'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (!mounted || picked == null) return;
+    _addCheckpointAt(LatLng(picked!.lat, picked!.lng), animateCamera: true);
   }
 
   void _addCheckpointAt(LatLng position, {bool animateCamera = false}) {
@@ -1225,6 +1369,34 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
                       ),
                     ),
                   ),
+                  Positioned(
+                    left: 10,
+                    bottom: 10,
+                    child: ElevatedButton.icon(
+                      onPressed: _openMapboxCheckpointPicker,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0F6AB5),
+                        foregroundColor: Colors.white,
+                        elevation: 2,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      icon: const Icon(Icons.map_rounded, size: 14),
+                      label: const Text(
+                        'MAPBOX PICKER',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 10,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1657,6 +1829,34 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
                         ),
                       ),
                     ),
+                  Positioned(
+                    left: 10,
+                    bottom: 10,
+                    child: ElevatedButton.icon(
+                      onPressed: _openMapboxCheckpointPicker,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0F6AB5),
+                        foregroundColor: Colors.white,
+                        elevation: 2,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      icon: const Icon(Icons.map_rounded, size: 14),
+                      label: const Text(
+                        'MAPBOX PICKER',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 10,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
