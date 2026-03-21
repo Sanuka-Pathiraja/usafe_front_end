@@ -5,6 +5,7 @@ class OnboardingController {
   static const _loginTourSeenKey = 'login_tour_seen';
   static const _signupTourSeenKey = 'signup_tour_seen';
   static const _contactsTourSeenKey = 'contacts_tour_seen';
+  static const _silentCallTourSeenKey = 'silent_call_tour_seen';
 
   static Future<bool> shouldShowLoginTour() async {
     if (alwaysShowTours) {
@@ -58,5 +59,23 @@ class OnboardingController {
   static Future<void> resetContactsTour() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_contactsTourSeenKey, false);
+  }
+
+  static Future<bool> shouldShowSilentCallTour() async {
+    if (alwaysShowTours) {
+      return true;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    return !(prefs.getBool(_silentCallTourSeenKey) ?? false);
+  }
+
+  static Future<void> markSilentCallTourSeen() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_silentCallTourSeenKey, true);
+  }
+
+  static Future<void> resetSilentCallTour() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_silentCallTourSeenKey, false);
   }
 }
