@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
@@ -68,7 +69,20 @@ class _SplashScreenState extends State<SplashScreen>
 
     await Future.delayed(const Duration(milliseconds: 2500));
 
-    final loggedIn = await AuthService.validateSession();
+    bool loggedIn = false;
+    try {
+      loggedIn = await AuthService.validateSession().timeout(
+        const Duration(seconds: 8),
+      );
+    } on TimeoutException {
+      debugPrint(
+        '[Splash] validateSession timed out. Continuing with fallback route.',
+      );
+      loggedIn = false;
+    } catch (e) {
+      debugPrint('[Splash] validateSession failed: $e');
+      loggedIn = false;
+    }
     if (!mounted) return;
 
     if (loggedIn) {
