@@ -422,70 +422,67 @@ class ContactsScreenState extends State<ContactsScreen> {
     final background = colors['background']!;
     final foreground = colors['foreground']!;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 88),
-      child: DecoratedBox(
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: background.withOpacity(0.16),
+            blurRadius: 12,
+            spreadRadius: 0,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Container(
+        width: 76,
+        height: 76,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: background.withOpacity(0.16),
-              blurRadius: 12,
-              spreadRadius: 0,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Container(
-          width: 76,
-          height: 76,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                ringColors['inner']!,
-                background,
-              ],
-            ),
-            border: Border.all(
-              color: ringColors['outer']!,
-              width: 1.8,
-            ),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              ringColors['inner']!,
+              background,
+            ],
           ),
-          child: FloatingActionButton(
-            heroTag: 'silent-call-fab',
-            tooltip: 'Silent Call',
-            elevation: 0,
-            highlightElevation: 0,
-            backgroundColor: Colors.transparent,
-            foregroundColor: foreground,
-            disabledElevation: 0,
-            onPressed: _loading ? null : _showSilentCallComposer,
-            shape: const CircleBorder(),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.volume_off_rounded,
-                  size: 24,
-                  color: Colors.white,
+          border: Border.all(
+            color: ringColors['outer']!,
+            width: 1.8,
+          ),
+        ),
+        child: FloatingActionButton(
+          heroTag: 'silent-call-fab',
+          tooltip: 'Silent Call',
+          elevation: 0,
+          highlightElevation: 0,
+          backgroundColor: Colors.transparent,
+          foregroundColor: foreground,
+          disabledElevation: 0,
+          onPressed: _loading ? null : _showSilentCallComposer,
+          shape: const CircleBorder(),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.volume_off_rounded,
+                size: 24,
+                color: Colors.white,
+              ),
+              const SizedBox(height: 3),
+              Text(
+                'Silent\nCall',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: foreground,
+                  fontSize: 10.8,
+                  fontWeight: FontWeight.w800,
+                  height: 1.0,
+                  letterSpacing: 0.1,
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  'Silent\nCall',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: foreground,
-                    fontSize: 10.8,
-                    fontWeight: FontWeight.w800,
-                    height: 1.0,
-                    letterSpacing: 0.1,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -566,13 +563,16 @@ class ContactsScreenState extends State<ContactsScreen> {
           ),
         ],
       ),
-      floatingActionButton: (widget.silentCallKey == null)
-          ? _buildSilentCallFab(context)
-          : Showcase(
-              key: widget.silentCallKey!,
-              description: 'Send a silent SOS message to selected contacts.',
-              child: _buildSilentCallFab(context),
-            ),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 88),
+        child: (widget.silentCallKey == null)
+            ? _buildSilentCallFab(context)
+            : Showcase(
+                key: widget.silentCallKey!,
+                description: 'Send a silent SOS message to selected contacts.',
+                child: _buildSilentCallFab(context),
+              ),
+      ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
