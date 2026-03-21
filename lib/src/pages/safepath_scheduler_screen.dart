@@ -1348,7 +1348,7 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
                           ),
                           icon: const Icon(Icons.map_rounded, size: 14),
                           label: const Text(
-                            'MAPBOX PICKER',
+                            'EXPAND MAP',
                             style: TextStyle(
                               fontWeight: FontWeight.w800,
                               fontSize: 10,
@@ -1756,7 +1756,7 @@ class _SafePathSchedulerScreenState extends State<SafePathSchedulerScreen> {
                         ),
                         icon: const Icon(Icons.map_rounded, size: 14),
                         label: const Text(
-                          'MAPBOX PICKER',
+                          'EXPAND MAP',
                           style: TextStyle(
                             fontWeight: FontWeight.w800,
                             fontSize: 10,
