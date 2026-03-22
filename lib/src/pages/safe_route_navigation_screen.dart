@@ -450,6 +450,9 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       final center = zone.center;
       if (center != null) {
         final circleRadius = (zone.radius / 4).clamp(10.0, 36.0);
+        final innerRadius = (circleRadius * 0.48).clamp(5.0, 16.0);
+
+        // Outer danger aura.
         await circleManager.create(
           CircleAnnotationOptions(
             geometry: Point(coordinates: center),
@@ -457,6 +460,17 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
             circleColor: const Color(0x55FF3B30).value,
             circleStrokeColor: const Color(0xCCFF3B30).value,
             circleStrokeWidth: 2.0,
+          ),
+        );
+
+        // Inner hotspot to increase visual contrast of the danger center.
+        await circleManager.create(
+          CircleAnnotationOptions(
+            geometry: Point(coordinates: center),
+            circleRadius: innerRadius,
+            circleColor: const Color(0xCCFF3B30).value,
+            circleStrokeColor: const Color(0xFFFFE3E0).value,
+            circleStrokeWidth: 1.0,
           ),
         );
       }
