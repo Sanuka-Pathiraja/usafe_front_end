@@ -33,7 +33,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late int _currentIndex;
   final Set<int> _loadedTabs = {0};
   final GlobalKey<ContactsScreenState> _contactsKey =
@@ -46,9 +46,17 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _currentIndex = widget.initialTabIndex;
     _loadedTabs.add(_currentIndex);
     _loadContactCount();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadContactCount();
+    }
   }
 
   Future<void> _loadContactCount() async {
@@ -220,6 +228,12 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   Widget _navItem(IconData icon, String label, int index) {
