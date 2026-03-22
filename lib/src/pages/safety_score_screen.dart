@@ -48,9 +48,11 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
   @override
   void initState() {
     super.initState();
-    PushNotificationService.initializeLocalAlertsOnly();
-    _fetchSafetyData();
-    _startLiveRefresh();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _fetchSafetyData();
+      _startLiveRefresh();
+    });
   }
 
   @override
@@ -97,17 +99,15 @@ class _SafetyScoreScreenState extends State<SafetyScoreScreen> {
       }
 
       permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          await _setShareLocationPref(false);
-          throw Exception('Location permissions are denied');
-        }
-      }
-
-      if (permission == LocationPermission.deniedForever) {
+      final hasLocationPermission =
+          permission == LocationPermission.always ||
+          permission == LocationPermission.whileInUse;
+      if (!hasLocationPermission ||
+          permission == LocationPermission.deniedForever) {
         await _setShareLocationPref(false);
-        throw Exception('Location permissions are permanently denied.');
+        throw Exception(
+          'Location permission is required. Enable it from Settings to view your safety score.',
+        );
       }
 
       final position =
