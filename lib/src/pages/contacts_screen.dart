@@ -7,11 +7,14 @@ import 'package:usafe_front_end/core/services/phone_call_service.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
 import 'package:usafe_front_end/src/pages/silent_call_page.dart';
 import 'package:usafe_front_end/src/widgets/contact_alert_bottom_sheet.dart';
-import 'package:showcaseview/showcaseview.dart';
+import 'package:usafe_front_end/features/onboarding/onboarding_controller.dart';
 
 class ContactsScreen extends StatefulWidget {
   final VoidCallback? onBackHome;
+  // Kept for backward compatibility with existing callers — no longer used.
+  // ignore: unused_element
   final GlobalKey? infoKey;
+  // ignore: unused_element
   final GlobalKey? silentCallKey;
 
   const ContactsScreen({
@@ -33,6 +36,11 @@ class ContactsScreenState extends State<ContactsScreen> {
   final List<Map<String, String>> _contacts = [];
   bool _loading = true;
   final Completer<int> _loadedCountCompleter = Completer<int>();
+
+  // ── Onboarding tour ──────────────────────────────────────────────────────
+  final GlobalKey _guideInfoKey = GlobalKey();
+  final GlobalKey _guideListKey = GlobalKey();
+  final GlobalKey _guideFabKey = GlobalKey();
 
   void _logContactAlert(String message) {
     debugPrint('[ContactAlertUI] $message');
@@ -65,8 +73,25 @@ class ContactsScreenState extends State<ContactsScreen> {
   @override
   void initState() {
     super.initState();
-    // Load persisted contacts on startup.
     _loadContacts();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkOnboarding());
+  }
+
+  Future<void> _checkOnboarding() async {
+    final should = await OnboardingController.shouldShowContactsPageTour();
+    if (!should || !mounted) return;
+    await OnboardingController.markContactsPageTourSeen();
+    if (!mounted) return;
+    await showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.transparent,
+      transitionDuration: Duration.zero,
+      pageBuilder: (ctx, _, __) => _ContactsOnboardingOverlay(
+        onDone: () => Navigator.of(ctx).pop(),
+        stepKeys: [_guideInfoKey, _guideListKey, _guideFabKey],
+      ),
+    );
   }
 
   Future<void> _loadContacts() async {
@@ -519,14 +544,7 @@ class ContactsScreenState extends State<ContactsScreen> {
           const SizedBox(height: 10),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: (widget.infoKey == null)
-                ? _buildContactsInfoRow()
-                : Showcase(
-                    key: widget.infoKey!,
-                    description:
-                        'Add at least $_minContacts trusted contacts to enable alerts.',
-                    child: _buildContactsInfoRow(),
-                  ),
+            child: SizedBox(key: _guideInfoKey, child: _buildContactsInfoRow()),
           ),
           if (_contacts.length < _minContacts)
             Padding(
@@ -553,6 +571,7 @@ class ContactsScreenState extends State<ContactsScreen> {
                         ),
                       )
                     : ListView.builder(
+                        key: _guideListKey,
                         padding: const EdgeInsets.fromLTRB(16, 0, 16, 210),
                         itemCount: _contacts.length,
                         itemBuilder: (context, index) {
@@ -565,13 +584,10 @@ class ContactsScreenState extends State<ContactsScreen> {
       ),
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: 88),
-        child: (widget.silentCallKey == null)
-            ? _buildSilentCallFab(context)
-            : Showcase(
-                key: widget.silentCallKey!,
-                description: 'Send a silent SOS message to selected contacts.',
-                child: _buildSilentCallFab(context),
-              ),
+        child: SizedBox(
+          key: _guideFabKey,
+          child: _buildSilentCallFab(context),
+        ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
@@ -736,6 +752,535 @@ class ContactsScreenState extends State<ContactsScreen> {
           ),
         );
       },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cinematic first-time guide overlay — Emergency Contacts
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ContactsTourStep {
+  final IconData icon;
+  final Color color;
+  final String label;
+  final String title;
+  final String body;
+  const _ContactsTourStep({
+    required this.icon,
+    required this.color,
+    required this.label,
+    required this.title,
+    required this.body,
+  });
+}
+
+const _kContactsSteps = [
+  _ContactsTourStep(
+    icon: Icons.people_alt_rounded,
+    color: Color(0xFF3B82F6),
+    label: 'Contact status',
+    title: 'Your trusted contacts',
+    body:
+        'You need at least 3 trusted contacts to send emergency alerts.\nThis bar shows how many you\'ve added so far.',
+  ),
+  _ContactsTourStep(
+    icon: Icons.contact_page_rounded,
+    color: Color(0xFF10B981),
+    label: 'Contact cards',
+    title: 'Manage your contacts',
+    body:
+        'Each card shows a trusted person who can receive your SOS alerts.\nTap the ··· menu to remove a contact, or call them directly.',
+  ),
+  _ContactsTourStep(
+    icon: Icons.volume_off_rounded,
+    color: Color(0xFFEF4444),
+    label: 'Silent Call',
+    title: 'Silent SOS call',
+    body:
+        'Send a discreet emergency message to selected contacts with no sound, no visible call — just silent help on the way.',
+  ),
+];
+
+class _ContactsSpotlightPainter extends CustomPainter {
+  final Rect? highlight;
+  final Color glowColor;
+  final double glowT;
+
+  const _ContactsSpotlightPainter({
+    required this.highlight,
+    required this.glowColor,
+    required this.glowT,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final screen = Rect.fromLTWH(0, 0, size.width, size.height);
+    if (highlight == null) {
+      canvas.drawRect(
+          screen, Paint()..color = Colors.black.withValues(alpha: 0.88));
+      return;
+    }
+    const radius = Radius.circular(22);
+    final inflated = highlight!.inflate(10);
+    final rrect = RRect.fromRectAndRadius(inflated, radius);
+
+    final overlay = Path()..addRect(screen);
+    final hole = Path()..addRRect(rrect);
+    final cutout = Path.combine(PathOperation.difference, overlay, hole);
+    canvas.drawPath(
+        cutout, Paint()..color = Colors.black.withValues(alpha: 0.86));
+
+    canvas.drawRRect(
+      rrect,
+      Paint()
+        ..color = glowColor.withValues(alpha: 0.06 + 0.04 * glowT)
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(inflated.inflate(6), radius),
+      Paint()
+        ..color = glowColor.withValues(alpha: 0.18 * glowT)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 14
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14),
+    );
+    canvas.drawRRect(
+      rrect,
+      Paint()
+        ..color = glowColor.withValues(alpha: 0.45 * glowT)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+    );
+    canvas.drawRRect(
+      rrect,
+      Paint()
+        ..color = glowColor.withValues(alpha: 0.65 + 0.35 * glowT)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.6,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_ContactsSpotlightPainter old) =>
+      old.highlight != highlight ||
+      old.glowColor != glowColor ||
+      old.glowT != glowT;
+}
+
+class _ContactsOnboardingOverlay extends StatefulWidget {
+  final VoidCallback onDone;
+  final List<GlobalKey> stepKeys;
+
+  const _ContactsOnboardingOverlay({
+    required this.onDone,
+    required this.stepKeys,
+  });
+
+  @override
+  State<_ContactsOnboardingOverlay> createState() =>
+      _ContactsOnboardingOverlayState();
+}
+
+class _ContactsOnboardingOverlayState
+    extends State<_ContactsOnboardingOverlay> with TickerProviderStateMixin {
+  int _step = 0;
+  Rect? _highlightRect;
+
+  late final AnimationController _glowCtrl;
+  late final AnimationController _slideCtrl;
+  late final AnimationController _rippleCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _glowCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1400))
+      ..repeat(reverse: true);
+    _slideCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 450))
+      ..forward();
+    _rippleCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1100))
+      ..repeat();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollAndMeasure());
+  }
+
+  @override
+  void dispose() {
+    _glowCtrl.dispose();
+    _slideCtrl.dispose();
+    _rippleCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _scrollAndMeasure() async {
+    final key = widget.stepKeys[_step];
+    if (key.currentContext == null) return;
+    try {
+      await Scrollable.ensureVisible(
+        key.currentContext!,
+        alignment: 0.15,
+        duration: const Duration(milliseconds: 380),
+        curve: Curves.easeInOut,
+      );
+    } catch (_) {}
+    await Future.delayed(const Duration(milliseconds: 40));
+    if (!mounted) return;
+    _measureRect();
+  }
+
+  void _measureRect() {
+    final key = widget.stepKeys[_step];
+    final ctx = key.currentContext;
+    if (ctx == null) return;
+    final box = ctx.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return;
+    final pos = box.localToGlobal(Offset.zero);
+    if (mounted) setState(() => _highlightRect = pos & box.size);
+  }
+
+  Future<void> _advance() async {
+    if (_step < _kContactsSteps.length - 1) {
+      setState(() {
+        _step++;
+        _highlightRect = null;
+      });
+      _slideCtrl
+        ..reset()
+        ..forward();
+      _rippleCtrl.reset();
+      await _scrollAndMeasure();
+    } else {
+      widget.onDone();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final step = _kContactsSteps[_step];
+    final color = step.color;
+    final isLast = _step == _kContactsSteps.length - 1;
+    final mq = MediaQuery.of(context);
+    final topPad = mq.padding.top;
+    final bottomPad = mq.padding.bottom;
+    final screenH = mq.size.height;
+
+    double? calloutTop;
+    double? calloutBottom;
+    if (_highlightRect != null) {
+      // Need at least 60 px above the highlight (inflated rect) to show the
+      // label above it without clipping into the status-bar / AppBar area.
+      final inflatedTop = _highlightRect!.top - 10;
+      final spaceAbove = inflatedTop - topPad - 60;
+      if (spaceAbove >= 44) {
+        calloutTop = inflatedTop - 44;
+      } else {
+        // Show label below the highlight with a comfortable gap
+        calloutBottom = screenH - (_highlightRect!.bottom + 10) - 52;
+      }
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {},
+              child: AnimatedBuilder(
+                animation: _glowCtrl,
+                builder: (_, __) => CustomPaint(
+                  painter: _ContactsSpotlightPainter(
+                    highlight: _highlightRect,
+                    glowColor: color,
+                    glowT: 0.55 + 0.45 * _glowCtrl.value,
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          if (_highlightRect != null)
+            AnimatedBuilder(
+              animation: _rippleCtrl,
+              builder: (_, __) {
+                final t = _rippleCtrl.value;
+                final expand = t * 18.0;
+                final opacity = (1.0 - t).clamp(0.0, 1.0) * 0.7;
+                final rect = _highlightRect!.inflate(10 + expand);
+                return Positioned(
+                  left: rect.left,
+                  top: rect.top,
+                  child: IgnorePointer(
+                    child: Opacity(
+                      opacity: opacity,
+                      child: Container(
+                        width: rect.width,
+                        height: rect.height,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(color: color, width: 2),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+
+          if (_highlightRect != null)
+            Positioned(
+              top: calloutTop,
+              bottom: calloutBottom,
+              left: _highlightRect!.left,
+              right: mq.size.width - _highlightRect!.right,
+              child: IgnorePointer(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: color.withValues(alpha: 0.5)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(step.icon, color: color, size: 13),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          step.label,
+                          style: TextStyle(
+                            color: color,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+          Positioned(
+            top: topPad + 14,
+            right: 20,
+            child: GestureDetector(
+              onTap: widget.onDone,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.14)),
+                ),
+                child: const Text(
+                  'Skip',
+                  style: TextStyle(
+                    color: Colors.white60,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          Positioned(
+            top: topPad + 14,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 280),
+                child: Container(
+                  key: ValueKey(_step),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: color.withValues(alpha: 0.4)),
+                  ),
+                  child: Text(
+                    '${_step + 1} of ${_kContactsSteps.length}',
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, 0.28),
+                end: Offset.zero,
+              ).animate(CurvedAnimation(
+                  parent: _slideCtrl, curve: Curves.easeOutCubic)),
+              child: Container(
+                padding: EdgeInsets.fromLTRB(26, 24, 26, 20 + bottomPad),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(32)),
+                  border:
+                      Border.all(color: Colors.white.withValues(alpha: 0.07)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      blurRadius: 40,
+                      offset: const Offset(0, -10),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: List.generate(
+                        _kContactsSteps.length,
+                        (i) => AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                          margin: const EdgeInsets.only(right: 6),
+                          width: i == _step ? 28 : 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: i == _step
+                                ? color
+                                : Colors.white.withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 350),
+                          padding: const EdgeInsets.all(11),
+                          decoration: BoxDecoration(
+                            color: color.withValues(alpha: 0.15),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                                color: color.withValues(alpha: 0.45)),
+                            boxShadow: [
+                              BoxShadow(
+                                color: color.withValues(alpha: 0.3),
+                                blurRadius: 16,
+                              ),
+                            ],
+                          ),
+                          child: Icon(step.icon, color: color, size: 22),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 280),
+                            child: Text(
+                              step.title,
+                              key: ValueKey('t$_step'),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                                height: 1.2,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 280),
+                      child: Text(
+                        step.body,
+                        key: ValueKey('b$_step'),
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 15,
+                          height: 1.6,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 350),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(18),
+                        boxShadow: [
+                          BoxShadow(
+                            color: color.withValues(alpha: 0.42),
+                            blurRadius: 22,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: _advance,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: color,
+                            foregroundColor: Colors.white,
+                            padding:
+                                const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            elevation: 0,
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                isLast ? "Let's go" : 'Next',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Icon(
+                                isLast
+                                    ? Icons.check_rounded
+                                    : Icons.arrow_forward_rounded,
+                                size: 18,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

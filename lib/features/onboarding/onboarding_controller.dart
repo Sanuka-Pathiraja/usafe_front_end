@@ -6,6 +6,10 @@ class OnboardingController {
   static const _signupTourSeenKey = 'signup_tour_seen';
   static const _contactsTourSeenKey = 'contacts_tour_seen';
   static const _silentCallTourSeenKey = 'silent_call_tour_seen';
+  static const _communityReportTourSeenKey = 'community_report_tour_seen';
+  static const _communityMapTourSeenKey = 'community_map_tour_seen';
+  static const _safeRouteTourSeenKey = 'safe_route_tour_seen';
+  static const _contactsPageTourSeenKey = 'contacts_page_tour_seen';
 
   static Future<bool> shouldShowLoginTour() async {
     if (alwaysShowTours) {
@@ -77,5 +81,69 @@ class OnboardingController {
   static Future<void> resetSilentCallTour() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_silentCallTourSeenKey, false);
+  }
+
+  static Future<bool> shouldShowCommunityReportTour() async {
+    if (alwaysShowTours) return true;
+    final prefs = await SharedPreferences.getInstance();
+    return !(prefs.getBool(_communityReportTourSeenKey) ?? false);
+  }
+
+  static Future<void> markCommunityReportTourSeen() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_communityReportTourSeenKey, true);
+  }
+
+  static Future<void> resetCommunityReportTour() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_communityReportTourSeenKey, false);
+  }
+
+  static Future<bool> shouldShowCommunityMapTour() async {
+    if (alwaysShowTours) return true;
+    final prefs = await SharedPreferences.getInstance();
+    return !(prefs.getBool(_communityMapTourSeenKey) ?? false);
+  }
+
+  static Future<void> markCommunityMapTourSeen() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_communityMapTourSeenKey, true);
+  }
+
+  static Future<void> resetCommunityMapTour() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_communityMapTourSeenKey, false);
+  }
+
+  static Future<bool> shouldShowSafeRouteTour() async {
+    if (alwaysShowTours) return true;
+    final prefs = await SharedPreferences.getInstance();
+    return !(prefs.getBool(_safeRouteTourSeenKey) ?? false);
+  }
+
+  static Future<void> markSafeRouteTourSeen() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_safeRouteTourSeenKey, true);
+  }
+
+  static Future<void> resetSafeRouteTour() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_safeRouteTourSeenKey, false);
+  }
+
+  static Future<bool> shouldShowContactsPageTour() async {
+    if (alwaysShowTours) return true;
+    final prefs = await SharedPreferences.getInstance();
+    return !(prefs.getBool(_contactsPageTourSeenKey) ?? false);
+  }
+
+  static Future<void> markContactsPageTourSeen() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_contactsPageTourSeenKey, true);
+  }
+
+  static Future<void> resetContactsPageTour() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_contactsPageTourSeenKey, false);
   }
 }

@@ -38,6 +38,10 @@ class _SettingsPageState extends State<SettingsPage>
 
   // Page guide states — true means the guide will show on next visit
   bool _silentCallGuideEnabled = false;
+  bool _communityReportGuideEnabled = false;
+  bool _communityMapGuideEnabled = false;
+  bool _safeRouteGuideEnabled = false;
+  bool _contactsPageGuideEnabled = false;
   final GlobalKey _locationTileKey = GlobalKey();
   final ScrollController _scrollController = ScrollController();
   AnimationController? _highlightController;
@@ -85,6 +89,14 @@ class _SettingsPageState extends State<SettingsPage>
         permission == LocationPermission.whileInUse;
     final silentCallGuide =
         await OnboardingController.shouldShowSilentCallTour();
+    final communityReportGuide =
+        await OnboardingController.shouldShowCommunityReportTour();
+    final communityMapGuide =
+        await OnboardingController.shouldShowCommunityMapTour();
+    final safeRouteGuide =
+        await OnboardingController.shouldShowSafeRouteTour();
+    final contactsPageGuide =
+        await OnboardingController.shouldShowContactsPageTour();
 
     setState(() {
       final storedShare = prefs.getBool("share_location") ?? true;
@@ -99,6 +111,10 @@ class _SettingsPageState extends State<SettingsPage>
       contactEmergencyAuthorities =
           prefs.getBool("contact_emergency_authorities") ?? true;
       _silentCallGuideEnabled = silentCallGuide;
+      _communityReportGuideEnabled = communityReportGuide;
+      _communityMapGuideEnabled = communityMapGuide;
+      _safeRouteGuideEnabled = safeRouteGuide;
+      _contactsPageGuideEnabled = contactsPageGuide;
     });
   }
 
@@ -675,6 +691,50 @@ class _SettingsPageState extends State<SettingsPage>
                   onEnable: OnboardingController.resetSilentCallTour,
                   onDisable: OnboardingController.markSilentCallTourSeen,
                   applyState: (v) => _silentCallGuideEnabled = v,
+                ),
+              ),
+              _guideTile(
+                icon: Icons.rate_review_rounded,
+                title: "Community Report",
+                enabled: _communityReportGuideEnabled,
+                onChanged: (val) => _toggleGuide(
+                  val,
+                  onEnable: OnboardingController.resetCommunityReportTour,
+                  onDisable: OnboardingController.markCommunityReportTourSeen,
+                  applyState: (v) => _communityReportGuideEnabled = v,
+                ),
+              ),
+              _guideTile(
+                icon: Icons.map_rounded,
+                title: "Community Map",
+                enabled: _communityMapGuideEnabled,
+                onChanged: (val) => _toggleGuide(
+                  val,
+                  onEnable: OnboardingController.resetCommunityMapTour,
+                  onDisable: OnboardingController.markCommunityMapTourSeen,
+                  applyState: (v) => _communityMapGuideEnabled = v,
+                ),
+              ),
+              _guideTile(
+                icon: Icons.route_rounded,
+                title: "Safe Route Navigation",
+                enabled: _safeRouteGuideEnabled,
+                onChanged: (val) => _toggleGuide(
+                  val,
+                  onEnable: OnboardingController.resetSafeRouteTour,
+                  onDisable: OnboardingController.markSafeRouteTourSeen,
+                  applyState: (v) => _safeRouteGuideEnabled = v,
+                ),
+              ),
+              _guideTile(
+                icon: Icons.people_alt_rounded,
+                title: "Emergency Contacts",
+                enabled: _contactsPageGuideEnabled,
+                onChanged: (val) => _toggleGuide(
+                  val,
+                  onEnable: OnboardingController.resetContactsPageTour,
+                  onDisable: OnboardingController.markContactsPageTourSeen,
+                  applyState: (v) => _contactsPageGuideEnabled = v,
                 ),
               ),
             ],

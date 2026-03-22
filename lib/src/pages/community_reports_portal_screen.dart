@@ -8,10 +8,11 @@ import 'package:geocoding/geocoding.dart' as geocoding;
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart' as image_picker;
 import 'package:location/location.dart';
-import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
 import 'package:usafe_front_end/features/auth/community_report_service.dart';
+import 'package:usafe_front_end/features/onboarding/onboarding_controller.dart';
 import 'package:usafe_front_end/src/config/app_config.dart';
 
 const String _communityPortalMapboxToken = mapboxPublicToken;
@@ -156,6 +157,13 @@ class _CommunityReportsPortalScreenState
   String _searchSessionToken = '';
   Timer? _debounce;
 
+  // Composer guide
+  bool _showComposerGuide = false;
+  final ScrollController _composerScrollController = ScrollController();
+  final GlobalKey _guideMapKey = GlobalKey();
+  final GlobalKey _guideIssueKey = GlobalKey();
+  final GlobalKey _guideDescKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
@@ -168,6 +176,7 @@ class _CommunityReportsPortalScreenState
   void dispose() {
     _locationSubscription?.cancel();
     _debounce?.cancel();
+    _composerScrollController.dispose();
     _descriptionController.dispose();
     _locationSearchController.dispose();
     super.dispose();
@@ -248,7 +257,18 @@ class _CommunityReportsPortalScreenState
     );
   }
 
-  void _openComposer() => setState(() => _showComposer = true);
+  void _openComposer() {
+    setState(() => _showComposer = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkComposerGuide());
+  }
+
+  Future<void> _checkComposerGuide() async {
+    final should = await OnboardingController.shouldShowCommunityReportTour();
+    if (should && mounted) {
+      setState(() => _showComposerGuide = true);
+      await OnboardingController.markCommunityReportTourSeen();
+    }
+  }
 
   void _closeComposer() => setState(() => _showComposer = false);
 
@@ -1335,6 +1355,7 @@ class _CommunityReportsPortalScreenState
 
   Widget _buildComposer() {
     return ListView(
+      controller: _composerScrollController,
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
       children: [
         _buildInfoBanner(
@@ -1344,11 +1365,11 @@ class _CommunityReportsPortalScreenState
               'Use current location, search a place, or pin directly on the map without leaving the portal.',
         ),
         const SizedBox(height: 16),
-        _buildMapPickerCard(),
+        SizedBox(key: _guideMapKey, child: _buildMapPickerCard()),
         const SizedBox(height: 16),
-        _buildIssueSelectorCard(),
+        SizedBox(key: _guideIssueKey, child: _buildIssueSelectorCard()),
         const SizedBox(height: 16),
-        _buildDescriptionCard(),
+        SizedBox(key: _guideDescKey, child: _buildDescriptionCard()),
         const SizedBox(height: 16),
         _buildEvidenceCard(),
         const SizedBox(height: 16),
@@ -1973,49 +1994,85 @@ class _CommunityReportsPortalScreenState
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.background,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: Text(
-          _showComposer ? 'Add Community Report' : 'Community Reports',
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w700,
+    return Stack(
+      children: [
+        Scaffold(
+          backgroundColor: AppColors.background,
+          appBar: AppBar(
+            backgroundColor: AppColors.background,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+            title: Text(
+              _showComposer ? 'Add Community Report' : 'Community Reports',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            actions: [
+              TextButton.icon(
+                onPressed: _showComposer ? _closeComposer : _openComposer,
+                icon: Icon(
+                  _showComposer ? Icons.view_stream_rounded : Icons.add_rounded,
+                  color: Colors.white,
+                ),
+                label: Text(
+                  _showComposer ? 'Portal' : 'Add',
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
           ),
-        ),
-        actions: [
-          TextButton.icon(
-            onPressed: _showComposer ? _closeComposer : _openComposer,
-            icon: Icon(
-              _showComposer ? Icons.view_stream_rounded : Icons.add_rounded,
-              color: Colors.white,
-            ),
-            label: Text(
-              _showComposer ? 'Portal' : 'Add',
-              style: const TextStyle(color: Colors.white),
-            ),
+          body: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            child: _showComposer ? _buildComposer() : _buildFeed(),
           ),
-        ],
-      ),
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 220),
-        child: _showComposer ? _buildComposer() : _buildFeed(),
-      ),
-      floatingActionButton: _showComposer
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: _openComposer,
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-              icon: const Icon(Icons.add_location_alt_rounded),
-              label: const Text('Add community report'),
-            ),
+          floatingActionButton: _showComposer
+              ? null
+              : FloatingActionButton.extended(
+                  onPressed: _openComposer,
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  icon: const Icon(Icons.add_location_alt_rounded),
+                  label: const Text('Add community report'),
+                ),
+        ),
+        if (_showComposerGuide)
+          _SpotlightTourOverlay(
+            steps: const [
+              _TourStep(
+                icon: Icons.location_on_rounded,
+                color: Color(0xFF3B82F6),
+                label: 'Location',
+                title: 'Pin where it happened',
+                body:
+                    'Search an address, use your current location, or tap the map to pin the exact spot.',
+              ),
+              _TourStep(
+                icon: Icons.category_rounded,
+                color: Color(0xFFF59E0B),
+                label: 'Issue type',
+                title: 'What happened here?',
+                body:
+                    'Pick one or more categories. High-severity types appear in red — report them right away.',
+              ),
+              _TourStep(
+                icon: Icons.edit_note_rounded,
+                color: Color(0xFF0EA5E9),
+                label: 'Description',
+                title: 'Describe the incident',
+                body:
+                    'Add context about what you witnessed. The more detail you provide, the more useful the report.',
+              ),
+            ],
+            stepKeys: [_guideMapKey, _guideIssueKey, _guideDescKey],
+            scrollController: _composerScrollController,
+            onDone: () => setState(() => _showComposerGuide = false),
+          ),
+      ],
     );
   }
 }
@@ -2266,6 +2323,12 @@ class _LocationPickerPageState extends State<_LocationPickerPage> {
   int _reqId = 0;
   String _sessionToken = '';
 
+  // Map-picker guide
+  bool _showPickerGuide = false;
+  final GlobalKey _guideSearchKey = GlobalKey();
+  final GlobalKey _guideCrosshairKey = GlobalKey();
+  final GlobalKey _guideConfirmKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
@@ -2273,6 +2336,15 @@ class _LocationPickerPageState extends State<_LocationPickerPage> {
     _refreshSessionToken();
     _pinnedPosition = widget.initialPosition;
     _pinnedLabel = widget.initialLabel ?? '';
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkPickerGuide());
+  }
+
+  Future<void> _checkPickerGuide() async {
+    final should = await OnboardingController.shouldShowCommunityMapTour();
+    if (should && mounted) {
+      setState(() => _showPickerGuide = true);
+      await OnboardingController.markCommunityMapTourSeen();
+    }
   }
 
   @override
@@ -2526,7 +2598,8 @@ class _LocationPickerPageState extends State<_LocationPickerPage> {
     final topPad = MediaQuery.of(context).padding.top;
     final bottomPad = MediaQuery.of(context).padding.bottom;
 
-    return Scaffold(
+    return Stack(children: [
+      Scaffold(
       backgroundColor: AppColors.background,
       body: Stack(
         children: [
@@ -2569,6 +2642,7 @@ class _LocationPickerPageState extends State<_LocationPickerPage> {
           // ── Centre crosshair pin ────────────────────────────────────────
           IgnorePointer(
             child: Center(
+              key: _guideCrosshairKey,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -2603,6 +2677,7 @@ class _LocationPickerPageState extends State<_LocationPickerPage> {
             child: Column(
               children: [
                 Container(
+                  key: _guideSearchKey,
                   clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
                     color: AppColors.surface,
@@ -2814,6 +2889,7 @@ class _LocationPickerPageState extends State<_LocationPickerPage> {
                   const SizedBox(height: 14),
                   // Action buttons
                   SizedBox(
+                    key: _guideConfirmKey,
                     width: double.infinity,
                     child: FilledButton.icon(
                       onPressed:
@@ -2831,6 +2907,561 @@ class _LocationPickerPageState extends State<_LocationPickerPage> {
                     ),
                   ),
                 ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    ), // Scaffold
+
+      // ── Map-picker first-time guide ─────────────────────────────────────
+      if (_showPickerGuide)
+        _SpotlightTourOverlay(
+          steps: const [
+            _TourStep(
+              icon: Icons.search_rounded,
+              color: Color(0xFF3B82F6),
+              label: 'Search bar',
+              title: 'Search any location',
+              body:
+                  'Type an address, landmark, or area name. Suggestions appear instantly as you type.',
+            ),
+            _TourStep(
+              icon: Icons.location_on_rounded,
+              color: Color(0xFFEF4444),
+              label: 'Pin the spot',
+              title: 'Tap or pan to place a pin',
+              body:
+                  'Tap anywhere to drop a pin. Drag the map to explore — the crosshair always marks the center.',
+            ),
+            _TourStep(
+              icon: Icons.check_circle_rounded,
+              color: Color(0xFF10B981),
+              label: 'Confirm location',
+              title: 'Confirm your location',
+              body:
+                  'Once the pin is where you want it, tap here to attach the location to your report.',
+            ),
+          ],
+          stepKeys: [_guideSearchKey, _guideCrosshairKey, _guideConfirmKey],
+          scrollController: null,
+          onDone: () => setState(() => _showPickerGuide = false),
+        ),
+    ]); // outer Stack
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared spotlight tour primitives
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _TourStep {
+  final IconData icon;
+  final Color color;
+  final String label;
+  final String title;
+  final String body;
+  const _TourStep({
+    required this.icon,
+    required this.color,
+    required this.label,
+    required this.title,
+    required this.body,
+  });
+}
+
+class _PortalSpotlightPainter extends CustomPainter {
+  final Rect? highlight;
+  final Color glowColor;
+  final double glowT;
+
+  _PortalSpotlightPainter({
+    required this.highlight,
+    required this.glowColor,
+    required this.glowT,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final screen = Rect.fromLTWH(0, 0, size.width, size.height);
+
+    if (highlight == null) {
+      canvas.drawRect(
+          screen, Paint()..color = Colors.black.withValues(alpha: 0.88));
+      return;
+    }
+
+    const radius = Radius.circular(22);
+    final inflated = highlight!.inflate(10);
+    final rrect = RRect.fromRectAndRadius(inflated, radius);
+
+    // Dark overlay with hole
+    final overlay = Path()..addRect(screen);
+    final hole = Path()..addRRect(rrect);
+    canvas.drawPath(
+      Path.combine(PathOperation.difference, overlay, hole),
+      Paint()..color = Colors.black.withValues(alpha: 0.86),
+    );
+
+    // Colour wash inside hole
+    canvas.drawRRect(
+      rrect,
+      Paint()..color = glowColor.withValues(alpha: 0.06 + 0.04 * glowT),
+    );
+
+    // Outer diffused glow
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(inflated.inflate(6), radius),
+      Paint()
+        ..color = glowColor.withValues(alpha: 0.18 * glowT)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 14
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14),
+    );
+
+    // Medium glow
+    canvas.drawRRect(
+      rrect,
+      Paint()
+        ..color = glowColor.withValues(alpha: 0.45 * glowT)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+    );
+
+    // Crisp inner border
+    canvas.drawRRect(
+      rrect,
+      Paint()
+        ..color = glowColor.withValues(alpha: 0.65 + 0.35 * glowT)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.6,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_PortalSpotlightPainter old) =>
+      old.highlight != highlight ||
+      old.glowColor != glowColor ||
+      old.glowT != glowT;
+}
+
+class _SpotlightTourOverlay extends StatefulWidget {
+  final List<_TourStep> steps;
+  final List<GlobalKey> stepKeys;
+  final ScrollController? scrollController;
+  final VoidCallback onDone;
+
+  const _SpotlightTourOverlay({
+    required this.steps,
+    required this.stepKeys,
+    required this.scrollController,
+    required this.onDone,
+  });
+
+  @override
+  State<_SpotlightTourOverlay> createState() => _SpotlightTourOverlayState();
+}
+
+class _SpotlightTourOverlayState extends State<_SpotlightTourOverlay>
+    with TickerProviderStateMixin {
+  int _step = 0;
+  Rect? _highlightRect;
+
+  late final AnimationController _glowCtrl;
+  late final AnimationController _slideCtrl;
+  late final AnimationController _rippleCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _glowCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1400))
+      ..repeat(reverse: true);
+    _slideCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 450))
+      ..forward();
+    _rippleCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1100))
+      ..repeat();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollAndMeasure());
+  }
+
+  @override
+  void dispose() {
+    _glowCtrl.dispose();
+    _slideCtrl.dispose();
+    _rippleCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _scrollAndMeasure() async {
+    final key = widget.stepKeys[_step];
+    if (key.currentContext != null && widget.scrollController != null) {
+      await Scrollable.ensureVisible(
+        key.currentContext!,
+        alignment: 0.15,
+        duration: const Duration(milliseconds: 380),
+        curve: Curves.easeInOut,
+      );
+      await Future.delayed(const Duration(milliseconds: 40));
+    }
+    if (mounted) _measureRect();
+  }
+
+  void _measureRect() {
+    final key = widget.stepKeys[_step];
+    final ctx = key.currentContext;
+    if (ctx == null) return;
+    final box = ctx.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return;
+    final pos = box.localToGlobal(Offset.zero);
+    if (mounted) setState(() => _highlightRect = pos & box.size);
+  }
+
+  Future<void> _advance() async {
+    if (_step < widget.steps.length - 1) {
+      setState(() {
+        _step++;
+        _highlightRect = null;
+      });
+      _slideCtrl..reset()..forward();
+      _rippleCtrl.reset();
+      await _scrollAndMeasure();
+    } else {
+      widget.onDone();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final step = widget.steps[_step];
+    final color = step.color;
+    final isLast = _step == widget.steps.length - 1;
+    final mq = MediaQuery.of(context);
+    final topPad = mq.padding.top;
+    final bottomPad = mq.padding.bottom;
+    final screenH = mq.size.height;
+
+    double? calloutTop;
+    double? calloutBottom;
+    if (_highlightRect != null) {
+      final spaceAbove = _highlightRect!.top - topPad - 80;
+      if (spaceAbove >= 40) {
+        calloutTop = _highlightRect!.top - 48;
+      } else {
+        calloutBottom = screenH - _highlightRect!.bottom - 8;
+      }
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: Stack(
+        children: [
+          // Dark overlay with spotlight cutout
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {},
+              child: AnimatedBuilder(
+                animation: _glowCtrl,
+                builder: (_, __) => CustomPaint(
+                  painter: _PortalSpotlightPainter(
+                    highlight: _highlightRect,
+                    glowColor: color,
+                    glowT: 0.55 + 0.45 * _glowCtrl.value,
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // Expanding ripple ring
+          if (_highlightRect != null)
+            AnimatedBuilder(
+              animation: _rippleCtrl,
+              builder: (_, __) {
+                final t = _rippleCtrl.value;
+                final rect = _highlightRect!.inflate(10 + t * 18);
+                return Positioned(
+                  left: rect.left,
+                  top: rect.top,
+                  child: IgnorePointer(
+                    child: Opacity(
+                      opacity: (1.0 - t).clamp(0.0, 1.0) * 0.7,
+                      child: Container(
+                        width: rect.width,
+                        height: rect.height,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(color: color, width: 2),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+
+          // Callout label near highlight
+          if (_highlightRect != null)
+            Positioned(
+              top: calloutTop,
+              bottom: calloutBottom,
+              left: _highlightRect!.left,
+              right: mq.size.width - _highlightRect!.right,
+              child: IgnorePointer(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(999),
+                    border:
+                        Border.all(color: color.withValues(alpha: 0.5)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(step.icon, color: color, size: 13),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          step.label,
+                          style: TextStyle(
+                            color: color,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+          // Skip button
+          Positioned(
+            top: topPad + 14,
+            right: 20,
+            child: GestureDetector(
+              onTap: widget.onDone,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 7),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.14)),
+                ),
+                child: const Text(
+                  'Skip',
+                  style: TextStyle(
+                    color: Colors.white60,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // Step counter badge (top-centre)
+          Positioned(
+            top: topPad + 14,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 280),
+                child: Container(
+                  key: ValueKey(_step),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                        color: color.withValues(alpha: 0.4)),
+                  ),
+                  child: Text(
+                    '${_step + 1} of ${widget.steps.length}',
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // Slide-up card
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, 0.28),
+                end: Offset.zero,
+              ).animate(CurvedAnimation(
+                  parent: _slideCtrl, curve: Curves.easeOutCubic)),
+              child: Container(
+                padding:
+                    EdgeInsets.fromLTRB(26, 24, 26, 20 + bottomPad),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(32)),
+                  border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.07)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      blurRadius: 40,
+                      offset: const Offset(0, -10),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Progress dots
+                    Row(
+                      children: List.generate(
+                        widget.steps.length,
+                        (i) => AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                          margin: const EdgeInsets.only(right: 6),
+                          width: i == _step ? 28 : 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: i == _step
+                                ? color
+                                : Colors.white.withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+
+                    // Icon + title
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 350),
+                          padding: const EdgeInsets.all(11),
+                          decoration: BoxDecoration(
+                            color: color.withValues(alpha: 0.15),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                                color: color.withValues(alpha: 0.45)),
+                            boxShadow: [
+                              BoxShadow(
+                                color: color.withValues(alpha: 0.3),
+                                blurRadius: 16,
+                              ),
+                            ],
+                          ),
+                          child: Icon(step.icon, color: color, size: 22),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 280),
+                            child: Text(
+                              step.title,
+                              key: ValueKey('t$_step'),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                                height: 1.2,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Body
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 280),
+                      child: Text(
+                        step.body,
+                        key: ValueKey('b$_step'),
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 15,
+                          height: 1.6,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+
+                    // CTA button
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 350),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(18),
+                        boxShadow: [
+                          BoxShadow(
+                            color: color.withValues(alpha: 0.42),
+                            blurRadius: 22,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: _advance,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: color,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            elevation: 0,
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                isLast ? "Got it" : 'Next',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Icon(
+                                isLast
+                                    ? Icons.check_rounded
+                                    : Icons.arrow_forward_rounded,
+                                size: 18,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
