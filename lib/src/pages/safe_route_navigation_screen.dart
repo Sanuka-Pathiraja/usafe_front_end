@@ -360,6 +360,25 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     return null;
   }
 
+  double _distanceMeters(Position a, Position b) {
+    const earthRadiusMeters = 6371000.0;
+    final aLat = a.lat.toDouble();
+    final aLng = a.lng.toDouble();
+    final bLat = b.lat.toDouble();
+    final bLng = b.lng.toDouble();
+    final dLat = _degToRad(bLat - aLat);
+    final dLon = _degToRad(bLng - aLng);
+    final lat1 = _degToRad(aLat);
+    final lat2 = _degToRad(bLat);
+
+    final haversine = sin(dLat / 2) * sin(dLat / 2) +
+        cos(lat1) * cos(lat2) * sin(dLon / 2) * sin(dLon / 2);
+    final c = 2 * atan2(sqrt(haversine), sqrt(1 - haversine));
+    return earthRadiusMeters * c;
+  }
+
+  double _degToRad(double degrees) => degrees * (pi / 180.0);
+
   Position? _parseLatLonPosition(dynamic node) {
     if (node is List && node.length >= 2) {
       final lon = _toDouble(node[0]);
@@ -665,13 +684,26 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
         _showSnackBar("Destination not found.");
         return;
       }
+      final start =
+          Position(_currentPosition!.longitude!, _currentPosition!.latitude!);
       final payload = await _fetchSafeRoutePayload();
       if (payload != null) {
+        final safe = payload.safeRoute;
+        final preferredRoute = (safe != null && safe.path.isNotEmpty)
+            ? safe
+            : payload.originalRoute;
+        final backendEnd = preferredRoute.path.isNotEmpty
+            ? preferredRoute.path.last
+            : destination;
+        final mismatchMeters = _distanceMeters(backendEnd, destination);
+        const maxAllowedMismatchMeters = 350.0;
+        if (mismatchMeters > maxAllowedMismatchMeters) {
+          await drawRoute(start, destination);
+          return;
+        }
         await _renderDangerZones(payload.redZones);
         await _drawRoutesFromSafeRoutePayload(destination, payload);
       } else {
-        final start =
-            Position(_currentPosition!.longitude!, _currentPosition!.latitude!);
         await drawRoute(start, destination);
       }
     } catch (e) {
@@ -711,24 +743,26 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       );
     }
 
+    final preferredRoute =
+        (safe != null && safe.path.isNotEmpty) ? safe : payload.originalRoute;
+    final markerTarget =
+        preferredRoute.path.isNotEmpty ? preferredRoute.path.last : end;
+
     final markerBytes = await _loadDestinationMarkerBytes();
     await _pointAnnotationManager!.create(PointAnnotationOptions(
-      geometry: Point(coordinates: end),
+      geometry: Point(coordinates: markerTarget),
       image: markerBytes,
       iconSize: 0.2,
       iconAnchor: IconAnchor.BOTTOM,
     ));
 
-    final preferredRoute = (safe != null && safe.path.isNotEmpty)
-        ? safe
-        : payload.originalRoute;
     final distM = preferredRoute.distance ?? 0.0;
     final durS = preferredRoute.duration ?? 0.0;
 
     if (mounted) {
       setState(() {
-        _confirmedPinnedPosition = end;
-        _selectedDestinationPosition = end;
+        _confirmedPinnedPosition = markerTarget;
+        _selectedDestinationPosition = markerTarget;
         _distanceText = distM > 0
             ? "Distance: ${(distM / 1000).toStringAsFixed(1)} km"
             : "Distance: --";
@@ -740,7 +774,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     }
 
     await _mapController!.flyTo(
-      CameraOptions(center: Point(coordinates: end), zoom: 12.5),
+      CameraOptions(center: Point(coordinates: markerTarget), zoom: 12.5),
       MapAnimationOptions(duration: 1200),
     );
   }
@@ -1095,7 +1129,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Build                        
+  // Build
   // ─────────────────────────────────────────────────────────────────────────
 
   @override
@@ -1687,7 +1721,6 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                       iconOpacity: _hasSelectedDestination ? 1.0 : 0.78,
                       iconSize: 24,
                     ),
-                    
                   ],
                 ),
               ),
