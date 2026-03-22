@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
 import 'package:usafe_front_end/features/auth/screens/login_screen.dart';
+import 'package:usafe_front_end/features/onboarding/screens/emergency_contacts_setup_screen.dart';
 import 'package:usafe_front_end/features/onboarding/screens/permissions_onboarding_screen.dart';
 import 'package:usafe_front_end/src/pages/home_screen.dart';
 import 'package:usafe_front_end/widgets/sos_screen.dart';
@@ -102,9 +103,20 @@ class _SplashScreenState extends State<SplashScreen>
     if (!mounted) return;
 
     if (loggedIn) {
+      // Check if user has enough emergency contacts
+      Widget destination = const HomeScreen();
+      try {
+        final contacts = await AuthService.fetchContacts();
+        if (contacts.length < 3) {
+          destination = const EmergencyContactsSetupScreen();
+        }
+      } catch (_) {
+        // If fetch fails, go to HomeScreen — contacts check will happen there
+      }
+      if (!mounted) return;
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(builder: (_) => destination),
       );
     } else {
       Navigator.pushReplacement(

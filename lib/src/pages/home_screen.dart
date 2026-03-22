@@ -9,7 +9,6 @@ import '../../core/constants/app_colors.dart';
 import '../../core/services/api_service.dart';
 import '../../features/auth/auth_service.dart';
 import '../../features/auth/screens/login_screen.dart';
-import '../../features/onboarding/onboarding_controller.dart';
 import 'contacts_screen.dart';
 import 'emergency_process_screen.dart';
 import 'package:usafe_front_end/src/pages/profile_screen.dart'; // Adjust path
@@ -42,13 +41,26 @@ class _HomeScreenState extends State<HomeScreen> {
   final GlobalKey _addContactFabKey = GlobalKey();
   final GlobalKey _contactsInfoKey = GlobalKey();
   final GlobalKey _silentCallFabKey = GlobalKey();
-  bool _contactsTourRequested = false;
+  int _contactCount = -1; // -1 = unknown/loading
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialTabIndex;
     _loadedTabs.add(_currentIndex);
+    _loadContactCount();
+  }
+
+  Future<void> _loadContactCount() async {
+    try {
+      final contacts = await AuthService.fetchContacts();
+      if (mounted) setState(() => _contactCount = contacts.length);
+    } catch (_) {
+      try {
+        final cached = await AuthService.loadTrustedContacts();
+        if (mounted) setState(() => _contactCount = cached.length);
+      } catch (_) {}
+    }
   }
 
   void _switchTab(int index) {
@@ -56,12 +68,15 @@ class _HomeScreenState extends State<HomeScreen> {
       _currentIndex = index;
       _loadedTabs.add(index);
     });
+    if (index == 2) {
+      _loadContactCount();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final pages = [
-      const SOSDashboard(),
+      SOSDashboard(contactCount: _contactCount),
       SafetyScoreGateScreen(
         showBottomNav: false,
         onBackHome: () => _switchTab(0),
@@ -80,7 +95,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return ShowCaseWidget(
       builder: (context) {
-        _maybeStartContactsTour(context);
         return Scaffold(
           backgroundColor: AppColors.background,
           body: Stack(
@@ -100,6 +114,50 @@ class _HomeScreenState extends State<HomeScreen> {
                 right: 24,
                 child: _buildBottomNavBar(),
               ),
+              // Persistent warning chip — shown on all tabs except contacts (which has its own banner)
+              if (_contactCount >= 0 && _contactCount < 3 && _currentIndex != 2)
+                Positioned(
+                  bottom: 32 + 76 + 12,
+                  left: 24,
+                  right: 24,
+                  child: GestureDetector(
+                    onTap: () => _switchTab(2),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: AppColors.alert.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                            color: AppColors.alert.withValues(alpha: 0.4)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.warning_amber_rounded,
+                              color: AppColors.alert, size: 16),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _contactCount == 0
+                                  ? 'Add 3 contacts to enable SOS — Tap to set up'
+                                  : 'Add ${3 - _contactCount} more contact${3 - _contactCount > 1 ? 's' : ''} to enable SOS',
+                              style: const TextStyle(
+                                color: AppColors.alert,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.chevron_right,
+                              color: AppColors.alert, size: 16),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               if (_currentIndex == 2)
                 Positioned(
                   left: 0,
@@ -131,31 +189,6 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       },
     );
-  }
-
-  Future<void> _maybeStartContactsTour(BuildContext showcaseContext) async {
-    if (_contactsTourRequested || !widget.startContactsTour) {
-      return;
-    }
-    _contactsTourRequested = true;
-    final contactsState = _contactsKey.currentState;
-    if (contactsState != null) {
-      final count = await contactsState.waitForLoadedContactCount();
-      if (count >= 3) {
-        return;
-      }
-    }
-    final shouldShow = await OnboardingController.shouldShowContactsTour();
-    if (!shouldShow) {
-      return;
-    }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final showcase = ShowCaseWidget.of(showcaseContext);
-      if (showcase == null) return;
-      showcase.startShowCase(
-          [_addContactFabKey, _contactsInfoKey, _silentCallFabKey]);
-    });
-    await OnboardingController.markContactsTourSeen();
   }
 
   Widget _buildBottomNavBar() {
@@ -236,7 +269,8 @@ class _HomeScreenState extends State<HomeScreen> {
 //  SOS DASHBOARD  (settings button → SettingsPage)
 // ─────────────────────────────────────────────
 class SOSDashboard extends StatefulWidget {
-  const SOSDashboard({super.key});
+  final int contactCount;
+  const SOSDashboard({super.key, this.contactCount = -1});
 
   @override
   State<SOSDashboard> createState() => _SOSDashboardState();
@@ -813,6 +847,19 @@ class _SOSDashboardState extends State<SOSDashboard>
   }
 
   Widget _buildHoldButton() {
+    final bool sosLocked =
+        widget.contactCount >= 0 && widget.contactCount < 3;
+    if (sosLocked) {
+      return IgnorePointer(
+        child: Opacity(
+          opacity: 0.35,
+          child: SOSHoldInteraction(
+            accentColor: AppColors.alert,
+            onComplete: () {},
+          ),
+        ),
+      );
+    }
     return SOSHoldInteraction(
       accentColor: AppColors.alert,
       onComplete: () {

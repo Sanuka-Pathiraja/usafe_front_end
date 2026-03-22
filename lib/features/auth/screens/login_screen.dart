@@ -278,10 +278,7 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       } catch (_) {}
     }
-    return const HomeScreen(
-      initialTabIndex: 2,
-      startContactsTour: true,
-    );
+    return const EmergencyContactsSetupScreen();
   }
 
   Future<void> _goToPostLoginHome() async {
@@ -309,21 +306,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = false);
 
     if (success) {
-      final prefs = await SharedPreferences.getInstance();
-      final bool onboardingDone =
-          prefs.getBool('onboarding_completed') ?? false;
-      final bool oldFlowDone =
-          prefs.getBool('authorization_seen') ?? false;
-      if (!mounted) return;
-      if (!onboardingDone && !oldFlowDone) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-              builder: (_) => const EmergencyContactsSetupScreen()),
-        );
-      } else {
-        await _goToPostLoginHome();
-      }
+      await _goToPostLoginHome();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -495,27 +478,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                   if (!mounted) return;
                                   setState(() => _isLoading = false);
                                   if (success) {
-                                    final prefs =
-                                        await SharedPreferences.getInstance();
-                                    final bool onboardingDone =
-                                        prefs.getBool('onboarding_completed') ??
-                                            false;
-                                    final bool oldFlowDone =
-                                        prefs.getBool('authorization_seen') ??
-                                            false;
-                                    if (!mounted) return;
-                                if (!onboardingDone && !oldFlowDone) {
-                                  Navigator.pushReplacement(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) =>
-                                          const EmergencyContactsSetupScreen(),
-                                    ),
-                                  );
-                                } else {
-                                  await _goToPostLoginHome();
-                                }
-                              } else {
+                                    await _goToPostLoginHome();
+                                  } else {
                                 final message = (result['message'] ??
                                         'Google login failed.')
                                         .toString();
@@ -755,6 +719,9 @@ class _SignupScreenState extends State<SignupScreen> {
                             onPressed: _isLoading
                                 ? null
                                 : () async {
+                                    final nav = Navigator.of(context);
+                                    final messenger =
+                                        ScaffoldMessenger.of(context);
                                     final phone = _phoneCtrl.text.trim();
                                     final isPhoneValid =
                                         RegExp(r'^\d{10}$').hasMatch(phone);
@@ -783,50 +750,25 @@ class _SignupScreenState extends State<SignupScreen> {
                                       if (!mounted) return;
                                       setState(() => _isLoading = false);
                                       if (success) {
-                                        final prefs = await SharedPreferences
-                                            .getInstance();
-                                        final bool onboardingDone = prefs
-                                                .getBool(
-                                                    'onboarding_completed') ??
-                                            false;
-                                        final bool oldFlowDone =
-                                            prefs.getBool(
-                                                    'authorization_seen') ??
-                                                false;
-                                        if (!mounted) return;
-                                        if (!onboardingDone && !oldFlowDone) {
-                                          Navigator.pushAndRemoveUntil(
-                                            context,
-                                            MaterialPageRoute(
-                                                builder: (_) =>
-                                                    const EmergencyContactsSetupScreen()),
-                                            (_) => false,
-                                          );
-                                        } else {
-                                          Navigator.pushAndRemoveUntil(
-                                            context,
-                                            MaterialPageRoute(
-                                                builder: (_) =>
-                                                    const HomeScreen(
-                                                      initialTabIndex: 2,
-                                                      startContactsTour: true,
-                                                    )),
-                                            (_) => false,
-                                          );
-                                        }
+                                        nav.pushAndRemoveUntil(
+                                          MaterialPageRoute(
+                                              builder: (_) =>
+                                                  const EmergencyContactsSetupScreen()),
+                                          (_) => false,
+                                        );
                                       } else {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(
-                                          content: Text("Signup failed."),
-                                          backgroundColor: AppColors.alertRed,
-                                        ),
-                                      );
+                                        messenger.showSnackBar(
+                                          const SnackBar(
+                                            content: Text("Signup failed."),
+                                            backgroundColor: AppColors.alertRed,
+                                          ),
+                                        );
                                       }
                                     } else {
                                       final message = !isPhoneValid
                                           ? "Phone number must be 10 digits."
                                           : "Please fill in all fields.";
-                                      ScaffoldMessenger.of(context).showSnackBar(
+                                      messenger.showSnackBar(
                                           SnackBar(
                                               content: Text(message),
                                               backgroundColor: AppColors.alertRed));

@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
 import 'package:usafe_front_end/features/onboarding/onboarding_controller.dart';
-import 'package:usafe_front_end/src/pages/home_screen.dart';
+import 'package:usafe_front_end/features/onboarding/screens/app_guide_screen.dart';
 
 class EmergencyContactsSetupScreen extends StatefulWidget {
   const EmergencyContactsSetupScreen({super.key});
@@ -297,8 +297,7 @@ class _EmergencyContactsSetupScreenState
     Navigator.pushAndRemoveUntil(
       context,
       PageRouteBuilder(
-        pageBuilder: (_, animation, __) =>
-            const HomeScreen(initialTabIndex: 2),
+        pageBuilder: (_, animation, __) => const AppGuideScreen(),
         transitionsBuilder: (_, animation, __, child) =>
             FadeTransition(opacity: animation, child: child),
         transitionDuration: const Duration(milliseconds: 500),
@@ -320,7 +319,7 @@ class _EmergencyContactsSetupScreenState
     Navigator.pushAndRemoveUntil(
       context,
       PageRouteBuilder(
-        pageBuilder: (_, animation, __) => const HomeScreen(),
+        pageBuilder: (_, animation, __) => const AppGuideScreen(),
         transitionsBuilder: (_, animation, __, child) =>
             FadeTransition(opacity: animation, child: child),
         transitionDuration: const Duration(milliseconds: 500),
