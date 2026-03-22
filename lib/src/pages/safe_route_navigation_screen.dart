@@ -734,6 +734,9 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
         final mismatchMeters = _distanceMeters(backendEnd, destination);
         const maxAllowedMismatchMeters = 350.0;
         if (mismatchMeters > maxAllowedMismatchMeters) {
+          _showSnackBar(
+            "Showing standard route for selected destination.",
+          );
           await drawRoute(start, destination);
           return;
         }
