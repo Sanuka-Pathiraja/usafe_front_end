@@ -816,8 +816,16 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen>
       _userLocationAnnotation = await _userLocationManager!
           .create(_buildUserLocationMarker(position));
     } else {
-      _userLocationAnnotation!.geometry = Point(coordinates: position);
-      await _userLocationManager!.update(_userLocationAnnotation!);
+      try {
+        _userLocationAnnotation!.geometry = Point(coordinates: position);
+        await _userLocationManager!.update(_userLocationAnnotation!);
+      } catch (_) {
+        // Annotation was evicted from the native layer (style reload, etc.)
+        // — recreate it from scratch.
+        _userLocationAnnotation = null;
+        _userLocationAnnotation = await _userLocationManager!
+            .create(_buildUserLocationMarker(position));
+      }
     }
 
     if (moveCamera) await _moveCameraToPosition(position);

@@ -84,6 +84,53 @@ class _CommunityReportScreenState extends State<CommunityReportScreen> {
       'description':
           'Property damage, graffiti, or destruction of public assets'
     },
+    // ── High-severity types (classify as Red) ──────────────────────────────
+    {
+      'icon': Icons.gpp_bad_rounded,
+      'title': 'Gunshots / Shooting',
+      'value': 'Gunshot',
+      'color': Colors.red.shade900,
+      'description': 'Gunfire heard or witnessed in the area',
+    },
+    {
+      'icon': Icons.personal_injury_rounded,
+      'title': 'Assault',
+      'color': Colors.red.shade800,
+      'description': 'Physical attack on a person',
+    },
+    {
+      'icon': Icons.money_off_rounded,
+      'title': 'Armed Robbery',
+      'color': Colors.red.shade800,
+      'description': 'Robbery involving a weapon',
+    },
+    {
+      'icon': Icons.warning_rounded,
+      'title': 'Sexual Assault',
+      'color': Colors.red.shade800,
+      'description': 'Sexual violence or attempted sexual violence',
+    },
+    {
+      'icon': Icons.child_care_rounded,
+      'title': 'Kidnapping / Abduction',
+      'value': 'Kidnapping',
+      'color': Colors.red.shade900,
+      'description':
+          'Person forcibly taken or missing under suspicious circumstances',
+    },
+    {
+      'icon': Icons.groups_3_rounded,
+      'title': 'Gang Activity',
+      'color': Colors.red.shade800,
+      'description': 'Visible gang presence or gang-related incident',
+    },
+    {
+      'icon': Icons.crisis_alert_rounded,
+      'title': 'Bomb / Explosive Threat',
+      'value': 'Bomb Threat',
+      'color': Colors.red.shade900,
+      'description': 'Suspected explosive device or threat',
+    },
   ];
 
   @override
@@ -243,7 +290,9 @@ class _CommunityReportScreenState extends State<CommunityReportScreen> {
         locationLat: widget.locationLat,
         locationLng: widget.locationLng,
         issueTypes: selectedIndices
-            .map((index) => issueTypes[index]['title'].toString())
+            .map((index) => (issueTypes[index]['value'] ??
+                    issueTypes[index]['title'])
+                .toString())
             .toList(),
       );
 
