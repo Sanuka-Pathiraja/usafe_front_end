@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -36,6 +37,7 @@ class EmergencyStartAssessment {
 
 class AuthService {
   static const String baseUrl = 'http://10.0.2.2:5000';
+  static const Duration _requestTimeout = Duration(seconds: 12);
   static const String _tokenKey = 'auth_token';
   static const String _userKey = 'user_session';
   static const String _contactsKey = 'trusted_contacts';
@@ -57,7 +59,16 @@ class AuthService {
       // Prevent stale profile data from previous sessions.
       await prefs.remove(_userKey);
     }
-    await PushNotificationService.syncTokenWithBackend();
+    // Do not block login flow if push-token sync is slow/unavailable.
+    try {
+      await PushNotificationService.syncTokenWithBackend().timeout(
+        const Duration(seconds: 5),
+      );
+    } on TimeoutException {
+      debugPrint('[AuthService] push token sync timed out during login.');
+    } catch (e) {
+      debugPrint('[AuthService] push token sync failed during login: $e');
+    }
   }
 
   static Future<String> getToken() async {
@@ -250,11 +261,22 @@ class AuthService {
   }
 
   static Future<bool> login(String email, String password) async {
-    final resp = await http.post(
-      Uri.parse('$baseUrl/user/login'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'email': email, 'password': password}),
-    );
+    http.Response resp;
+    try {
+      resp = await http
+          .post(
+            Uri.parse('$baseUrl/user/login'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'email': email, 'password': password}),
+          )
+          .timeout(_requestTimeout);
+    } on TimeoutException {
+      debugPrint('[AuthService] login timed out after $_requestTimeout');
+      return false;
+    } catch (e) {
+      debugPrint('[AuthService] login request failed: $e');
+      return false;
+    }
 
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
       return false;

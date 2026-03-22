@@ -4,6 +4,7 @@ import 'package:geocoding/geocoding.dart' as geocoding;
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:location/location.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
+import 'package:usafe_front_end/features/auth/auth_service.dart';
 import 'package:usafe_front_end/src/config/app_config.dart';
 import 'dart:convert';
 import 'dart:async';
@@ -12,6 +13,44 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 const String mapboxToken = mapboxPublicToken;
+
+class _DangerZone {
+  final Position? center;
+  final double radius;
+  final List<Position> polygon;
+
+  const _DangerZone({
+    required this.center,
+    required this.radius,
+    required this.polygon,
+  });
+}
+
+class _SafeRoutePath {
+  final List<Position> path;
+  final double? distance;
+  final double? duration;
+  final String color;
+
+  const _SafeRoutePath({
+    required this.path,
+    required this.distance,
+    required this.duration,
+    required this.color,
+  });
+}
+
+class _SafeRoutePayload {
+  final List<_DangerZone> redZones;
+  final _SafeRoutePath originalRoute;
+  final _SafeRoutePath? safeRoute;
+
+  const _SafeRoutePayload({
+    required this.redZones,
+    required this.originalRoute,
+    required this.safeRoute,
+  });
+}
 
 class SafeRouteNavigationScreen extends StatefulWidget {
   const SafeRouteNavigationScreen({super.key});
@@ -25,8 +64,10 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   // ── Map controllers ──────────────────────────────────────────────────────
   MapboxMap? _mapController;
   PolylineAnnotationManager? _polylineManager;
+  PolylineAnnotationManager? _dangerZonePolylineManager;
   PointAnnotationManager? _pointAnnotationManager;
   CircleAnnotationManager? _userLocationManager;
+  CircleAnnotationManager? _heatmapCircleManager;
   CircleAnnotation? _userLocationAnnotation;
 
   static const double _myLocationZoomOutLevel = 14.5;
@@ -98,12 +139,17 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     _mapController = map;
 
     _polylineManager = await map.annotations.createPolylineAnnotationManager();
+    _dangerZonePolylineManager =
+        await map.annotations.createPolylineAnnotationManager();
     _pointAnnotationManager =
         await map.annotations.createPointAnnotationManager();
     _userLocationManager =
         await map.annotations.createCircleAnnotationManager();
+    _heatmapCircleManager =
+        await map.annotations.createCircleAnnotationManager();
 
     await _startUserLocationTracking();
+    await _loadDangerZones();
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -114,6 +160,277 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _loadDangerZones() async {
+    try {
+      final token = await AuthService.getToken();
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+        if (token.trim().isNotEmpty) 'Authorization': 'Bearer $token',
+      };
+      final response = await http.get(
+        Uri.parse('http://10.0.2.2:5000/safe-route'),
+        headers: headers,
+      );
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) {
+          final root = _extractSafeRouteRoot(decoded);
+          if (root != null) {
+            final zones = _parseDangerZones(root['redZones']);
+            if (zones.isNotEmpty) {
+              await _renderDangerZones(zones);
+              return;
+            }
+          }
+        }
+      }
+
+      // Fallback: when /safe-route has no zone payload yet, use report feed
+      // coordinates so danger overlays are still visible.
+      final feedResponse = await http.get(
+        Uri.parse('http://10.0.2.2:5000/report/feed'),
+        headers: headers,
+      );
+      if (feedResponse.statusCode < 200 || feedResponse.statusCode >= 300) {
+        return;
+      }
+      final feedDecoded = jsonDecode(feedResponse.body);
+      final fallbackZones = _parseReportFeedAsDangerZones(feedDecoded);
+      await _renderDangerZones(fallbackZones);
+    } catch (e) {
+      // Keep this silent in production-safe fallback mode.
+    }
+  }
+
+  List<_DangerZone> _parseReportFeedAsDangerZones(dynamic decoded) {
+    List<dynamic> reports = <dynamic>[];
+    if (decoded is List) {
+      reports = decoded;
+    } else if (decoded is Map<String, dynamic>) {
+      final items = decoded['reports'] ?? decoded['feed'] ?? decoded['data'];
+      if (items is List) reports = items;
+    }
+
+    final zones = <_DangerZone>[];
+    for (final item in reports) {
+      if (item is! Map) continue;
+      final report = Map<String, dynamic>.from(item as Map);
+      final center = _parseLatLonPosition(
+            report['locationCoordinates'] ??
+                report['coordinates'] ??
+                report['location'] ??
+                report['center'],
+          ) ??
+          _parseLatLonPosition(
+            report['location'] is Map
+                ? (report['location'] as Map)['coordinates']
+                : null,
+          ) ??
+          _parseLatLonPosition(
+            report['location'] is Map
+                ? (report['location'] as Map)['locationCoordinates']
+                : null,
+          );
+      if (center == null) continue;
+      zones.add(
+        _DangerZone(
+          center: center,
+          radius: 50,
+          polygon: const <Position>[],
+        ),
+      );
+    }
+    return zones;
+  }
+
+  Map<String, dynamic>? _extractSafeRouteRoot(Map<String, dynamic> decoded) {
+    if (decoded['originalRoute'] is Map || decoded['redZones'] is List) {
+      return decoded;
+    }
+    final data = decoded['data'];
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) return Map<String, dynamic>.from(data);
+    return null;
+  }
+
+  Future<_SafeRoutePayload?> _fetchSafeRoutePayload() async {
+    final token = await AuthService.getToken();
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      if (token.trim().isNotEmpty) 'Authorization': 'Bearer $token',
+    };
+
+    final response = await http.get(
+      Uri.parse('http://10.0.2.2:5000/safe-route'),
+      headers: headers,
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) return null;
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) return null;
+    final root = _extractSafeRouteRoot(decoded);
+    if (root == null) return null;
+
+    final originalRouteNode = root['originalRoute'];
+    if (originalRouteNode is! Map) return null;
+    final originalRoute = _parseSafeRoutePath(originalRouteNode);
+    if (originalRoute == null || originalRoute.path.isEmpty) return null;
+
+    _SafeRoutePath? safeRoute;
+    final safeRouteNode = root['safeRoute'];
+    if (safeRouteNode is Map) {
+      safeRoute = _parseSafeRoutePath(safeRouteNode);
+    }
+
+    final redZonesNode = root['redZones'];
+    final redZones = _parseDangerZones(redZonesNode);
+
+    return _SafeRoutePayload(
+      redZones: redZones,
+      originalRoute: originalRoute,
+      safeRoute: safeRoute,
+    );
+  }
+
+  List<_DangerZone> _parseDangerZones(dynamic node) {
+    if (node is! List) return const <_DangerZone>[];
+    final zones = <_DangerZone>[];
+    for (final item in node) {
+      if (item is! Map) continue;
+      final zone = Map<String, dynamic>.from(item as Map);
+      final center = _parseLatLonPosition(zone['center']);
+      final radius = _toDouble(zone['radius']) ?? 0.0;
+
+      final polygon = <Position>[];
+      final polygonNode = zone['polygon'];
+      if (polygonNode is List) {
+        for (final p in polygonNode) {
+          final pos = _parseLatLonPosition(p);
+          if (pos != null) polygon.add(pos);
+        }
+      }
+
+      zones.add(
+        _DangerZone(
+          center: center,
+          radius: radius,
+          polygon: polygon,
+        ),
+      );
+    }
+    return zones;
+  }
+
+  _SafeRoutePath? _parseSafeRoutePath(dynamic node) {
+    if (node is! Map) return null;
+    final route = Map<String, dynamic>.from(node as Map);
+    final pathNode = route['path'];
+    if (pathNode is! List) return null;
+
+    final path = <Position>[];
+    for (final item in pathNode) {
+      if (item is List && item.length >= 2) {
+        final lon = _toDouble(item[0]);
+        final lat = _toDouble(item[1]);
+        if (lat != null && lon != null) {
+          path.add(Position(lon, lat));
+        }
+        continue;
+      }
+      final p = _parseLatLonPosition(item);
+      if (p != null) {
+        path.add(p);
+      }
+    }
+    if (path.isEmpty) return null;
+
+    return _SafeRoutePath(
+      path: path,
+      distance: _toDouble(route['distance']),
+      duration: _toDouble(route['duration']),
+      color: (route['color'] ?? '').toString().trim().toLowerCase(),
+    );
+  }
+
+  double? _toDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    return null;
+  }
+
+  Position? _parseLatLonPosition(dynamic node) {
+    if (node is List && node.length >= 2) {
+      final lon = _toDouble(node[0]);
+      final lat = _toDouble(node[1]);
+      if (lat != null && lon != null) {
+        return Position(lon, lat);
+      }
+      return null;
+    }
+
+    if (node is! Map) return null;
+    final map = Map<String, dynamic>.from(node as Map);
+
+    final lat = _toDouble(map['lat'] ?? map['latitude']);
+    final lon = _toDouble(
+      map['lon'] ?? map['lng'] ?? map['long'] ?? map['longitude'],
+    );
+    if (lat != null && lon != null) {
+      return Position(lon, lat);
+    }
+
+    final nested = map['coordinates'] ?? map['locationCoordinates'];
+    if (nested is List && nested.length >= 2) {
+      final nestedLon = _toDouble(nested[0]);
+      final nestedLat = _toDouble(nested[1]);
+      if (nestedLat != null && nestedLon != null) {
+        return Position(nestedLon, nestedLat);
+      }
+    } else if (nested is Map) {
+      final nestedPos = _parseLatLonPosition(nested);
+      if (nestedPos != null) return nestedPos;
+    }
+
+    return null;
+  }
+
+  Future<void> _renderDangerZones(List<_DangerZone> zones) async {
+    final circleManager = _heatmapCircleManager;
+    final polygonManager = _dangerZonePolylineManager;
+    if (circleManager == null || polygonManager == null) return;
+
+    await circleManager.deleteAll();
+    await polygonManager.deleteAll();
+    if (zones.isEmpty) return;
+
+    for (final zone in zones) {
+      final center = zone.center;
+      if (center != null) {
+        final circleRadius = (zone.radius / 4).clamp(10.0, 36.0);
+        await circleManager.create(
+          CircleAnnotationOptions(
+            geometry: Point(coordinates: center),
+            circleRadius: circleRadius,
+            circleColor: const Color(0x55FF3B30).value,
+            circleStrokeColor: const Color(0xCCFF3B30).value,
+            circleStrokeWidth: 2.0,
+          ),
+        );
+      }
+
+      if (zone.polygon.length >= 3) {
+        final closed = <Position>[...zone.polygon, zone.polygon.first];
+        await polygonManager.create(
+          PolylineAnnotationOptions(
+            geometry: LineString(coordinates: closed),
+            lineColor: const Color(0xAAFF3B30).value,
+            lineWidth: 3.0,
+          ),
+        );
+      }
+    }
   }
 
   void _refreshSearchSessionToken() {
@@ -348,13 +665,104 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
         _showSnackBar("Destination not found.");
         return;
       }
-      await drawRoute(
-          Position(_currentPosition!.longitude!, _currentPosition!.latitude!),
-          destination);
+      final payload = await _fetchSafeRoutePayload();
+      if (payload != null) {
+        await _renderDangerZones(payload.redZones);
+        await _drawRoutesFromSafeRoutePayload(destination, payload);
+      } else {
+        final start =
+            Position(_currentPosition!.longitude!, _currentPosition!.latitude!);
+        await drawRoute(start, destination);
+      }
     } catch (e) {
       _showSnackBar("Route error: $e");
     } finally {
       if (mounted) setState(() => _isCalculatingRoute = false);
+    }
+  }
+
+  Future<void> _drawRoutesFromSafeRoutePayload(
+    Position end,
+    _SafeRoutePayload payload,
+  ) async {
+    if (_mapController == null ||
+        _polylineManager == null ||
+        _pointAnnotationManager == null) return;
+
+    await _polylineManager!.deleteAll();
+    await _pointAnnotationManager!.deleteAll();
+
+    await _polylineManager!.create(
+      PolylineAnnotationOptions(
+        geometry: LineString(coordinates: payload.originalRoute.path),
+        lineColor: _routeColorValue(payload.originalRoute.color),
+        lineWidth: 4.0,
+      ),
+    );
+
+    final safe = payload.safeRoute;
+    if (safe != null && safe.path.isNotEmpty) {
+      await _polylineManager!.create(
+        PolylineAnnotationOptions(
+          geometry: LineString(coordinates: safe.path),
+          lineColor: _routeColorValue(safe.color),
+          lineWidth: 6.0,
+        ),
+      );
+    }
+
+    final markerBytes = await _loadDestinationMarkerBytes();
+    await _pointAnnotationManager!.create(PointAnnotationOptions(
+      geometry: Point(coordinates: end),
+      image: markerBytes,
+      iconSize: 0.2,
+      iconAnchor: IconAnchor.BOTTOM,
+    ));
+
+    final preferredRoute = (safe != null && safe.path.isNotEmpty)
+        ? safe
+        : payload.originalRoute;
+    final distM = preferredRoute.distance ?? 0.0;
+    final durS = preferredRoute.duration ?? 0.0;
+
+    if (mounted) {
+      setState(() {
+        _confirmedPinnedPosition = end;
+        _selectedDestinationPosition = end;
+        _distanceText = distM > 0
+            ? "Distance: ${(distM / 1000).toStringAsFixed(1)} km"
+            : "Distance: --";
+        _durationText = durS > 0
+            ? "Estimated Time: ${(durS / 60).toStringAsFixed(0)} mins"
+            : "Estimated Time: --";
+        _hasActiveRoute = true;
+      });
+    }
+
+    await _mapController!.flyTo(
+      CameraOptions(center: Point(coordinates: end), zoom: 12.5),
+      MapAnimationOptions(duration: 1200),
+    );
+  }
+
+  int _routeColorValue(String colorName) {
+    final color = colorName.trim().toLowerCase();
+    switch (color) {
+      case 'green':
+        return const Color(0xFF1DB954).value;
+      case 'red':
+        return const Color(0xFFEF4444).value;
+      case 'yellow':
+        return const Color(0xFFFACC15).value;
+      case 'orange':
+        return const Color(0xFFF97316).value;
+      case 'blue':
+        return const Color(0xFF2962FF).value;
+      case 'grey':
+      case 'gray':
+        return const Color(0xFF7E8A9A).value;
+      default:
+        return const Color(0xFF2962FF).value;
     }
   }
 
@@ -687,7 +1095,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Build
+  // Build                        
   // ─────────────────────────────────────────────────────────────────────────
 
   @override
@@ -1279,6 +1687,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                       iconOpacity: _hasSelectedDestination ? 1.0 : 0.78,
                       iconSize: 24,
                     ),
+                    
                   ],
                 ),
               ),
