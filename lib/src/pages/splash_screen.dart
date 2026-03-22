@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
 import 'package:usafe_front_end/features/auth/screens/login_screen.dart';
+import 'package:usafe_front_end/features/onboarding/screens/permissions_onboarding_screen.dart';
 import 'package:usafe_front_end/src/pages/home_screen.dart';
 import 'package:usafe_front_end/widgets/sos_screen.dart';
 
@@ -68,6 +68,22 @@ class _SplashScreenState extends State<SplashScreen>
     }
 
     await Future.delayed(const Duration(milliseconds: 2500));
+    if (!mounted) return;
+
+    // First-time user check — route to onboarding before login
+    final prefs = await SharedPreferences.getInstance();
+    final bool onboardingDone = prefs.getBool('onboarding_completed') ?? false;
+    final bool oldFlowDone = prefs.getBool('authorization_seen') ?? false;
+
+    if (!onboardingDone && !oldFlowDone) {
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+            builder: (_) => const PermissionsOnboardingScreen()),
+      );
+      return;
+    }
 
     bool loggedIn = false;
     try {

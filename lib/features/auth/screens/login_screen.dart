@@ -7,6 +7,7 @@ import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
 import 'package:usafe_front_end/features/auth/google_auth_service.dart';
 import 'package:usafe_front_end/features/onboarding/onboarding_controller.dart';
+import 'package:usafe_front_end/features/onboarding/screens/emergency_contacts_setup_screen.dart';
 import 'package:usafe_front_end/src/pages/home_screen.dart';
 import 'package:showcaseview/showcaseview.dart';
 
@@ -309,16 +310,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (success) {
       final prefs = await SharedPreferences.getInstance();
-      final bool authorized = prefs.getBool('authorization_seen') ?? false;
+      final bool onboardingDone =
+          prefs.getBool('onboarding_completed') ?? false;
+      final bool oldFlowDone =
+          prefs.getBool('authorization_seen') ?? false;
       if (!mounted) return;
-      if (!authorized) {
+      if (!onboardingDone && !oldFlowDone) {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => const AuthorizationScreen(
-              startContactsTour: true,
-            ),
-          ),
+              builder: (_) => const EmergencyContactsSetupScreen()),
         );
       } else {
         await _goToPostLoginHome();
@@ -496,17 +497,19 @@ class _LoginScreenState extends State<LoginScreen> {
                                   if (success) {
                                     final prefs =
                                         await SharedPreferences.getInstance();
-                                    final bool authorized =
+                                    final bool onboardingDone =
+                                        prefs.getBool('onboarding_completed') ??
+                                            false;
+                                    final bool oldFlowDone =
                                         prefs.getBool('authorization_seen') ??
                                             false;
                                     if (!mounted) return;
-                                if (!authorized) {
+                                if (!onboardingDone && !oldFlowDone) {
                                   Navigator.pushReplacement(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (_) => const AuthorizationScreen(
-                                        startContactsTour: true,
-                                      ),
+                                      builder: (_) =>
+                                          const EmergencyContactsSetupScreen(),
                                     ),
                                   );
                                 } else {
@@ -780,15 +783,37 @@ class _SignupScreenState extends State<SignupScreen> {
                                       if (!mounted) return;
                                       setState(() => _isLoading = false);
                                       if (success) {
-                                        Navigator.pushAndRemoveUntil(
-                                          context,
-                                          MaterialPageRoute(
-                                              builder: (_) => const HomeScreen(
-                                                    initialTabIndex: 2,
-                                                    startContactsTour: true,
-                                                  )),
-                                          (_) => false,
-                                        );
+                                        final prefs = await SharedPreferences
+                                            .getInstance();
+                                        final bool onboardingDone = prefs
+                                                .getBool(
+                                                    'onboarding_completed') ??
+                                            false;
+                                        final bool oldFlowDone =
+                                            prefs.getBool(
+                                                    'authorization_seen') ??
+                                                false;
+                                        if (!mounted) return;
+                                        if (!onboardingDone && !oldFlowDone) {
+                                          Navigator.pushAndRemoveUntil(
+                                            context,
+                                            MaterialPageRoute(
+                                                builder: (_) =>
+                                                    const EmergencyContactsSetupScreen()),
+                                            (_) => false,
+                                          );
+                                        } else {
+                                          Navigator.pushAndRemoveUntil(
+                                            context,
+                                            MaterialPageRoute(
+                                                builder: (_) =>
+                                                    const HomeScreen(
+                                                      initialTabIndex: 2,
+                                                      startContactsTour: true,
+                                                    )),
+                                            (_) => false,
+                                          );
+                                        }
                                       } else {
                                       ScaffoldMessenger.of(context).showSnackBar(
                                         const SnackBar(

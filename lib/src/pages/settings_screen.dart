@@ -6,7 +6,9 @@ import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:usafe_front_end/core/constants/app_colors.dart';
+import 'package:usafe_front_end/features/auth/auth_service.dart';
 import 'package:usafe_front_end/features/onboarding/onboarding_controller.dart';
+import 'package:usafe_front_end/src/pages/splash_screen.dart';
 
 import './payment_screen.dart';
 import './privacy_screen.dart';
@@ -233,6 +235,57 @@ class _SettingsPageState extends State<SettingsPage>
     );
   }
 
+  Future<void> _resetOnboardingFlow() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Reset Onboarding Flow',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          'This will log you out and restart the full first-time setup — permissions, welcome, privacy consent, and emergency contacts.\n\nUse this to test the new user flow.',
+          style: TextStyle(color: AppColors.textGrey, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel',
+                style: TextStyle(color: AppColors.textGrey)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Reset & Log Out',
+                style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('onboarding_completed', false);
+    await prefs.setBool('authorization_seen', false);
+    await OnboardingController.resetContactsTour();
+    await OnboardingController.resetContactsPageTour();
+    await AuthService.logout();
+
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const SplashScreen()),
+      (_) => false,
+    );
+  }
+
   void _showSnack(String text) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -332,6 +385,8 @@ class _SettingsPageState extends State<SettingsPage>
               _buildGuidesPanel(),
               const SizedBox(height: 20),
               _buildEmergencyPanel(),
+              const SizedBox(height: 20),
+              _buildDevToolsPanel(),
               const SizedBox(height: 20),
               _premiumCard(),
             ],
@@ -901,6 +956,60 @@ class _SettingsPageState extends State<SettingsPage>
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildDevToolsPanel() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionTitle("Developer Tools"),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+                color: AppColors.primary.withValues(alpha: 0.25), width: 1.2),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: 14),
+                child: Text(
+                  'Reset the app to the first-time user flow to test onboarding without reinstalling.',
+                  style: TextStyle(
+                    color: AppColors.textSecondary.withValues(alpha: 0.85),
+                    fontSize: 12,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _resetOnboardingFlow,
+                  icon: const Icon(Icons.restart_alt_rounded,
+                      color: Colors.white, size: 20),
+                  label: const Text(
+                    'Reset Onboarding & Log Out',
+                    style: TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w600),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
+                    elevation: 0,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
