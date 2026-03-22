@@ -77,9 +77,14 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   final Location _location = Location();
 
   Timer? _debounce;
+  Timer? _zoneRefreshDebounce;
+  Timer? _zonePulseTimer;
   List<Map<String, dynamic>> _destinationSuggestions = [];
   bool _isSearchingSuggestions = false;
   String _searchSessionToken = '';
+  String? _lastZoneViewportKey;
+  List<_DangerZone> _currentDangerZones = const <_DangerZone>[];
+  bool _zonePulseExpanded = false;
   String? _selectedDestinationMapboxId;
   Position? _selectedDestinationPosition;
 
@@ -127,6 +132,8 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   void dispose() {
     _locationSubscription?.cancel();
     _debounce?.cancel();
+    _zoneRefreshDebounce?.cancel();
+    _zonePulseTimer?.cancel();
     _destinationController.dispose();
     super.dispose();
   }
@@ -149,7 +156,12 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
         await map.annotations.createCircleAnnotationManager();
 
     await _startUserLocationTracking();
-    await _loadDangerZones();
+    final cameraState = await map.getCameraState();
+    final initialCenter = _positionFromPoint(cameraState.center);
+    await _loadDangerZones(
+      viewportCenter: initialCenter,
+      viewportZoom: cameraState.zoom.toDouble(),
+    );
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -162,15 +174,27 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _loadDangerZones() async {
+  Future<void> _loadDangerZones({
+    Position? viewportCenter,
+    double? viewportZoom,
+  }) async {
     try {
       final token = await AuthService.getToken();
       final headers = <String, String>{
         'Content-Type': 'application/json',
         if (token.trim().isNotEmpty) 'Authorization': 'Bearer $token',
       };
+      final queryParams = <String, String>{};
+      if (viewportCenter != null) {
+        queryParams['centerLat'] = viewportCenter.lat.toStringAsFixed(6);
+        queryParams['centerLon'] = viewportCenter.lng.toStringAsFixed(6);
+      }
+      if (viewportZoom != null) {
+        queryParams['zoom'] = viewportZoom.toStringAsFixed(2);
+      }
       final response = await http.get(
-        Uri.parse('http://10.0.2.2:5000/safe-route'),
+        Uri.parse('http://10.0.2.2:5000/safe-route')
+            .replace(queryParameters: queryParams.isEmpty ? null : queryParams),
         headers: headers,
       );
       if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -190,7 +214,8 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       // Fallback: when /safe-route has no zone payload yet, use report feed
       // coordinates so danger overlays are still visible.
       final feedResponse = await http.get(
-        Uri.parse('http://10.0.2.2:5000/report/feed'),
+        Uri.parse('http://10.0.2.2:5000/report/feed')
+            .replace(queryParameters: queryParams.isEmpty ? null : queryParams),
         headers: headers,
       );
       if (feedResponse.statusCode < 200 || feedResponse.statusCode >= 300) {
@@ -202,6 +227,25 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     } catch (e) {
       // Keep this silent in production-safe fallback mode.
     }
+  }
+
+  void _scheduleDangerZoneRefresh({
+    required Position center,
+    required double zoom,
+  }) {
+    final viewportKey =
+        '${center.lat.toStringAsFixed(3)}|${center.lng.toStringAsFixed(3)}|${zoom.toStringAsFixed(1)}';
+    if (viewportKey == _lastZoneViewportKey) return;
+
+    _zoneRefreshDebounce?.cancel();
+    _zoneRefreshDebounce = Timer(const Duration(milliseconds: 300), () async {
+      if (!mounted) return;
+      _lastZoneViewportKey = viewportKey;
+      await _loadDangerZones(
+        viewportCenter: center,
+        viewportZoom: zoom,
+      );
+    });
   }
 
   List<_DangerZone> _parseReportFeedAsDangerZones(dynamic decoded) {
@@ -438,18 +482,40 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   }
 
   Future<void> _renderDangerZones(List<_DangerZone> zones) async {
+    _currentDangerZones = zones;
+    _startDangerZonePulse();
+    await _drawDangerZonesFrame();
+  }
+
+  void _startDangerZonePulse() {
+    _zonePulseTimer?.cancel();
+    if (_currentDangerZones.isEmpty) return;
+
+    _zonePulseTimer = Timer.periodic(
+      const Duration(milliseconds: 700),
+      (_) async {
+        if (!mounted) return;
+        _zonePulseExpanded = !_zonePulseExpanded;
+        await _drawDangerZonesFrame();
+      },
+    );
+  }
+
+  Future<void> _drawDangerZonesFrame() async {
     final circleManager = _heatmapCircleManager;
     final polygonManager = _dangerZonePolylineManager;
     if (circleManager == null || polygonManager == null) return;
 
     await circleManager.deleteAll();
     await polygonManager.deleteAll();
-    if (zones.isEmpty) return;
+    if (_currentDangerZones.isEmpty) return;
 
-    for (final zone in zones) {
+    final pulseScale = _zonePulseExpanded ? 1.16 : 1.0;
+
+    for (final zone in _currentDangerZones) {
       final center = zone.center;
       if (center != null) {
-        final circleRadius = (zone.radius / 4).clamp(10.0, 36.0);
+        final circleRadius = ((zone.radius / 4) * pulseScale).clamp(10.0, 40.0);
         final innerRadius = (circleRadius * 0.48).clamp(5.0, 16.0);
 
         // Outer danger aura.
@@ -1219,6 +1285,12 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                 FocusScope.of(context).unfocus();
               },
               onCameraChangeListener: (event) {
+                final cameraCenter =
+                    _positionFromPoint(event.cameraState.center);
+                _scheduleDangerZoneRefresh(
+                  center: Position(cameraCenter.lng, cameraCenter.lat),
+                  zoom: event.cameraState.zoom.toDouble(),
+                );
                 if (!_isPickingDestination) return;
                 _pendingPinnedPosition =
                     _positionFromPoint(event.cameraState.center);
