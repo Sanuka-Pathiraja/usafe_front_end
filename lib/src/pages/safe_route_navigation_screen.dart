@@ -1313,6 +1313,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
 
   Widget _buildMapLegend() {
     final zonesOn = _currentDangerZones.isNotEmpty;
+    final zoneCount = _currentDangerZones.length;
     final routeColor = _routeSourceLabel == 'Backend'
         ? const Color(0xFF1DB954)
         : (_routeSourceLabel == 'Standard'
@@ -1394,6 +1395,10 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
             children: [
               _buildLegendChip('Zones: ${zonesOn ? 'ON' : 'OFF'}',
                   zonesOn ? const Color(0x44FF3B30) : const Color(0x33FFFFFF)),
+              _buildLegendChip(
+                'Count: $zoneCount',
+                zonesOn ? const Color(0x33FF3B30) : const Color(0x22FFFFFF),
+              ),
               _buildLegendChip(
                 'Route: ${_routeSourceLabel == 'None' ? 'N/A' : _routeSourceLabel}',
                 _routeSourceLabel == 'Backend'
