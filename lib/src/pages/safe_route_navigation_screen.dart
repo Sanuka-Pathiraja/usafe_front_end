@@ -242,7 +242,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
         ),
       );
     }
-    return zones;
+    return _dedupeDangerZones(zones);
   }
 
   Map<String, dynamic>? _extractSafeRouteRoot(Map<String, dynamic> decoded) {
@@ -320,7 +320,29 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
         ),
       );
     }
-    return zones;
+    return _dedupeDangerZones(zones);
+  }
+
+  List<_DangerZone> _dedupeDangerZones(List<_DangerZone> zones) {
+    final seen = <String>{};
+    final deduped = <_DangerZone>[];
+
+    for (final zone in zones) {
+      final center = zone.center;
+      if (center == null && zone.polygon.isEmpty) {
+        continue;
+      }
+
+      final key = center != null
+          ? 'c:${center.lat.toStringAsFixed(5)},${center.lng.toStringAsFixed(5)},r:${zone.radius.toStringAsFixed(1)}'
+          : 'p:${zone.polygon.map((p) => '${p.lat.toStringAsFixed(5)},${p.lng.toStringAsFixed(5)}').join('|')}';
+
+      if (seen.add(key)) {
+        deduped.add(zone);
+      }
+    }
+
+    return deduped;
   }
 
   _SafeRoutePath? _parseSafeRoutePath(dynamic node) {
