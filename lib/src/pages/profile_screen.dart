@@ -5,6 +5,7 @@ import 'package:usafe_front_end/features/auth/google_auth_service.dart';
 import 'package:usafe_front_end/features/auth/screens/login_screen.dart';
 import 'package:usafe_front_end/src/pages/contacts_screen.dart';
 import 'package:usafe_front_end/src/pages/my_reports_screen.dart';
+import 'package:usafe_front_end/src/pages/settings_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final VoidCallback? onBackHome;
@@ -94,6 +95,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
         ),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings_outlined,
+                color: AppColors.textSecondary, size: 28),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            tooltip: 'Settings',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SettingsPage()),
+            ),
+          ),
+          const SizedBox(width: 16),
+        ],
       ),
       body: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(20, 0, 20, bottomOverlaySpacing),

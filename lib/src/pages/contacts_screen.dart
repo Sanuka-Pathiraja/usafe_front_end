@@ -41,6 +41,9 @@ class ContactsScreenState extends State<ContactsScreen> {
   final GlobalKey _guideInfoKey = GlobalKey();
   final GlobalKey _guideListKey = GlobalKey();
   final GlobalKey _guideFabKey = GlobalKey();
+  bool _wasCurrentRoute = false;
+  bool _guideInFlight = false;
+  bool _pendingGuideCheck = false;
 
   void _logContactAlert(String message) {
     debugPrint('[ContactAlertUI] $message');
@@ -74,14 +77,32 @@ class ContactsScreenState extends State<ContactsScreen> {
   void initState() {
     super.initState();
     _loadContacts();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _checkOnboarding());
+    _pendingGuideCheck = true;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // ModalRoute fires for ALL IndexedStack children when any route is
+    // pushed/popped. We mark a pending check here and gate it in build()
+    // by confirming the contacts tab is the active IndexedStack child.
+    final isCurrentRoute = ModalRoute.of(context)?.isCurrent ?? true;
+    if (isCurrentRoute && !_wasCurrentRoute) {
+      setState(() => _pendingGuideCheck = true);
+    }
+    _wasCurrentRoute = isCurrentRoute;
   }
 
   Future<void> _checkOnboarding() async {
+    if (_guideInFlight || !mounted) return;
     final should = await OnboardingController.shouldShowContactsPageTour();
     if (!should || !mounted) return;
+    _guideInFlight = true;
     await OnboardingController.markContactsPageTourSeen();
-    if (!mounted) return;
+    if (!mounted) {
+      _guideInFlight = false;
+      return;
+    }
     await showGeneralDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -92,6 +113,7 @@ class ContactsScreenState extends State<ContactsScreen> {
         stepKeys: [_guideInfoKey, _guideListKey, _guideFabKey],
       ),
     );
+    _guideInFlight = false;
   }
 
   Future<void> _loadContacts() async {
@@ -516,6 +538,19 @@ class ContactsScreenState extends State<ContactsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Only fire the guide when the contacts tab is actually visible.
+    // IndexedStack does NOT set TickerMode on inactive children, so we must
+    // inspect the ancestor IndexedStack's current index directly.
+    if (_pendingGuideCheck) {
+      final stack = context.findAncestorWidgetOfExactType<IndexedStack>();
+      // index 2 = contacts tab; null means ContactsScreen is shown standalone
+      final isActiveTab = stack == null || stack.index == 2;
+      if (isActiveTab) {
+        _pendingGuideCheck = false;
+        WidgetsBinding.instance.addPostFrameCallback((_) => _checkOnboarding());
+      }
+    }
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
