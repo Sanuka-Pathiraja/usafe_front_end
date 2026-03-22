@@ -445,6 +445,80 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
 
   double _degToRad(double degrees) => degrees * (pi / 180.0);
 
+  List<Position> _dangerZonePointsForCameraFit() {
+    final points = <Position>[];
+    for (final zone in _currentDangerZones) {
+      if (zone.center != null) {
+        points.add(zone.center!);
+      }
+      if (zone.polygon.isNotEmpty) {
+        points.addAll(zone.polygon);
+      }
+    }
+    return points;
+  }
+
+  Future<void> _fitCameraToRouteAndZones(
+    List<Position> routePoints, {
+    Position? fallbackCenter,
+  }) async {
+    if (_mapController == null) return;
+
+    final points = <Position>[
+      ...routePoints,
+      ..._dangerZonePointsForCameraFit(),
+    ];
+    if (points.isEmpty) {
+      if (fallbackCenter != null) {
+        await _mapController!.flyTo(
+          CameraOptions(center: Point(coordinates: fallbackCenter), zoom: 12.5),
+          MapAnimationOptions(duration: 900),
+        );
+      }
+      return;
+    }
+
+    var minLat = points.first.lat.toDouble();
+    var maxLat = points.first.lat.toDouble();
+    var minLng = points.first.lng.toDouble();
+    var maxLng = points.first.lng.toDouble();
+
+    for (final p in points.skip(1)) {
+      final lat = p.lat.toDouble();
+      final lng = p.lng.toDouble();
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+      if (lng < minLng) minLng = lng;
+      if (lng > maxLng) maxLng = lng;
+    }
+
+    final center = Position((minLng + maxLng) / 2, (minLat + maxLat) / 2);
+    final latSpan = (maxLat - minLat).abs();
+    final lngSpan = (maxLng - minLng).abs();
+    final span = (max(latSpan, lngSpan) * 1.25).clamp(0.0005, 180.0);
+
+    await _mapController!.flyTo(
+      CameraOptions(
+        center: Point(coordinates: center),
+        zoom: _zoomFromSpan(span),
+      ),
+      MapAnimationOptions(duration: 1100),
+    );
+  }
+
+  double _zoomFromSpan(double span) {
+    if (span <= 0.002) return 16.5;
+    if (span <= 0.005) return 15.5;
+    if (span <= 0.01) return 14.7;
+    if (span <= 0.02) return 13.9;
+    if (span <= 0.04) return 13.0;
+    if (span <= 0.08) return 12.0;
+    if (span <= 0.16) return 11.0;
+    if (span <= 0.32) return 10.0;
+    if (span <= 0.64) return 9.0;
+    return 8.0;
+  }
+
   Position? _parseLatLonPosition(dynamic node) {
     if (node is List && node.length >= 2) {
       final lon = _toDouble(node[0]);
@@ -878,9 +952,9 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       });
     }
 
-    await _mapController!.flyTo(
-      CameraOptions(center: Point(coordinates: markerTarget), zoom: 12.5),
-      MapAnimationOptions(duration: 1200),
+    await _fitCameraToRouteAndZones(
+      preferredRoute.path,
+      fallbackCenter: markerTarget,
     );
   }
 
@@ -1130,9 +1204,9 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       });
     }
 
-    await _mapController!.flyTo(
-      CameraOptions(center: Point(coordinates: end), zoom: 12.5),
-      MapAnimationOptions(duration: 1200),
+    await _fitCameraToRouteAndZones(
+      routeCoords,
+      fallbackCenter: end,
     );
   }
 
