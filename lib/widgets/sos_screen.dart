@@ -12,6 +12,7 @@ import 'package:usafe_front_end/core/services/phone_call_service.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
 import 'package:usafe_front_end/features/auth/screens/login_screen.dart';
 import 'package:usafe_front_end/src/pages/emergency_process_screen.dart';
+import 'package:usafe_front_end/src/pages/emergency_result_screen.dart';
 import 'package:usafe_front_end/src/pages/home_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'sos_hold_button.dart';
@@ -102,6 +103,7 @@ class _SOSScreenState extends State<SOSScreen>
           onCallContact: _onCallContact,
           onCall119: _onCall119,
           onCancelEmergency: _onCancelEmergency,
+          onSessionFinished: _onSessionFinished,
         ),
       ),
     );
@@ -335,6 +337,36 @@ class _SOSScreenState extends State<SOSScreen>
       success: !(explicitFail || callFlagFailed),
       message: response['message']?.toString(),
     );
+  }
+
+  /// Fired by [EmergencyProcessScreen] just before it shows the result screen.
+  /// For cancelled sessions the backend is already notified via [_onCancelEmergency];
+  /// here we only update COMPLETED and FAILED outcomes.
+  Future<void> _onSessionFinished(EmergencySummary summary) async {
+    final sessionId = _emergencySessionId;
+    if (sessionId == null || sessionId.isEmpty || _isGuestMode) return;
+    if (summary.outcome == EmergencyOutcome.cancelled) return;
+
+    final status = summary.outcome == EmergencyOutcome.completed
+        ? 'COMPLETED'
+        : 'FAILED';
+    try {
+      await AuthService.finishEmergencySession(
+        sessionId: sessionId,
+        status: status,
+        details: {
+          'someoneAnswered': summary.someoneAnswered,
+          'emergencyServicesCalled': summary.emergencyServicesCalled,
+          'contactsMessaged': summary.contactsMessaged,
+          if (summary.failedStepTitle != null)
+            'failedStepTitle': summary.failedStepTitle,
+          if (summary.failedStepReason != null)
+            'failedStepReason': summary.failedStepReason,
+        },
+      );
+    } catch (e) {
+      if (kDebugMode) debugPrint('[SOS] finishEmergencySession failed: $e');
+    }
   }
 
   Future<EmergencyActionResult> _onCancelEmergency() async {

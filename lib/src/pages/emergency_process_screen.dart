@@ -53,6 +53,11 @@ class EmergencyProcessScreen extends StatefulWidget {
   final Future<EmergencyActionResult> Function()? onCall119;
   final Future<EmergencyActionResult> Function()? onCancelEmergency;
 
+  /// Called just before navigating to the result screen with the final
+  /// [EmergencySummary]. Use this to persist the session outcome to the
+  /// backend. Exceptions are swallowed so navigation is never blocked.
+  final Future<void> Function(EmergencySummary summary)? onSessionFinished;
+
   const EmergencyProcessScreen({
     super.key,
     this.contactAuthoritiesDuringEmergency = true,
@@ -60,6 +65,7 @@ class EmergencyProcessScreen extends StatefulWidget {
     this.onCallContact,
     this.onCall119,
     this.onCancelEmergency,
+    this.onSessionFinished,
   });
 
   @override
@@ -204,6 +210,15 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
     if (!mounted || _screenClosed) return;
     _screenClosed = true;
 
+    if (widget.onSessionFinished != null) {
+      try {
+        await widget.onSessionFinished!(summary);
+      } catch (e) {
+        _debugLog("onSessionFinished error (ignored): $e");
+      }
+    }
+
+    if (!mounted) return;
     final payload = await Navigator.push<HomeEmergencyBannerPayload>(
       context,
       MaterialPageRoute(builder: (_) => EmergencyResultScreen(summary: summary)),

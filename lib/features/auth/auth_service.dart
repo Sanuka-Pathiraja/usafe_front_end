@@ -908,6 +908,24 @@ class AuthService {
       path: '/emergency/$sessionId/cancel',
     );
   }
+
+  /// Called when the emergency process ends (completed or failed).
+  /// Sends the final outcome and details so the backend can persist the
+  /// terminal status to the database.
+  static Future<Map<String, dynamic>> finishEmergencySession({
+    required String sessionId,
+    required String status, // 'COMPLETED' or 'FAILED'
+    Map<String, dynamic>? details,
+  }) async {
+    return _authorizedRequest(
+      method: 'POST',
+      path: '/emergency/$sessionId/finish',
+      body: {
+        'status': status,
+        if (details != null) ...details,
+      },
+    );
+  }
 }
 
 // Backward compatibility for older code paths that still use MockDatabase.
