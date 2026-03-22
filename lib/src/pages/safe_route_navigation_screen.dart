@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geocoding/geocoding.dart' as geocoding;
-import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import 'package:location/location.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
@@ -9,7 +9,6 @@ import 'package:usafe_front_end/src/config/app_config.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'dart:math';
-import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 const String mapboxToken = mapboxPublicToken;
@@ -18,11 +17,23 @@ class _DangerZone {
   final Position? center;
   final double radius;
   final List<Position> polygon;
+  final String threatLevel; // 'red' | 'orange' | 'yellow'
+  final int? reportId;
+  final List<String> issueTypes;
+  final String? description;
+  final String? reporter;
+  final String? reportedAt;
 
   const _DangerZone({
     required this.center,
     required this.radius,
     required this.polygon,
+    this.threatLevel = 'red',
+    this.reportId,
+    this.issueTypes = const [],
+    this.description,
+    this.reporter,
+    this.reportedAt,
   });
 }
 
@@ -52,6 +63,22 @@ class _SafeRoutePayload {
   });
 }
 
+class _SafeRouteResponse {
+  final bool destinationDangerous;
+  final String? warningMessage;
+  final _DangerZone? destinationZone;
+  final List<_DangerZone> allZones;
+  final _SafeRoutePayload? payload;
+
+  const _SafeRouteResponse({
+    required this.destinationDangerous,
+    this.warningMessage,
+    this.destinationZone,
+    required this.allZones,
+    this.payload,
+  });
+}
+
 class SafeRouteNavigationScreen extends StatefulWidget {
   const SafeRouteNavigationScreen({super.key});
 
@@ -60,7 +87,8 @@ class SafeRouteNavigationScreen extends StatefulWidget {
       _SafeRouteNavigationScreenState();
 }
 
-class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
+class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen>
+    with TickerProviderStateMixin {
   // ── Map controllers ──────────────────────────────────────────────────────
   MapboxMap? _mapController;
   PolylineAnnotationManager? _polylineManager;
@@ -77,14 +105,16 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   final Location _location = Location();
 
   Timer? _debounce;
-  Timer? _zoneRefreshDebounce;
-  Timer? _zonePulseTimer;
+  late final AnimationController _rippleController;
+  final _zoneScreenDataNotifier = ValueNotifier<List<_ZoneScreenData>>(const []);
+  Size _mapSize = Size.zero;
   List<Map<String, dynamic>> _destinationSuggestions = [];
   bool _isSearchingSuggestions = false;
   String _searchSessionToken = '';
-  String? _lastZoneViewportKey;
   List<_DangerZone> _currentDangerZones = const <_DangerZone>[];
-  bool _zonePulseExpanded = false;
+  final Map<String, _DangerZone> _annotationZoneMap = {};
+  _DangerZone? _selectedZone;
+  String? _destWarningMessage;
   bool _legendCollapsed = false;
   String? _selectedDestinationMapboxId;
   Position? _selectedDestinationPosition;
@@ -124,18 +154,19 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   void initState() {
     super.initState();
     _refreshSearchSessionToken();
-    // FIX 1 ─ Set the Mapbox access token here, synchronously, before the
-    // first frame renders the MapWidget.  This is the correct place when the
-    // screen is pushed via Navigator (i.e. NOT set at app startup in main()).
     MapboxOptions.setAccessToken(mapboxToken);
+    _rippleController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 3600),
+    )..repeat();
   }
 
   @override
   void dispose() {
     _locationSubscription?.cancel();
     _debounce?.cancel();
-    _zoneRefreshDebounce?.cancel();
-    _zonePulseTimer?.cancel();
+    _rippleController.dispose();
+    _zoneScreenDataNotifier.dispose();
     _destinationController.dispose();
     super.dispose();
   }
@@ -157,13 +188,15 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     _heatmapCircleManager =
         await map.annotations.createCircleAnnotationManager();
 
-    await _startUserLocationTracking();
-    final cameraState = await map.getCameraState();
-    final initialCenter = _positionFromPoint(cameraState.center);
-    await _loadDangerZones(
-      viewportCenter: initialCenter,
-      viewportZoom: cameraState.zoom.toDouble(),
+    _heatmapCircleManager!.tapEvents(
+      onTap: (annotation) {
+        final zone = _annotationZoneMap[annotation.id];
+        if (zone != null && mounted) setState(() => _selectedZone = zone);
+      },
     );
+
+    await _startUserLocationTracking();
+    await _loadAllDangerZones();
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -176,119 +209,29 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _loadDangerZones({
-    Position? viewportCenter,
-    double? viewportZoom,
-  }) async {
+  Future<void> _loadAllDangerZones() async {
     try {
       final token = await AuthService.getToken();
       final headers = <String, String>{
         'Content-Type': 'application/json',
         if (token.trim().isNotEmpty) 'Authorization': 'Bearer $token',
       };
-      final queryParams = <String, String>{};
-      if (viewportCenter != null) {
-        queryParams['centerLat'] = viewportCenter.lat.toStringAsFixed(6);
-        queryParams['centerLon'] = viewportCenter.lng.toStringAsFixed(6);
-      }
-      if (viewportZoom != null) {
-        queryParams['zoom'] = viewportZoom.toStringAsFixed(2);
-      }
       final response = await http.get(
-        Uri.parse('http://10.0.2.2:5000/safe-route')
-            .replace(queryParameters: queryParams.isEmpty ? null : queryParams),
+        Uri.parse('http://10.0.2.2:5000/danger-zones'),
         headers: headers,
       );
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        final decoded = jsonDecode(response.body);
-        if (decoded is Map<String, dynamic>) {
-          final root = _extractSafeRouteRoot(decoded);
-          if (root != null) {
-            final zones = _parseDangerZones(root['redZones']);
-            if (zones.isNotEmpty) {
-              await _renderDangerZones(zones);
-              return;
-            }
-          }
-        }
+      if (response.statusCode < 200 || response.statusCode >= 300) return;
+      final decoded = jsonDecode(response.body);
+      List<dynamic> zoneList = const [];
+      if (decoded is Map<String, dynamic>) {
+        final v = decoded['zones'] ?? decoded['redZones'];
+        if (v is List) zoneList = v;
+      } else if (decoded is List) {
+        zoneList = decoded;
       }
-
-      // Fallback: when /safe-route has no zone payload yet, use report feed
-      // coordinates so danger overlays are still visible.
-      final feedResponse = await http.get(
-        Uri.parse('http://10.0.2.2:5000/report/feed')
-            .replace(queryParameters: queryParams.isEmpty ? null : queryParams),
-        headers: headers,
-      );
-      if (feedResponse.statusCode < 200 || feedResponse.statusCode >= 300) {
-        return;
-      }
-      final feedDecoded = jsonDecode(feedResponse.body);
-      final fallbackZones = _parseReportFeedAsDangerZones(feedDecoded);
-      await _renderDangerZones(fallbackZones);
-    } catch (e) {
-      // Keep this silent in production-safe fallback mode.
-    }
-  }
-
-  void _scheduleDangerZoneRefresh({
-    required Position center,
-    required double zoom,
-  }) {
-    final viewportKey =
-        '${center.lat.toStringAsFixed(3)}|${center.lng.toStringAsFixed(3)}|${zoom.toStringAsFixed(1)}';
-    if (viewportKey == _lastZoneViewportKey) return;
-
-    _zoneRefreshDebounce?.cancel();
-    _zoneRefreshDebounce = Timer(const Duration(milliseconds: 300), () async {
-      if (!mounted) return;
-      _lastZoneViewportKey = viewportKey;
-      await _loadDangerZones(
-        viewportCenter: center,
-        viewportZoom: zoom,
-      );
-    });
-  }
-
-  List<_DangerZone> _parseReportFeedAsDangerZones(dynamic decoded) {
-    List<dynamic> reports = <dynamic>[];
-    if (decoded is List) {
-      reports = decoded;
-    } else if (decoded is Map<String, dynamic>) {
-      final items = decoded['reports'] ?? decoded['feed'] ?? decoded['data'];
-      if (items is List) reports = items;
-    }
-
-    final zones = <_DangerZone>[];
-    for (final item in reports) {
-      if (item is! Map) continue;
-      final report = Map<String, dynamic>.from(item as Map);
-      final center = _parseLatLonPosition(
-            report['locationCoordinates'] ??
-                report['coordinates'] ??
-                report['location'] ??
-                report['center'],
-          ) ??
-          _parseLatLonPosition(
-            report['location'] is Map
-                ? (report['location'] as Map)['coordinates']
-                : null,
-          ) ??
-          _parseLatLonPosition(
-            report['location'] is Map
-                ? (report['location'] as Map)['locationCoordinates']
-                : null,
-          );
-      if (center == null) continue;
-      zones.add(
-        _DangerZone(
-          center: center,
-          radius: 50,
-          polygon: const <Position>[],
-        ),
-      );
-    }
-    return _dedupeDangerZones(zones);
+      final zones = _parseDangerZones(zoneList);
+      if (zones.isNotEmpty) await _renderDangerZones(zones);
+    } catch (_) {}
   }
 
   Map<String, dynamic>? _extractSafeRouteRoot(Map<String, dynamic> decoded) {
@@ -301,43 +244,64 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     return null;
   }
 
-  Future<_SafeRoutePayload?> _fetchSafeRoutePayload() async {
-    final token = await AuthService.getToken();
-    final headers = <String, String>{
-      'Content-Type': 'application/json',
-      if (token.trim().isNotEmpty) 'Authorization': 'Bearer $token',
-    };
+  Future<_SafeRouteResponse?> _fetchSafeRoute(
+      Position start, Position end) async {
+    try {
+      final token = await AuthService.getToken();
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+        if (token.trim().isNotEmpty) 'Authorization': 'Bearer $token',
+      };
+      final response = await http.get(
+        Uri.parse('http://10.0.2.2:5000/safe-route').replace(
+          queryParameters: {
+            'startLat': (_toDouble(start.lat) ?? 0).toString(),
+            'startLon': (_toDouble(start.lng) ?? 0).toString(),
+            'endLat': (_toDouble(end.lat) ?? 0).toString(),
+            'endLon': (_toDouble(end.lng) ?? 0).toString(),
+          },
+        ),
+        headers: headers,
+      );
+      if (response.statusCode < 200 || response.statusCode >= 300) return null;
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) return null;
 
-    final response = await http.get(
-      Uri.parse('http://10.0.2.2:5000/safe-route'),
-      headers: headers,
-    );
-    if (response.statusCode < 200 || response.statusCode >= 300) return null;
+      final allZones = _parseDangerZones(
+          decoded['redZones'] is List ? decoded['redZones'] as List : const []);
 
-    final decoded = jsonDecode(response.body);
-    if (decoded is! Map<String, dynamic>) return null;
-    final root = _extractSafeRouteRoot(decoded);
-    if (root == null) return null;
+      if (decoded['destinationDangerous'] == true) {
+        return _SafeRouteResponse(
+          destinationDangerous: true,
+          warningMessage: decoded['message'] as String?,
+          destinationZone: _parseSingleZone(decoded['destinationZone']),
+          allZones: allZones,
+        );
+      }
 
-    final originalRouteNode = root['originalRoute'];
-    if (originalRouteNode is! Map) return null;
-    final originalRoute = _parseSafeRoutePath(originalRouteNode);
-    if (originalRoute == null || originalRoute.path.isEmpty) return null;
+      final root = _extractSafeRouteRoot(decoded);
+      if (root == null) return null;
+      final originalRouteNode = root['originalRoute'];
+      if (originalRouteNode is! Map) return null;
+      final originalRoute = _parseSafeRoutePath(originalRouteNode);
+      if (originalRoute == null || originalRoute.path.isEmpty) return null;
 
-    _SafeRoutePath? safeRoute;
-    final safeRouteNode = root['safeRoute'];
-    if (safeRouteNode is Map) {
-      safeRoute = _parseSafeRoutePath(safeRouteNode);
+      _SafeRoutePath? safeRoute;
+      final safeRouteNode = root['safeRoute'];
+      if (safeRouteNode is Map) safeRoute = _parseSafeRoutePath(safeRouteNode);
+
+      return _SafeRouteResponse(
+        destinationDangerous: false,
+        allZones: allZones,
+        payload: _SafeRoutePayload(
+          redZones: allZones,
+          originalRoute: originalRoute,
+          safeRoute: safeRoute,
+        ),
+      );
+    } catch (_) {
+      return null;
     }
-
-    final redZonesNode = root['redZones'];
-    final redZones = _parseDangerZones(redZonesNode);
-
-    return _SafeRoutePayload(
-      redZones: redZones,
-      originalRoute: originalRoute,
-      safeRoute: safeRoute,
-    );
   }
 
   List<_DangerZone> _parseDangerZones(dynamic node) {
@@ -345,9 +309,18 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     final zones = <_DangerZone>[];
     for (final item in node) {
       if (item is! Map) continue;
-      final zone = Map<String, dynamic>.from(item as Map);
+      final zone = Map<String, dynamic>.from(item);
       final center = _parseLatLonPosition(zone['center']);
       final radius = _toDouble(zone['radius']) ?? 0.0;
+      final threatLevel = zone['threatLevel'] as String? ?? 'red';
+      final reportId = zone['reportId'] is int ? zone['reportId'] as int : null;
+      final issueTypes = (zone['issueTypes'] is List)
+          ? List<String>.from(
+              (zone['issueTypes'] as List).map((e) => e.toString()))
+          : const <String>[];
+      final description = zone['description'] as String?;
+      final reporter = zone['reporter'] as String?;
+      final reportedAt = zone['reportedAt'] as String?;
 
       final polygon = <Position>[];
       final polygonNode = zone['polygon'];
@@ -358,15 +331,48 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
         }
       }
 
-      zones.add(
-        _DangerZone(
-          center: center,
-          radius: radius,
-          polygon: polygon,
-        ),
-      );
+      zones.add(_DangerZone(
+        center: center,
+        radius: radius,
+        polygon: polygon,
+        threatLevel: threatLevel,
+        reportId: reportId,
+        issueTypes: issueTypes,
+        description: description,
+        reporter: reporter,
+        reportedAt: reportedAt,
+      ));
     }
     return _dedupeDangerZones(zones);
+  }
+
+  _DangerZone? _parseSingleZone(dynamic node) {
+    if (node is! Map) return null;
+    final zone = Map<String, dynamic>.from(node);
+    final center = _parseLatLonPosition(zone['center']);
+    if (center == null) return null;
+    final polygon = <Position>[];
+    final polygonNode = zone['polygon'];
+    if (polygonNode is List) {
+      for (final p in polygonNode) {
+        final pos = _parseLatLonPosition(p);
+        if (pos != null) polygon.add(pos);
+      }
+    }
+    return _DangerZone(
+      center: center,
+      radius: _toDouble(zone['radius']) ?? 100.0,
+      polygon: polygon,
+      threatLevel: zone['threatLevel'] as String? ?? 'red',
+      reportId: zone['reportId'] is int ? zone['reportId'] as int : null,
+      issueTypes: (zone['issueTypes'] is List)
+          ? List<String>.from(
+              (zone['issueTypes'] as List).map((e) => e.toString()))
+          : const [],
+      description: zone['description'] as String?,
+      reporter: zone['reporter'] as String?,
+      reportedAt: zone['reportedAt'] as String?,
+    );
   }
 
   List<_DangerZone> _dedupeDangerZones(List<_DangerZone> zones) {
@@ -393,7 +399,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
 
   _SafeRoutePath? _parseSafeRoutePath(dynamic node) {
     if (node is! Map) return null;
-    final route = Map<String, dynamic>.from(node as Map);
+    final route = Map<String, dynamic>.from(node);
     final pathNode = route['path'];
     if (pathNode is! List) return null;
 
@@ -532,7 +538,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     }
 
     if (node is! Map) return null;
-    final map = Map<String, dynamic>.from(node as Map);
+    final map = Map<String, dynamic>.from(node);
 
     final lat = _toDouble(map['lat'] ?? map['latitude']);
     final lon = _toDouble(
@@ -557,64 +563,93 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     return null;
   }
 
+  // Key representing what is currently drawn — avoids blink on identical reload.
+  String _drawnZonesKey = '';
+
+  static String _zonesKey(List<_DangerZone> zones) {
+    if (zones.isEmpty) return '';
+    return zones.map((z) {
+      final c = z.center;
+      return c != null
+          ? 'c:${c.lat.toStringAsFixed(5)},${c.lng.toStringAsFixed(5)},r:${z.radius.toStringAsFixed(1)},t:${z.threatLevel}'
+          : 'p:${z.polygon.length},t:${z.threatLevel}';
+    }).join('|');
+  }
+
+  ({Color fill, Color stroke, Color ripple}) _threatColors(String level) {
+    switch (level) {
+      case 'orange':
+        return (
+          fill: const Color(0x33FF9500),
+          stroke: const Color(0xCCFF9500),
+          ripple: const Color(0xFFFF9500),
+        );
+      case 'yellow':
+        return (
+          fill: const Color(0x33FFCC00),
+          stroke: const Color(0xCCFFCC00),
+          ripple: const Color(0xFFFFCC00),
+        );
+      default: // 'red'
+        return (
+          fill: const Color(0x33FF3B30),
+          stroke: const Color(0xCCFF3B30),
+          ripple: const Color(0xFFFF3B30),
+        );
+    }
+  }
+
   Future<void> _renderDangerZones(List<_DangerZone> zones) async {
+    final key = _zonesKey(zones);
+    final zonesChanged = key != _drawnZonesKey;
     _currentDangerZones = zones;
-    _startDangerZonePulse();
-    await _drawDangerZonesFrame();
+    if (zonesChanged) {
+      _drawnZonesKey = key;
+      await _drawDangerZonesStatic();
+    }
+    await _updateZoneScreenData();
   }
 
-  void _startDangerZonePulse() {
-    _zonePulseTimer?.cancel();
-    if (_currentDangerZones.isEmpty) return;
-
-    _zonePulseTimer = Timer.periodic(
-      const Duration(milliseconds: 700),
-      (_) async {
-        if (!mounted) return;
-        _zonePulseExpanded = !_zonePulseExpanded;
-        await _drawDangerZonesFrame();
-      },
-    );
-  }
-
-  Future<void> _drawDangerZonesFrame() async {
+  /// Draws static (non-animated) Mapbox circle + polygon annotations once.
+  /// Only called when the zone set actually changes — no blink on refresh.
+  Future<void> _drawDangerZonesStatic() async {
     final circleManager = _heatmapCircleManager;
     final polygonManager = _dangerZonePolylineManager;
     if (circleManager == null || polygonManager == null) return;
 
     await circleManager.deleteAll();
     await polygonManager.deleteAll();
+    _annotationZoneMap.clear();
     if (_currentDangerZones.isEmpty) return;
-
-    final pulseScale = _zonePulseExpanded ? 1.16 : 1.0;
 
     for (final zone in _currentDangerZones) {
       final center = zone.center;
       if (center != null) {
-        final circleRadius = ((zone.radius / 2.6) * pulseScale).clamp(16.0, 58.0);
-        final innerRadius = ((zone.radius / 4) * 0.48).clamp(5.0, 16.0);
+        final colors = _threatColors(zone.threatLevel);
+        final circleRadius = (zone.radius / 2.6).clamp(16.0, 58.0);
+        final innerRadius = (zone.radius / 4 * 0.48).clamp(5.0, 16.0);
 
-        // Outer danger aura.
-        await circleManager.create(
+        final outer = await circleManager.create(
           CircleAnnotationOptions(
             geometry: Point(coordinates: center),
             circleRadius: circleRadius,
-            circleColor: const Color(0x55FF3B30).value,
-            circleStrokeColor: const Color(0xCCFF3B30).value,
+            circleColor: colors.fill.toARGB32(),
+            circleStrokeColor: colors.stroke.toARGB32(),
             circleStrokeWidth: 2.0,
           ),
         );
+        _annotationZoneMap[outer.id] = zone;
 
-        // Inner hotspot to increase visual contrast of the danger center.
-        await circleManager.create(
+        final dot = await circleManager.create(
           CircleAnnotationOptions(
             geometry: Point(coordinates: center),
             circleRadius: innerRadius,
-            circleColor: const Color(0xCCFF3B30).value,
-            circleStrokeColor: const Color(0xFFFFE3E0).value,
+            circleColor: colors.stroke.toARGB32(),
+            circleStrokeColor: const Color(0xDDFFFFFF).toARGB32(),
             circleStrokeWidth: 1.0,
           ),
         );
+        _annotationZoneMap[dot.id] = zone;
       }
 
       if (zone.polygon.length >= 3) {
@@ -622,12 +657,80 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
         await polygonManager.create(
           PolylineAnnotationOptions(
             geometry: LineString(coordinates: closed),
-            lineColor: const Color(0xAAFF3B30).value,
+            lineColor: _threatColors(zone.threatLevel).stroke.toARGB32(),
             lineWidth: 3.0,
           ),
         );
       }
     }
+  }
+
+  /// Converts each zone centre to screen pixels using a synchronous Mercator
+  /// projection so positions update in the same frame as a camera event.
+  void _computeZoneScreenData(CameraState cs) {
+    if (_mapSize == Size.zero || _currentDangerZones.isEmpty) {
+      _zoneScreenDataNotifier.value = const [];
+      return;
+    }
+    final centerLng = _toDouble(cs.center.coordinates.lng) ?? 0.0;
+    final centerLat = _toDouble(cs.center.coordinates.lat) ?? 0.0;
+    final zoom = cs.zoom.toDouble();
+    final bearing = cs.bearing.toDouble();
+    final newData = <_ZoneScreenData>[];
+    for (final zone in _currentDangerZones) {
+      if (zone.center == null) continue;
+      final offset = _mercatorToScreen(
+        _toDouble(zone.center!.lng) ?? 0.0,
+        _toDouble(zone.center!.lat) ?? 0.0,
+        centerLng,
+        centerLat,
+        zoom,
+        bearing,
+      );
+      final radius = (zone.radius / 2.6).clamp(16.0, 58.0);
+      final color = _threatColors(zone.threatLevel).ripple;
+      newData.add(_ZoneScreenData(center: offset, radius: radius, color: color));
+    }
+    _zoneScreenDataNotifier.value = newData;
+  }
+
+  /// Mercator projection: lat/lng → screen pixel offset.
+  /// Mapbox GL uses 512-px tiles; bearing is applied so the overlay
+  /// matches the map even when the user rotates the view.
+  Offset _mercatorToScreen(
+    double lng,
+    double lat,
+    double centerLng,
+    double centerLat,
+    double zoom,
+    double bearingDeg,
+  ) {
+    const tileSize = 512.0;
+    final worldSize = tileSize * pow(2.0, zoom);
+
+    double mercX(double l) => (l + 180.0) / 360.0;
+    double mercY(double l) {
+      final r = l * pi / 180.0;
+      return (1.0 - log(tan(r) + 1.0 / cos(r)) / pi) / 2.0;
+    }
+
+    final dx = (mercX(lng) - mercX(centerLng)) * worldSize;
+    final dy = (mercY(lat) - mercY(centerLat)) * worldSize;
+
+    // Rotate for map bearing.
+    final b = -bearingDeg * pi / 180.0;
+    final rx = dx * cos(b) - dy * sin(b);
+    final ry = dx * sin(b) + dy * cos(b);
+
+    return Offset(_mapSize.width / 2 + rx, _mapSize.height / 2 + ry);
+  }
+
+  /// Async fallback used on first load / zone refresh (no camera event available).
+  Future<void> _updateZoneScreenData() async {
+    final map = _mapController;
+    if (map == null || !mounted) return;
+    final cs = await map.getCameraState();
+    if (mounted) _computeZoneScreenData(cs);
   }
 
   void _refreshSearchSessionToken() {
@@ -664,10 +767,10 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   CircleAnnotationOptions _buildUserLocationMarker(Position pos) =>
       CircleAnnotationOptions(
         geometry: Point(coordinates: pos),
-        circleColor: Colors.blue.value,
+        circleColor: Colors.blue.toARGB32(),
         circleRadius: 8.0,
         circleStrokeWidth: 2.0,
-        circleStrokeColor: Colors.white.value,
+        circleStrokeColor: Colors.white.toARGB32(),
         circleSortKey: 100,
       );
 
@@ -845,6 +948,8 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     setState(() {
       _isCalculatingRoute = true;
       _hasActiveRoute = false;
+      _destWarningMessage = null;
+      _selectedZone = null;
     });
     try {
       if (_currentPosition == null) await _getRealLocation();
@@ -864,7 +969,38 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       }
       final start =
           Position(_currentPosition!.longitude!, _currentPosition!.latitude!);
-      final payload = await _fetchSafeRoutePayload();
+
+      final response = await _fetchSafeRoute(start, destination);
+
+      if (response == null) {
+        await drawRoute(start, destination);
+        return;
+      }
+
+      // Render all zones from the response.
+      if (response.allZones.isNotEmpty) {
+        await _renderDangerZones(response.allZones);
+      }
+
+      // Destination is inside a danger zone — warn the user, do not route.
+      if (response.destinationDangerous) {
+        setState(() {
+          _destWarningMessage = response.warningMessage;
+        });
+        final zone = response.destinationZone;
+        if (zone?.center != null && _mapController != null) {
+          await _mapController!.flyTo(
+            CameraOptions(
+              center: Point(coordinates: zone!.center!),
+              zoom: 16.0,
+            ),
+            MapAnimationOptions(duration: 1200),
+          );
+        }
+        return;
+      }
+
+      final payload = response.payload;
       if (payload != null) {
         final safe = payload.safeRoute;
         final preferredRoute = (safe != null && safe.path.isNotEmpty)
@@ -876,13 +1012,10 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
         final mismatchMeters = _distanceMeters(backendEnd, destination);
         const maxAllowedMismatchMeters = 350.0;
         if (mismatchMeters > maxAllowedMismatchMeters) {
-          _showSnackBar(
-            "Showing standard route for selected destination.",
-          );
+          _showSnackBar("Showing standard route for selected destination.");
           await drawRoute(start, destination);
           return;
         }
-        await _renderDangerZones(payload.redZones);
         await _drawRoutesFromSafeRoutePayload(destination, payload);
       } else {
         await drawRoute(start, destination);
@@ -965,20 +1098,20 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     final color = colorName.trim().toLowerCase();
     switch (color) {
       case 'green':
-        return const Color(0xFF1DB954).value;
+        return const Color(0xFF1DB954).toARGB32();
       case 'red':
-        return const Color(0xFFEF4444).value;
+        return const Color(0xFFEF4444).toARGB32();
       case 'yellow':
-        return const Color(0xFFFACC15).value;
+        return const Color(0xFFFACC15).toARGB32();
       case 'orange':
-        return const Color(0xFFF97316).value;
+        return const Color(0xFFF97316).toARGB32();
       case 'blue':
-        return const Color(0xFF2962FF).value;
+        return const Color(0xFF2962FF).toARGB32();
       case 'grey':
       case 'gray':
-        return const Color(0xFF7E8A9A).value;
+        return const Color(0xFF7E8A9A).toARGB32();
       default:
-        return const Color(0xFF2962FF).value;
+        return const Color(0xFF2962FF).toARGB32();
     }
   }
 
@@ -1181,7 +1314,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
 
     await _polylineManager!.create(PolylineAnnotationOptions(
       geometry: LineString(coordinates: routeCoords),
-      lineColor: const Color(0xFF2962FF).value,
+      lineColor: const Color(0xFF2962FF).toARGB32(),
       lineWidth: 5.0,
     ));
 
@@ -1306,7 +1439,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
           borderRadius: BorderRadius.circular(18),
           onTap: onTap,
           child: Icon(icon,
-              color: Colors.white.withOpacity(iconOpacity), size: iconSize),
+              color: Colors.white.withValues(alpha: iconOpacity), size: iconSize),
         ),
       ),
     );
@@ -1326,10 +1459,10 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       decoration: BoxDecoration(
         color: const Color(0xCC102348),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.08)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.16),
+            color: Colors.black.withValues(alpha: 0.16),
             blurRadius: 12,
             offset: const Offset(0, 6),
           ),
@@ -1340,8 +1473,9 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              const Expanded(
+              const Flexible(
                 child: Text(
                   'Map Legend',
                   style: TextStyle(
@@ -1447,7 +1581,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.12)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
       ),
       child: Text(
         text,
@@ -1461,11 +1595,196 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
+  // Danger zone UI helpers
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Client-side check: returns the first loaded zone the position falls inside.
+  _DangerZone? _checkDestinationInDangerZone(Position dest) {
+    for (final zone in _currentDangerZones) {
+      if (zone.center == null) continue;
+      final dist = _distanceMeters(dest, zone.center!);
+      if (dist <= zone.radius) return zone;
+    }
+    return null;
+  }
+
+  String _formatDateTime(String iso) {
+    try {
+      final dt = DateTime.parse(iso).toLocal();
+      const months = [
+        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      ];
+      final h = dt.hour.toString().padLeft(2, '0');
+      final m = dt.minute.toString().padLeft(2, '0');
+      return '${dt.day} ${months[dt.month - 1]} ${dt.year}, $h:$m';
+    } catch (_) {
+      return iso;
+    }
+  }
+
+  Widget _zoneCardRow(IconData icon, String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 13, color: Colors.white38),
+        const SizedBox(width: 5),
+        Text('$label: ',
+            style: const TextStyle(color: Colors.white38, fontSize: 11.5)),
+        Expanded(
+          child: Text(value,
+              style: const TextStyle(color: Colors.white70, fontSize: 11.5)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildZoneSummaryCard(_DangerZone zone) {
+    final colors = _threatColors(zone.threatLevel);
+    final accent = colors.stroke;
+    final category = zone.issueTypes.isNotEmpty
+        ? zone.issueTypes
+            .map((s) => s[0].toUpperCase() + s.substring(1))
+            .join(', ')
+        : 'Danger Zone';
+    final timeStr =
+        zone.reportedAt != null ? _formatDateTime(zone.reportedAt!) : '—';
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0E1C35),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: accent.withValues(alpha: 0.55), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+              color: accent.withValues(alpha: 0.18),
+              blurRadius: 18,
+              offset: const Offset(0, 6)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: accent, size: 17),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(category,
+                    style: TextStyle(
+                        color: accent,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13.5)),
+              ),
+              GestureDetector(
+                onTap: () => setState(() => _selectedZone = null),
+                child: Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.07),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.close,
+                      color: Colors.white54, size: 15),
+                ),
+              ),
+            ],
+          ),
+          if (zone.description != null && zone.description!.isNotEmpty) ...[
+            const SizedBox(height: 9),
+            Text(zone.description!,
+                style: const TextStyle(
+                    color: Colors.white70, fontSize: 12.5, height: 1.4),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis),
+          ],
+          const SizedBox(height: 10),
+          const Divider(color: Colors.white12, height: 1),
+          const SizedBox(height: 10),
+          _zoneCardRow(Icons.person_outline_rounded, 'Reported by',
+              zone.reporter ?? '—'),
+          const SizedBox(height: 5),
+          _zoneCardRow(Icons.access_time_rounded, 'Time', timeStr),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDestinationWarning() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A0808),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+            color: const Color(0xCCFF3B30).withValues(alpha: 0.7), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.red.withValues(alpha: 0.22),
+              blurRadius: 20,
+              spreadRadius: 1),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 1),
+            child: Icon(Icons.dangerous_rounded,
+                color: Color(0xFFFF3B30), size: 26),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Dangerous Destination',
+                    style: TextStyle(
+                        color: Color(0xFFFF3B30),
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13.5)),
+                const SizedBox(height: 5),
+                Text(
+                  _destWarningMessage ??
+                      'Your destination is inside a danger zone. Avoid visiting this location.',
+                  style: const TextStyle(
+                      color: Colors.white70, fontSize: 12, height: 1.4),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: () =>
+                setState(() => _destWarningMessage = null),
+            child: Container(
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.07),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.close,
+                  color: Colors.white54, size: 15),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   // Build
   // ─────────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
+    // Store map size for synchronous Mercator projection in camera listener.
+    _mapSize = MediaQuery.of(context).size;
     // Top padding = status bar + AppBar height
     final topPad = MediaQuery.of(context).padding.top + kToolbarHeight + 12;
 
@@ -1474,7 +1793,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       // extendBodyBehindAppBar lets the map fill the whole screen
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: AppColors.background.withOpacity(0.92),
+        backgroundColor: AppColors.background.withValues(alpha: 0.92),
         elevation: 0,
         leading: IconButton(
           icon: const Icon(
@@ -1512,21 +1831,30 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                 FocusScope.of(context).unfocus();
               },
               onCameraChangeListener: (event) {
-                final cameraCenter =
-                    _positionFromPoint(event.cameraState.center);
-                _scheduleDangerZoneRefresh(
-                  center: Position(cameraCenter.lng, cameraCenter.lat),
-                  zoom: event.cameraState.zoom.toDouble(),
-                );
+                final cs = event.cameraState;
+                // Synchronous Mercator projection — zero lag during scroll.
+                _computeZoneScreenData(cs);
                 if (!_isPickingDestination) return;
-                _pendingPinnedPosition =
-                    _positionFromPoint(event.cameraState.center);
+                _pendingPinnedPosition = _positionFromPoint(cs.center);
               },
               onMapIdleListener: (_) {
+                _updateZoneScreenData();
                 if (!mounted || !_isPickingDestination) return;
                 setState(() {});
               },
               onMapCreated: _onMapCreated,
+            ),
+          ),
+
+          // ── Ripple overlay — tracks pan in real-time via Mercator math ───
+          Positioned.fill(
+            child: IgnorePointer(
+              child: CustomPaint(
+                painter: _RipplePainter(
+                  zonesNotifier: _zoneScreenDataNotifier,
+                  animation: _rippleController,
+                ),
+              ),
             ),
           ),
 
@@ -1538,12 +1866,12 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
             child: Container(
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
               decoration: BoxDecoration(
-                color: const Color(0xFF102348).withOpacity(0.92),
+                color: const Color(0xFF102348).withValues(alpha: 0.92),
                 borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: Colors.white.withOpacity(0.06)),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.16),
+                    color: Colors.black.withValues(alpha: 0.16),
                     blurRadius: 18,
                     offset: const Offset(0, 8),
                   ),
@@ -1555,9 +1883,9 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                   // ── Search field ────────────────────────────────────────
                   Container(
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.07),
+                      color: Colors.white.withValues(alpha: 0.07),
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white.withOpacity(0.06)),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
                     ),
                     child: Column(
                       children: [
@@ -1584,7 +1912,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                           decoration: InputDecoration(
                             hintText: "Enter destination",
                             hintStyle: TextStyle(
-                                color: Colors.white.withOpacity(0.62)),
+                                color: Colors.white.withValues(alpha: 0.62)),
                             prefixIcon: const Icon(
                               Icons.location_on_rounded,
                               color: Color(0xFFFF6B57),
@@ -1596,7 +1924,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                                         : _handleFindRoute,
                                     icon: Icon(
                                       Icons.search_rounded,
-                                      color: Colors.white.withOpacity(0.72),
+                                      color: Colors.white.withValues(alpha: 0.72),
                                       size: 19,
                                     ),
                                   )
@@ -1609,7 +1937,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                                             : _handleFindRoute,
                                         icon: Icon(
                                           Icons.search_rounded,
-                                          color: Colors.white.withOpacity(0.72),
+                                          color: Colors.white.withValues(alpha: 0.72),
                                           size: 19,
                                         ),
                                       ),
@@ -1617,7 +1945,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                                         onPressed: _clearRoute,
                                         icon: Icon(
                                           Icons.close_rounded,
-                                          color: Colors.white.withOpacity(0.62),
+                                          color: Colors.white.withValues(alpha: 0.62),
                                           size: 18,
                                         ),
                                       ),
@@ -1668,7 +1996,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                                     padding: const EdgeInsets.all(8),
                                     decoration: BoxDecoration(
                                       color: const Color(0xFF2962FF)
-                                          .withOpacity(0.1),
+                                          .withValues(alpha: 0.1),
                                       borderRadius: BorderRadius.circular(10),
                                     ),
                                     child: Icon(
@@ -1699,20 +2027,40 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                                     final fallbackLng =
                                         suggestion['fallback_lng'];
                                     _confirmedPinnedPosition = null;
-                                    _selectedDestinationPosition =
+                                    final destPos =
                                         fallbackLat is num && fallbackLng is num
                                             ? Position(fallbackLng.toDouble(),
                                                 fallbackLat.toDouble())
                                             : null;
+                                    _selectedDestinationPosition = destPos;
                                     _destinationController.text =
                                         _suggestionLabel(suggestion);
                                     setState(() {
                                       _destinationSuggestions = [];
                                       _hasActiveRoute = false;
+                                      _destWarningMessage = null;
+                                      _selectedZone = null;
                                     });
                                     _refreshSearchSessionToken();
                                     FocusScope.of(context).unfocus();
-                                    await _handleFindRoute();
+                                    // Preview: fly to destination + show pin.
+                                    // Route is only drawn when the user presses
+                                    // "Find Route".
+                                    if (destPos != null) {
+                                      await _showDestinationPin(destPos);
+                                      await _moveCameraToPosition(destPos,
+                                          zoom: 15.0);
+                                      // Quick client-side danger check.
+                                      final danger =
+                                          _checkDestinationInDangerZone(
+                                              destPos);
+                                      if (danger != null && mounted) {
+                                        setState(() {
+                                          _destWarningMessage =
+                                              '⚠️ This destination is inside a ${danger.threatLevel.toUpperCase()} danger zone. Avoid visiting this location.';
+                                        });
+                                      }
+                                    }
                                   },
                                 );
                               },
@@ -1730,13 +2078,13 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                       child: Row(
                         children: [
                           Icon(Icons.place_rounded,
-                              color: Colors.white.withOpacity(0.72), size: 14),
+                              color: Colors.white.withValues(alpha: 0.72), size: 14),
                           const SizedBox(width: 6),
                           Expanded(
                             child: Text(
                               _pinnedLocationLabel(_confirmedPinnedPosition!),
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.78),
+                                color: Colors.white.withValues(alpha: 0.78),
                                 fontSize: 11.5,
                                 fontWeight: FontWeight.w500,
                               ),
@@ -1784,10 +2132,10 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                 decoration: BoxDecoration(
                   color: const Color(0xFFFCFCFD),
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: Colors.black.withOpacity(0.04)),
+                  border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.10),
+                      color: Colors.black.withValues(alpha: 0.10),
                       blurRadius: 16,
                       offset: const Offset(0, 8),
                     ),
@@ -1853,6 +2201,24 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
               ),
             ),
 
+          // ── Zone summary card (tap on a danger zone) ─────────────────
+          if (_selectedZone != null)
+            Positioned(
+              bottom: 180,
+              left: 0,
+              right: 0,
+              child: _buildZoneSummaryCard(_selectedZone!),
+            ),
+
+          // ── Destination danger warning ────────────────────────────────
+          if (_destWarningMessage != null)
+            Positioned(
+              bottom: _selectedZone != null ? 340 : 180,
+              left: 0,
+              right: 0,
+              child: _buildDestinationWarning(),
+            ),
+
           // ── Find Route button ─────────────────────────────────────────
           AnimatedPositioned(
             duration: const Duration(milliseconds: 220),
@@ -1874,7 +2240,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                         backgroundColor: const Color(0xFF1E63FF),
                         foregroundColor: Colors.white,
                         elevation: 8,
-                        shadowColor: Colors.black.withOpacity(0.18),
+                        shadowColor: Colors.black.withValues(alpha: 0.18),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(18)),
@@ -1919,13 +2285,13 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
               builder: (context, scrollController) {
                 return Container(
                   decoration: BoxDecoration(
-                    color: AppColors.background.withOpacity(0.96),
+                    color: AppColors.background.withValues(alpha: 0.96),
                     borderRadius:
                         const BorderRadius.vertical(top: Radius.circular(28)),
                     border: Border.all(color: AppColors.glassBorder),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.22),
+                        color: Colors.black.withValues(alpha: 0.22),
                         blurRadius: 22,
                         offset: const Offset(0, -8),
                       ),
@@ -1960,10 +2326,10 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                             color: AppColors.surface,
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                                color: AppColors.primary.withOpacity(0.18)),
+                                color: AppColors.primary.withValues(alpha: 0.18)),
                             boxShadow: [
                               BoxShadow(
-                                color: AppColors.primary.withOpacity(0.08),
+                                color: AppColors.primary.withValues(alpha: 0.08),
                                 blurRadius: 16,
                                 offset: const Offset(0, 8),
                               ),
@@ -2004,7 +2370,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                           "Select a destination and find a route to see navigation details.",
                           style: TextStyle(
                             fontSize: 14,
-                            color: AppColors.textSecondary.withOpacity(0.92),
+                            color: AppColors.textSecondary.withValues(alpha: 0.92),
                             height: 1.45,
                           ),
                         ),
@@ -2079,3 +2445,55 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ripple overlay painter
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ZoneScreenData {
+  final Offset center;
+  final double radius;
+  final Color color;
+  const _ZoneScreenData(
+      {required this.center, required this.radius, required this.color});
+}
+
+class _RipplePainter extends CustomPainter {
+  final ValueNotifier<List<_ZoneScreenData>> zonesNotifier;
+  final Animation<double> animation;
+
+  _RipplePainter({required this.zonesNotifier, required this.animation})
+      : super(repaint: Listenable.merge([animation, zonesNotifier]));
+
+  static const int _ringCount = 3;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final t = animation.value;
+    for (final zone in zonesNotifier.value) {
+      final c = zone.center;
+      final baseRadius = zone.radius;
+      final baseColor = zone.color;
+
+      for (int i = 0; i < _ringCount; i++) {
+        final phase = (t + i / _ringCount) % 1.0;
+        final ringRadius = baseRadius + phase * baseRadius * 0.8;
+        final opacity = (1.0 - phase) * 0.55;
+
+        canvas.drawCircle(
+          c,
+          ringRadius,
+          Paint()
+            ..color = baseColor.withAlpha((opacity * 255).round())
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.8,
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_RipplePainter old) =>
+      old.zonesNotifier != zonesNotifier || old.animation != animation;
+}
+
