@@ -94,6 +94,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   String _durationText = "Estimated Time: --";
   bool _isCalculatingRoute = false;
   bool _hasActiveRoute = false;
+  String _routeSourceLabel = 'None';
   StreamSubscription<LocationData>? _locationSubscription;
   int _suggestionRequestId = 0;
 
@@ -942,6 +943,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       setState(() {
         _confirmedPinnedPosition = markerTarget;
         _selectedDestinationPosition = markerTarget;
+        _routeSourceLabel = 'Backend';
         _distanceText = distM > 0
             ? "Distance: ${(distM / 1000).toStringAsFixed(1)} km"
             : "Distance: --";
@@ -1197,6 +1199,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
       setState(() {
         _confirmedPinnedPosition = end;
         _selectedDestinationPosition = end;
+        _routeSourceLabel = 'Standard';
         _distanceText = "Distance: ${(distM / 1000).toStringAsFixed(1)} km";
         _durationText =
             "Estimated Time: ${(durS / 60).toStringAsFixed(0)} mins";
@@ -1225,6 +1228,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
         _distanceText = "Distance: --";
         _durationText = "Estimated Time: --";
         _hasActiveRoute = false;
+        _routeSourceLabel = 'None';
       });
     }
   }
@@ -1302,6 +1306,123 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
           onTap: onTap,
           child: Icon(icon,
               color: Colors.white.withOpacity(iconOpacity), size: iconSize),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMapLegend() {
+    final zonesOn = _currentDangerZones.isNotEmpty;
+    final routeColor = _routeSourceLabel == 'Backend'
+        ? const Color(0xFF1DB954)
+        : (_routeSourceLabel == 'Standard'
+            ? const Color(0xFF2962FF)
+            : Colors.white70);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: const Color(0xCC102348),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.16),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'Map Legend',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: const BoxDecoration(
+                  color: Color(0xCCFF3B30),
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 6),
+              const Text(
+                'Danger Zone',
+                style: TextStyle(color: Colors.white70, fontSize: 11),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 14,
+                height: 3,
+                decoration: BoxDecoration(
+                  color: routeColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                _routeSourceLabel == 'Backend'
+                    ? 'Backend Route'
+                    : (_routeSourceLabel == 'Standard'
+                        ? 'Standard Route'
+                        : 'No Active Route'),
+                style: const TextStyle(color: Colors.white70, fontSize: 11),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              _buildLegendChip('Zones: ${zonesOn ? 'ON' : 'OFF'}',
+                  zonesOn ? const Color(0x44FF3B30) : const Color(0x33FFFFFF)),
+              _buildLegendChip(
+                'Route: ${_routeSourceLabel == 'None' ? 'N/A' : _routeSourceLabel}',
+                _routeSourceLabel == 'Backend'
+                    ? const Color(0x331DB954)
+                    : (_routeSourceLabel == 'Standard'
+                        ? const Color(0x332962FF)
+                        : const Color(0x33FFFFFF)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLegendChip(String text, Color bgColor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.12)),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 10.5,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );
@@ -1595,6 +1716,16 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
                   ],
                 ],
               ),
+            ),
+          ),
+
+          Positioned(
+            left: 16,
+            bottom: _sheetExtent > 0.17 ? 196 : 224,
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 180),
+              opacity: _sheetExtent > 0.17 ? 0.88 : 1.0,
+              child: _buildMapLegend(),
             ),
           ),
 
