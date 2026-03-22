@@ -85,6 +85,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
   String? _lastZoneViewportKey;
   List<_DangerZone> _currentDangerZones = const <_DangerZone>[];
   bool _zonePulseExpanded = false;
+  bool _legendCollapsed = false;
   String? _selectedDestinationMapboxId;
   Position? _selectedDestinationPosition;
 
@@ -1338,77 +1339,99 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text(
-            'Map Legend',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 11.5,
-              fontWeight: FontWeight.w700,
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Map Legend',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: () => setState(() => _legendCollapsed = !_legendCollapsed),
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Icon(
+                    _legendCollapsed
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    size: 16,
+                    color: Colors.white70,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (!_legendCollapsed) ...[
+            const SizedBox(height: 8),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 10,
+                  height: 10,
+                  decoration: const BoxDecoration(
+                    color: Color(0xCCFF3B30),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                const Text(
+                  'Danger Zone',
+                  style: TextStyle(color: Colors.white70, fontSize: 11),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 10,
-                height: 10,
-                decoration: const BoxDecoration(
-                  color: Color(0xCCFF3B30),
-                  shape: BoxShape.circle,
+            const SizedBox(height: 6),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 14,
+                  height: 3,
+                  decoration: BoxDecoration(
+                    color: routeColor,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 6),
-              const Text(
-                'Danger Zone',
-                style: TextStyle(color: Colors.white70, fontSize: 11),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 14,
-                height: 3,
-                decoration: BoxDecoration(
-                  color: routeColor,
-                  borderRadius: BorderRadius.circular(2),
+                const SizedBox(width: 6),
+                Text(
+                  _routeSourceLabel == 'Backend'
+                      ? 'Backend Route'
+                      : (_routeSourceLabel == 'Standard'
+                          ? 'Standard Route'
+                          : 'No Active Route'),
+                  style: const TextStyle(color: Colors.white70, fontSize: 11),
                 ),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                _routeSourceLabel == 'Backend'
-                    ? 'Backend Route'
-                    : (_routeSourceLabel == 'Standard'
-                        ? 'Standard Route'
-                        : 'No Active Route'),
-                style: const TextStyle(color: Colors.white70, fontSize: 11),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              _buildLegendChip('Zones: ${zonesOn ? 'ON' : 'OFF'}',
-                  zonesOn ? const Color(0x44FF3B30) : const Color(0x33FFFFFF)),
-              _buildLegendChip(
-                'Count: $zoneCount',
-                zonesOn ? const Color(0x33FF3B30) : const Color(0x22FFFFFF),
-              ),
-              _buildLegendChip(
-                'Route: ${_routeSourceLabel == 'None' ? 'N/A' : _routeSourceLabel}',
-                _routeSourceLabel == 'Backend'
-                    ? const Color(0x331DB954)
-                    : (_routeSourceLabel == 'Standard'
-                        ? const Color(0x332962FF)
-                        : const Color(0x33FFFFFF)),
-              ),
-            ],
-          ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                _buildLegendChip('Zones: ${zonesOn ? 'ON' : 'OFF'}',
+                    zonesOn ? const Color(0x44FF3B30) : const Color(0x33FFFFFF)),
+                _buildLegendChip(
+                  'Count: $zoneCount',
+                  zonesOn ? const Color(0x33FF3B30) : const Color(0x22FFFFFF),
+                ),
+                _buildLegendChip(
+                  'Route: ${_routeSourceLabel == 'None' ? 'N/A' : _routeSourceLabel}',
+                  _routeSourceLabel == 'Backend'
+                      ? const Color(0x331DB954)
+                      : (_routeSourceLabel == 'Standard'
+                          ? const Color(0x332962FF)
+                          : const Color(0x33FFFFFF)),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
