@@ -591,8 +591,8 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
     for (final zone in _currentDangerZones) {
       final center = zone.center;
       if (center != null) {
-        final circleRadius = ((zone.radius / 4) * pulseScale).clamp(10.0, 40.0);
-        final innerRadius = (circleRadius * 0.48).clamp(5.0, 16.0);
+        final circleRadius = ((zone.radius / 2.6) * pulseScale).clamp(16.0, 58.0);
+        final innerRadius = ((zone.radius / 4) * 0.48).clamp(5.0, 16.0);
 
         // Outer danger aura.
         await circleManager.create(
@@ -1353,7 +1353,8 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
               ),
               InkWell(
                 borderRadius: BorderRadius.circular(10),
-                onTap: () => setState(() => _legendCollapsed = !_legendCollapsed),
+                onTap: () =>
+                    setState(() => _legendCollapsed = !_legendCollapsed),
                 child: Padding(
                   padding: const EdgeInsets.all(4),
                   child: Icon(
@@ -1415,8 +1416,11 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen> {
               spacing: 6,
               runSpacing: 6,
               children: [
-                _buildLegendChip('Zones: ${zonesOn ? 'ON' : 'OFF'}',
-                    zonesOn ? const Color(0x44FF3B30) : const Color(0x33FFFFFF)),
+                _buildLegendChip(
+                    'Zones: ${zonesOn ? 'ON' : 'OFF'}',
+                    zonesOn
+                        ? const Color(0x44FF3B30)
+                        : const Color(0x33FFFFFF)),
                 _buildLegendChip(
                   'Count: $zoneCount',
                   zonesOn ? const Color(0x33FF3B30) : const Color(0x22FFFFFF),
