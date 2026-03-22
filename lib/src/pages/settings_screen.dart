@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:usafe_front_end/core/constants/app_colors.dart';
+import 'package:usafe_front_end/features/onboarding/onboarding_controller.dart';
 
 import './payment_screen.dart';
 import './privacy_screen.dart';
@@ -34,6 +35,9 @@ class _SettingsPageState extends State<SettingsPage>
   bool notificationsEnabled = false;
   bool activeMicrophoneListening = false;
   bool contactEmergencyAuthorities = true;
+
+  // Page guide states — true means the guide will show on next visit
+  bool _silentCallGuideEnabled = false;
   final GlobalKey _locationTileKey = GlobalKey();
   final ScrollController _scrollController = ScrollController();
   AnimationController? _highlightController;
@@ -79,6 +83,8 @@ class _SettingsPageState extends State<SettingsPage>
     final permission = await Geolocator.checkPermission();
     final permissionGranted = permission == LocationPermission.always ||
         permission == LocationPermission.whileInUse;
+    final silentCallGuide =
+        await OnboardingController.shouldShowSilentCallTour();
 
     setState(() {
       final storedShare = prefs.getBool("share_location") ?? true;
@@ -92,7 +98,22 @@ class _SettingsPageState extends State<SettingsPage>
           prefs.getBool("active_microphone_listening") ?? false;
       contactEmergencyAuthorities =
           prefs.getBool("contact_emergency_authorities") ?? true;
+      _silentCallGuideEnabled = silentCallGuide;
     });
+  }
+
+  Future<void> _toggleGuide(
+    bool value, {
+    required Future<void> Function() onEnable,
+    required Future<void> Function() onDisable,
+    required void Function(bool) applyState,
+  }) async {
+    if (value) {
+      await onEnable();
+    } else {
+      await onDisable();
+    }
+    if (mounted) setState(() => applyState(value));
   }
 
   // ================= LOCATION =================
@@ -291,6 +312,8 @@ class _SettingsPageState extends State<SettingsPage>
               ),
               const SizedBox(height: 20),
               _buildAiFeaturesPanel(),
+              const SizedBox(height: 20),
+              _buildGuidesPanel(),
               const SizedBox(height: 20),
               _buildEmergencyPanel(),
               const SizedBox(height: 20),
@@ -597,6 +620,138 @@ class _SettingsPageState extends State<SettingsPage>
                 ),
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGuidesPanel() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionTitle("Page Guides"),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                AppColors.surfaceElevated.withValues(alpha: 0.5),
+                AppColors.surface.withValues(alpha: 0.35),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(color: AppColors.border.withValues(alpha: 0.45)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 18,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: 14),
+                child: Text(
+                  "Re-enable the step-by-step guide for a page. It will appear once on your next visit, then turn off automatically.",
+                  style: TextStyle(
+                    color: AppColors.textSecondary.withValues(alpha: 0.85),
+                    fontSize: 12,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+              _guideTile(
+                icon: Icons.phone_in_talk_rounded,
+                title: "Silent Call",
+                enabled: _silentCallGuideEnabled,
+                onChanged: (val) => _toggleGuide(
+                  val,
+                  onEnable: OnboardingController.resetSilentCallTour,
+                  onDisable: OnboardingController.markSilentCallTourSeen,
+                  applyState: (v) => _silentCallGuideEnabled = v,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _guideTile({
+    required IconData icon,
+    required String title,
+    required bool enabled,
+    required void Function(bool) onChanged,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: enabled
+            ? const Color(0xFF3B82F6).withValues(alpha: 0.1)
+            : AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: enabled
+              ? const Color(0xFF3B82F6).withValues(alpha: 0.45)
+              : AppColors.border.withValues(alpha: 0.6),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: enabled
+                  ? const Color(0xFF3B82F6).withValues(alpha: 0.2)
+                  : Colors.white10,
+            ),
+            child: Icon(
+              icon,
+              color: enabled ? const Color(0xFF3B82F6) : Colors.white54,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  enabled
+                      ? "Guide will show on next visit"
+                      : "Guide already seen",
+                  style: TextStyle(
+                    color: enabled
+                        ? const Color(0xFF3B82F6)
+                        : Colors.white38,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: enabled,
+            onChanged: onChanged,
+            activeThumbColor: const Color(0xFF3B82F6),
+            activeTrackColor: const Color(0xFF3B82F6).withValues(alpha: 0.35),
           ),
         ],
       ),
