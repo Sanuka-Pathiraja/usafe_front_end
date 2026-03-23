@@ -471,29 +471,15 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen>
 
   double _degToRad(double degrees) => degrees * (pi / 180.0);
 
-  List<Position> _dangerZonePointsForCameraFit() {
-    final points = <Position>[];
-    for (final zone in _currentDangerZones) {
-      if (zone.center != null) {
-        points.add(zone.center!);
-      }
-      if (zone.polygon.isNotEmpty) {
-        points.addAll(zone.polygon);
-      }
-    }
-    return points;
-  }
-
   Future<void> _fitCameraToRouteAndZones(
     List<Position> routePoints, {
     Position? fallbackCenter,
   }) async {
     if (_mapController == null) return;
 
-    final points = <Position>[
-      ...routePoints,
-      ..._dangerZonePointsForCameraFit(),
-    ];
+    // Use only route points — zone points can be far away and cause the camera
+    // to zoom out well beyond the route, leaving it off-centre.
+    final points = <Position>[...routePoints];
     if (points.isEmpty) {
       if (fallbackCenter != null) {
         await _mapController!.flyTo(
@@ -644,8 +630,8 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen>
       final center = zone.center;
       if (center != null) {
         final colors = _threatColors(zone.threatLevel);
-        final circleRadius = (zone.radius / 2.6).clamp(16.0, 58.0);
-        final innerRadius = (zone.radius / 4 * 0.48).clamp(5.0, 16.0);
+        final circleRadius = (zone.radius / 2.6).clamp(12.0, 28.0);
+        final innerRadius = (zone.radius / 4 * 0.48).clamp(4.0, 8.0);
 
         final outer = await circleManager.create(
           CircleAnnotationOptions(
@@ -705,7 +691,7 @@ class _SafeRouteNavigationScreenState extends State<SafeRouteNavigationScreen>
         zoom,
         bearing,
       );
-      final radius = (zone.radius / 2.6).clamp(16.0, 58.0);
+      final radius = (zone.radius / 2.6).clamp(12.0, 28.0);
       final color = _threatColors(zone.threatLevel).ripple;
       newData.add(_ZoneScreenData(center: offset, radius: radius, color: color));
     }
