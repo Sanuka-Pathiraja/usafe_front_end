@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -18,6 +19,7 @@ import 'safety_score_screen.dart';
 import 'safepath_scheduler_screen.dart';
 import 'package:showcaseview/showcaseview.dart';
 import 'settings_screen.dart'; // ← SettingsPage lives here
+import '../services/native_monitor_service.dart';
 
 class HomeScreen extends StatefulWidget {
   final int initialTabIndex;
@@ -178,18 +180,69 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       key: _addContactFabKey,
                       description:
                           'Tap here to add trusted contacts for SOS alerts.',
-                      child: FloatingActionButton.extended(
-                        backgroundColor: AppColors.primary,
-                        elevation: 4,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16)),
-                        onPressed: () =>
-                            _contactsKey.currentState?.openAddContact(),
-                        icon: const Icon(Icons.person_add, color: Colors.white),
-                        label: const Text('Add Contact',
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold)),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: () => _contactsKey.currentState
+                                  ?.openAddContact(),
+                              splashColor:
+                                  AppColors.primary.withValues(alpha: 0.20),
+                              highlightColor:
+                                  AppColors.primary.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(16),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 20, vertical: 14),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(16),
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      AppColors.primary
+                                          .withValues(alpha: 0.70),
+                                      AppColors.primary
+                                          .withValues(alpha: 0.45),
+                                    ],
+                                  ),
+                                  border: Border.all(
+                                    color: Colors.white.withValues(alpha: 0.15),
+                                    width: 1.2,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: AppColors.primary
+                                          .withValues(alpha: 0.45),
+                                      blurRadius: 20,
+                                      spreadRadius: 0,
+                                      offset: const Offset(0, 6),
+                                    ),
+                                  ],
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.person_add,
+                                        color: Colors.white, size: 20),
+                                    SizedBox(width: 10),
+                                    Text(
+                                      'Add Contact',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -202,32 +255,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildBottomNavBar() {
-    return Container(
-      height: 76,
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(38),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.3),
-            blurRadius: 24,
-            offset: const Offset(0, 12),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(38),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+        child: Container(
+          height: 76,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(38),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.12),
+              width: 1.2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.35),
+                blurRadius: 32,
+                offset: const Offset(0, 12),
+              ),
+              BoxShadow(
+                color: AppColors.primary.withValues(alpha: 0.06),
+                blurRadius: 0,
+                spreadRadius: 1,
+              ),
+            ],
           ),
-          BoxShadow(
-            color: AppColors.primary.withOpacity(0.08),
-            blurRadius: 0,
-            spreadRadius: 1,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _navItem(Icons.shield_rounded, 'SOS', 0),
+              _navItem(Icons.map_rounded, 'Score', 1),
+              _navItem(Icons.people_alt_rounded, 'Contacts', 2),
+              _navItem(Icons.person_rounded, 'Profile', 3),
+            ],
           ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          _navItem(Icons.shield_rounded, 'SOS', 0),
-          _navItem(Icons.map_rounded, 'Score', 1),
-          _navItem(Icons.people_alt_rounded, 'Contacts', 2),
-          _navItem(Icons.person_rounded, 'Profile', 3),
-        ],
+        ),
       ),
     );
   }
@@ -307,6 +370,8 @@ class _SOSDashboardState extends State<SOSDashboard>
   String _safetyStatus = 'Checking';
   Map<String, dynamic> _safetyResponse = const {};
   bool _isFetchingSafety = false;
+  final _nativeMonitor = NativeMonitorService();
+  bool _autoMicActive = false;
 
   static const Duration _sosDuration = Duration(minutes: 3);
   static const Duration _statusPollInterval = Duration(seconds: 3);
@@ -325,6 +390,7 @@ class _SOSDashboardState extends State<SOSDashboard>
     _sosTimer?.cancel();
     _statusPollTimer?.cancel();
     _safetyRefreshTimer?.cancel();
+    if (_autoMicActive) _nativeMonitor.stopMonitoring();
     super.dispose();
   }
 
@@ -472,6 +538,7 @@ class _SOSDashboardState extends State<SOSDashboard>
         _safetyStatus = response['status']?.toString() ?? 'Unknown';
         _safetyResponse = response;
       });
+      await _checkAndTriggerAudioMonitoring(parsedScore);
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -479,6 +546,21 @@ class _SOSDashboardState extends State<SOSDashboard>
       });
     } finally {
       _isFetchingSafety = false;
+    }
+  }
+
+  Future<void> _checkAndTriggerAudioMonitoring(int? score) async {
+    final prefs = await SharedPreferences.getInstance();
+    final micEnabled = prefs.getBool('active_microphone_listening') ?? false;
+
+    if (!micEnabled) return;
+
+    if (score != null && score < 30 && !_autoMicActive) {
+      _autoMicActive = true;
+      await _nativeMonitor.startMonitoring();
+    } else if ((score == null || score >= 30) && _autoMicActive) {
+      _autoMicActive = false;
+      await _nativeMonitor.stopMonitoring();
     }
   }
 
@@ -1160,7 +1242,7 @@ class _SOSDashboardState extends State<SOSDashboard>
 
   Future<bool> _isAuthorityCallingEnabled() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool('contact_emergency_authorities') ?? true;
+    return prefs.getBool('contact_emergency_authorities') ?? false;
   }
 
   Future<Map<String, dynamic>> _getOrCreateEmergencyContextPayload() async {
@@ -1589,39 +1671,85 @@ class _SOSHoldInteractionState extends State<SOSHoldInteraction>
             ),
           ),
 
-          // Core Massive Button (Visual Hierarchy King)
-          Container(
-            width: 250,
-            height: 250,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: widget.accentColor, // Vibrant Red
-              boxShadow: [
-                BoxShadow(
-                  color: widget.accentColor.withOpacity(0.4),
-                  blurRadius: 20,
-                  offset: const Offset(0, 8),
-                )
-              ],
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.touch_app,
-                    color: Colors.white, size: 56), // Signifier
-                const SizedBox(height: 12),
-                const Text(
-                  'HOLD TO\nSOS',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white, // High Contrast
-                    fontSize: 28,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.5,
-                    height: 1.2,
+          // Core Massive Button — Red Glassmorphism
+          ClipOval(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+              child: Container(
+                width: 250,
+                height: 250,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    center: const Alignment(-0.25, -0.35),
+                    radius: 1.1,
+                    colors: [
+                      widget.accentColor.withValues(alpha: 0.60),
+                      widget.accentColor.withValues(alpha: 0.32),
+                    ],
                   ),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.20),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: widget.accentColor.withValues(alpha: 0.55),
+                      blurRadius: 48,
+                      spreadRadius: 10,
+                    ),
+                    BoxShadow(
+                      color: widget.accentColor.withValues(alpha: 0.22),
+                      blurRadius: 90,
+                      spreadRadius: 24,
+                    ),
+                  ],
                 ),
-              ],
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    // Top specular highlight — simulates glass light refraction
+                    Positioned(
+                      top: 22,
+                      left: 55,
+                      right: 55,
+                      child: Container(
+                        height: 52,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(40),
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.white.withValues(alpha: 0.22),
+                              Colors.white.withValues(alpha: 0.0),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.touch_app,
+                            color: Colors.white, size: 56),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'HOLD TO\nSOS',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 28,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.5,
+                            height: 1.2,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ],

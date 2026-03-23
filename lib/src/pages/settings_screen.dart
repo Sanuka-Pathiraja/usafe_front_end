@@ -36,7 +36,9 @@ class _SettingsPageState extends State<SettingsPage>
   bool shareLocation = true;
   bool notificationsEnabled = false;
   bool activeMicrophoneListening = false;
-  bool contactEmergencyAuthorities = true;
+  bool contactEmergencyAuthorities = false;
+
+  bool _guidesExpanded = false;
 
   // Page guide states — true means the guide will show on next visit
   bool _loginGuideEnabled = false;
@@ -117,7 +119,7 @@ class _SettingsPageState extends State<SettingsPage>
       activeMicrophoneListening =
           prefs.getBool("active_microphone_listening") ?? false;
       contactEmergencyAuthorities =
-          prefs.getBool("contact_emergency_authorities") ?? true;
+          prefs.getBool("contact_emergency_authorities") ?? false;
       _loginGuideEnabled = loginGuide;
       _signupGuideEnabled = signupGuide;
       _silentCallGuideEnabled = silentCallGuide;
@@ -711,7 +713,6 @@ class _SettingsPageState extends State<SettingsPage>
       children: [
         _sectionTitle("Page Guides"),
         Container(
-          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
@@ -732,95 +733,130 @@ class _SettingsPageState extends State<SettingsPage>
             ],
           ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Padding(
-                padding: const EdgeInsets.only(bottom: 14),
-                child: Text(
-                  "Re-enable the step-by-step guide for a page. It will appear once on your next visit, then turn off automatically.",
-                  style: TextStyle(
-                    color: AppColors.textSecondary.withValues(alpha: 0.85),
-                    fontSize: 12,
-                    height: 1.5,
+              // ── Dropdown header ──
+              InkWell(
+                onTap: () => setState(() => _guidesExpanded = !_guidesExpanded),
+                borderRadius: BorderRadius.circular(26),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  child: Row(
+                    children: [
+                      Icon(Icons.menu_book_rounded,
+                          size: 18, color: AppColors.textSecondary),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          "Re-enable step-by-step guides for each page",
+                          style: TextStyle(
+                            color: AppColors.textSecondary.withValues(alpha: 0.85),
+                            fontSize: 13,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                      AnimatedRotation(
+                        turns: _guidesExpanded ? 0.5 : 0,
+                        duration: const Duration(milliseconds: 250),
+                        child: Icon(Icons.keyboard_arrow_down_rounded,
+                            size: 20, color: AppColors.textSecondary),
+                      ),
+                    ],
                   ),
                 ),
               ),
-              _guideTile(
-                icon: Icons.login_rounded,
-                title: "Login",
-                enabled: _loginGuideEnabled,
-                onChanged: (val) => _toggleGuide(
-                  val,
-                  onEnable: OnboardingController.resetLoginTour,
-                  onDisable: OnboardingController.markLoginTourSeen,
-                  applyState: (v) => _loginGuideEnabled = v,
-                ),
-              ),
-              _guideTile(
-                icon: Icons.person_add_rounded,
-                title: "Sign Up",
-                enabled: _signupGuideEnabled,
-                onChanged: (val) => _toggleGuide(
-                  val,
-                  onEnable: OnboardingController.resetSignupTour,
-                  onDisable: OnboardingController.markSignupTourSeen,
-                  applyState: (v) => _signupGuideEnabled = v,
-                ),
-              ),
-              _guideTile(
-                icon: Icons.phone_in_talk_rounded,
-                title: "Silent Call",
-                enabled: _silentCallGuideEnabled,
-                onChanged: (val) => _toggleGuide(
-                  val,
-                  onEnable: OnboardingController.resetSilentCallTour,
-                  onDisable: OnboardingController.markSilentCallTourSeen,
-                  applyState: (v) => _silentCallGuideEnabled = v,
-                ),
-              ),
-              _guideTile(
-                icon: Icons.rate_review_rounded,
-                title: "Community Report",
-                enabled: _communityReportGuideEnabled,
-                onChanged: (val) => _toggleGuide(
-                  val,
-                  onEnable: OnboardingController.resetCommunityReportTour,
-                  onDisable: OnboardingController.markCommunityReportTourSeen,
-                  applyState: (v) => _communityReportGuideEnabled = v,
-                ),
-              ),
-              _guideTile(
-                icon: Icons.map_rounded,
-                title: "Community Map",
-                enabled: _communityMapGuideEnabled,
-                onChanged: (val) => _toggleGuide(
-                  val,
-                  onEnable: OnboardingController.resetCommunityMapTour,
-                  onDisable: OnboardingController.markCommunityMapTourSeen,
-                  applyState: (v) => _communityMapGuideEnabled = v,
-                ),
-              ),
-              _guideTile(
-                icon: Icons.route_rounded,
-                title: "Safe Route Navigation",
-                enabled: _safeRouteGuideEnabled,
-                onChanged: (val) => _toggleGuide(
-                  val,
-                  onEnable: OnboardingController.resetSafeRouteTour,
-                  onDisable: OnboardingController.markSafeRouteTourSeen,
-                  applyState: (v) => _safeRouteGuideEnabled = v,
-                ),
-              ),
-              _guideTile(
-                icon: Icons.people_alt_rounded,
-                title: "Emergency Contacts",
-                enabled: _contactsPageGuideEnabled,
-                onChanged: (val) => _toggleGuide(
-                  val,
-                  onEnable: OnboardingController.resetContactsPageTour,
-                  onDisable: OnboardingController.markContactsPageTourSeen,
-                  applyState: (v) => _contactsPageGuideEnabled = v,
-                ),
+              // ── Collapsible tiles ──
+              AnimatedSize(
+                duration: const Duration(milliseconds: 280),
+                curve: Curves.easeInOut,
+                child: _guidesExpanded
+                    ? Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                        child: Column(
+                          children: [
+                            const Divider(height: 1, thickness: 0.4),
+                            const SizedBox(height: 10),
+                            _guideTile(
+                              icon: Icons.login_rounded,
+                              title: "Login",
+                              enabled: _loginGuideEnabled,
+                              onChanged: (val) => _toggleGuide(
+                                val,
+                                onEnable: OnboardingController.resetLoginTour,
+                                onDisable: OnboardingController.markLoginTourSeen,
+                                applyState: (v) => _loginGuideEnabled = v,
+                              ),
+                            ),
+                            _guideTile(
+                              icon: Icons.person_add_rounded,
+                              title: "Sign Up",
+                              enabled: _signupGuideEnabled,
+                              onChanged: (val) => _toggleGuide(
+                                val,
+                                onEnable: OnboardingController.resetSignupTour,
+                                onDisable: OnboardingController.markSignupTourSeen,
+                                applyState: (v) => _signupGuideEnabled = v,
+                              ),
+                            ),
+                            _guideTile(
+                              icon: Icons.phone_in_talk_rounded,
+                              title: "Silent Call",
+                              enabled: _silentCallGuideEnabled,
+                              onChanged: (val) => _toggleGuide(
+                                val,
+                                onEnable: OnboardingController.resetSilentCallTour,
+                                onDisable: OnboardingController.markSilentCallTourSeen,
+                                applyState: (v) => _silentCallGuideEnabled = v,
+                              ),
+                            ),
+                            _guideTile(
+                              icon: Icons.rate_review_rounded,
+                              title: "Community Report",
+                              enabled: _communityReportGuideEnabled,
+                              onChanged: (val) => _toggleGuide(
+                                val,
+                                onEnable: OnboardingController.resetCommunityReportTour,
+                                onDisable: OnboardingController.markCommunityReportTourSeen,
+                                applyState: (v) => _communityReportGuideEnabled = v,
+                              ),
+                            ),
+                            _guideTile(
+                              icon: Icons.map_rounded,
+                              title: "Community Map",
+                              enabled: _communityMapGuideEnabled,
+                              onChanged: (val) => _toggleGuide(
+                                val,
+                                onEnable: OnboardingController.resetCommunityMapTour,
+                                onDisable: OnboardingController.markCommunityMapTourSeen,
+                                applyState: (v) => _communityMapGuideEnabled = v,
+                              ),
+                            ),
+                            _guideTile(
+                              icon: Icons.route_rounded,
+                              title: "Safe Route Navigation",
+                              enabled: _safeRouteGuideEnabled,
+                              onChanged: (val) => _toggleGuide(
+                                val,
+                                onEnable: OnboardingController.resetSafeRouteTour,
+                                onDisable: OnboardingController.markSafeRouteTourSeen,
+                                applyState: (v) => _safeRouteGuideEnabled = v,
+                              ),
+                            ),
+                            _guideTile(
+                              icon: Icons.people_alt_rounded,
+                              title: "Emergency Contacts",
+                              enabled: _contactsPageGuideEnabled,
+                              onChanged: (val) => _toggleGuide(
+                                val,
+                                onEnable: OnboardingController.resetContactsPageTour,
+                                onDisable: OnboardingController.markContactsPageTourSeen,
+                                applyState: (v) => _contactsPageGuideEnabled = v,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : const SizedBox.shrink(),
               ),
             ],
           ),
@@ -913,14 +949,14 @@ class _SettingsPageState extends State<SettingsPage>
             _premiumToggleTile(
               icon: Icons.mic_none_rounded,
               title: "Active Microphone Listening",
-              subtitle: "Allow AI features to listen in the background",
+              subtitle: "When your safety score drops below 30, the AI model will automatically analyze surrounding audio to detect signs of distress",
               value: activeMicrophoneListening,
               onChanged: _toggleActiveMicrophoneListening,
             ),
             _actionTile(
-              icon: Icons.open_in_new_rounded,
-              title: "Open AI Site",
-              subtitle: "Temporary button for future site navigation",
+              icon: Icons.crisis_alert_rounded,
+              title: "AI Danger Detection Panel",
+              subtitle: "View live audio analysis, distress probability, and monitor status",
               onTap: _openDetectorPage,
             ),
           ],

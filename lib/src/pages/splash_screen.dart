@@ -92,13 +92,11 @@ class _SplashScreenState extends State<SplashScreen>
         const Duration(seconds: 8),
       );
     } on TimeoutException {
-      debugPrint(
-        '[Splash] validateSession timed out. Continuing with fallback route.',
-      );
-      loggedIn = false;
+      debugPrint('[Splash] validateSession timed out — using cached token.');
+      loggedIn = await AuthService.isLoggedIn();
     } catch (e) {
-      debugPrint('[Splash] validateSession failed: $e');
-      loggedIn = false;
+      debugPrint('[Splash] validateSession failed: $e — using cached token.');
+      loggedIn = await AuthService.isLoggedIn();
     }
     if (!mounted) return;
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:usafe_front_end/features/onboarding/screens/welcome_screen.dart';
 
@@ -75,7 +76,10 @@ class _PermissionsOnboardingScreenState
     }
   }
 
-  void _goToWelcome() {
+  Future<void> _goToWelcome() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('onboarding_completed', true);
+    await prefs.setBool('authorization_seen', true);
     if (!mounted) return;
     Navigator.pushReplacement(
       context,

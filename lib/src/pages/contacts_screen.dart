@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
@@ -51,17 +52,6 @@ class ContactsScreenState extends State<ContactsScreen> {
     };
   }
 
-  Map<String, Color> _silentCallRingColors(BuildContext context) {
-    final colors = _silentCallColors(context);
-    final background = colors['background']!;
-    final foreground = colors['foreground']!;
-
-    return <String, Color>{
-      'outer': AppColors.alert.withOpacity(0.78),
-      'inner': Color.lerp(background, Colors.white, 0.08)!,
-      'foregroundSoft': foreground.withOpacity(0.92),
-    };
-  }
 
   @override
   void initState() {
@@ -408,68 +398,96 @@ class ContactsScreenState extends State<ContactsScreen> {
   Widget _buildSilentCallFab(BuildContext context) {
     final bool locked = _contacts.length < _minContacts;
     final colors = _silentCallColors(context);
-    final ringColors = _silentCallRingColors(context);
     final background = colors['background']!;
     final foreground = colors['foreground']!;
 
-    final fab = DecoratedBox(
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: background.withOpacity(0.16),
-            blurRadius: 12,
-            spreadRadius: 0,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Container(
-        width: 76,
-        height: 76,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              ringColors['inner']!,
-              background,
+    final fab = ClipOval(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          width: 76,
+          height: 76,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: RadialGradient(
+              center: const Alignment(-0.25, -0.35),
+              radius: 1.1,
+              colors: [
+                background.withValues(alpha: 0.62),
+                background.withValues(alpha: 0.34),
+              ],
+            ),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.20),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: background.withValues(alpha: 0.55),
+                blurRadius: 24,
+                spreadRadius: 4,
+              ),
+              BoxShadow(
+                color: background.withValues(alpha: 0.20),
+                blurRadius: 48,
+                spreadRadius: 10,
+              ),
             ],
           ),
-          border: Border.all(
-            color: ringColors['outer']!,
-            width: 1.8,
-          ),
-        ),
-        child: FloatingActionButton(
-          heroTag: 'silent-call-fab',
-          tooltip: 'Silent Call',
-          elevation: 0,
-          highlightElevation: 0,
-          backgroundColor: Colors.transparent,
-          foregroundColor: foreground,
-          disabledElevation: 0,
-          onPressed: (locked || _loading) ? null : _showSilentCallComposer,
-          shape: const CircleBorder(),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+          child: Stack(
+            alignment: Alignment.center,
             children: [
-              Icon(
-                Icons.volume_off_rounded,
-                size: 24,
-                color: Colors.white,
+              // Specular highlight
+              Positioned(
+                top: 8,
+                left: 18,
+                right: 18,
+                child: Container(
+                  height: 22,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.white.withValues(alpha: 0.22),
+                        Colors.white.withValues(alpha: 0.0),
+                      ],
+                    ),
+                  ),
+                ),
               ),
-              const SizedBox(height: 3),
-              Text(
-                'Silent\nCall',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: foreground,
-                  fontSize: 10.8,
-                  fontWeight: FontWeight.w800,
-                  height: 1.0,
-                  letterSpacing: 0.1,
+              FloatingActionButton(
+                heroTag: 'silent-call-fab',
+                tooltip: 'Silent Call',
+                elevation: 0,
+                highlightElevation: 0,
+                backgroundColor: Colors.transparent,
+                foregroundColor: foreground,
+                disabledElevation: 0,
+                onPressed: (locked || _loading) ? null : _showSilentCallComposer,
+                shape: const CircleBorder(),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.volume_off_rounded,
+                      size: 24,
+                      color: Colors.white,
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Silent\nCall',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: foreground,
+                        fontSize: 10.8,
+                        fontWeight: FontWeight.w800,
+                        height: 1.0,
+                        letterSpacing: 0.1,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -654,10 +672,10 @@ class ContactsScreenState extends State<ContactsScreen> {
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: AppColors.primary.withOpacity(0.25),
+        color: AppColors.primary.withValues(alpha: 0.25),
         borderRadius: BorderRadius.circular(24),
-        border:
-            Border.all(color: AppColors.primary.withOpacity(0.4), width: 1.5),
+        border: Border.all(
+            color: AppColors.primary.withValues(alpha: 0.4), width: 1.5),
       ),
       child: Column(
         children: [
@@ -665,7 +683,7 @@ class ContactsScreenState extends State<ContactsScreen> {
             children: [
               CircleAvatar(
                 radius: 24,
-                backgroundColor: AppColors.primary.withOpacity(0.2),
+                backgroundColor: AppColors.primary.withValues(alpha: 0.2),
                 child: Text(
                   name.isNotEmpty ? name[0] : '?',
                   style: const TextStyle(
@@ -720,35 +738,20 @@ class ContactsScreenState extends State<ContactsScreen> {
           Row(
             children: [
               Expanded(
-                child: OutlinedButton.icon(
+                child: _GlassButton(
                   onPressed: () => _callContact(contact),
-                  icon: const Icon(Icons.call, size: 18),
-                  label: const Text('Call'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.textPrimary,
-                    side: BorderSide(color: AppColors.primary.withOpacity(0.4)),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
+                  color: AppColors.primary,
+                  icon: Icons.call,
+                  label: 'Call',
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: ElevatedButton.icon(
+                child: _GlassButton(
                   onPressed: () => _showAlertComposer(contact),
-                  icon: const Icon(Icons.warning_amber_rounded,
-                      size: 18, color: Colors.white),
-                  label: const Text('Alert'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.alert,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
+                  color: AppColors.alert,
+                  icon: Icons.warning_amber_rounded,
+                  label: 'Alert',
                 ),
               ),
             ],
@@ -803,6 +806,83 @@ class ContactsScreenState extends State<ContactsScreen> {
           ),
         );
       },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Glass button
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _GlassButton extends StatelessWidget {
+  final VoidCallback onPressed;
+  final Color color;
+  final IconData icon;
+  final String label;
+
+  const _GlassButton({
+    required this.onPressed,
+    required this.color,
+    required this.icon,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onPressed,
+            splashColor: color.withValues(alpha: 0.18),
+            highlightColor: color.withValues(alpha: 0.10),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    color.withValues(alpha: 0.75),
+                    color.withValues(alpha: 0.50),
+                  ],
+                ),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.10),
+                  width: 1.2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.45),
+                    blurRadius: 16,
+                    spreadRadius: 0,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 18, color: Colors.white),
+                  const SizedBox(width: 6),
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
