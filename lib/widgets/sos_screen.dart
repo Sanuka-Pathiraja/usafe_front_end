@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -6,7 +7,6 @@ import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
-import 'package:usafe_front_end/core/constants/app_colors.dart';
 import 'package:usafe_front_end/core/services/contact_alert_service.dart';
 import 'package:usafe_front_end/core/services/phone_call_service.dart';
 import 'package:usafe_front_end/features/auth/auth_service.dart';
@@ -16,6 +16,14 @@ import 'package:usafe_front_end/src/pages/emergency_result_screen.dart';
 import 'package:usafe_front_end/src/pages/home_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'sos_hold_button.dart';
+
+// ── Danger palette (SOS screen only) ──────────────────────────────────────
+const Color _kBgDeep     = Color(0xFF090303);
+const Color _kSosRed     = Color(0xFFFF2D2D);
+const Color _kGlassRed   = Color(0x22FF2D2D);
+const Color _kGlassBdr   = Color(0x55FF4444);
+const Color _kGlassWhite = Color(0x0FFFFFFF);
+const Color _kAmber      = Color(0xFFFFAA00);
 
 class SOSScreen extends StatefulWidget {
   final bool autoStart;
@@ -28,8 +36,9 @@ class SOSScreen extends StatefulWidget {
 }
 
 class _SOSScreenState extends State<SOSScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late AnimationController _timerController;
+  late AnimationController _rippleController;
   static const int _countdownSeconds = 10;
   static const Duration _statusPollInterval = Duration(seconds: 3);
 
@@ -53,6 +62,11 @@ class _SOSScreenState extends State<SOSScreen>
       vsync: this,
       duration: const Duration(seconds: _countdownSeconds),
     );
+
+    _rippleController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat();
 
     _timerController.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
@@ -94,6 +108,7 @@ class _SOSScreenState extends State<SOSScreen>
     _markSosTriggered();
 
     await _resolveEmergencyMode();
+    if (!mounted) return;
 
     await Navigator.push(
       context,
@@ -196,6 +211,7 @@ class _SOSScreenState extends State<SOSScreen>
   @override
   void dispose() {
     _timerController.dispose();
+    _rippleController.dispose();
     _statusPollTimer?.cancel();
     super.dispose();
   }
@@ -779,253 +795,6 @@ class _SOSScreenState extends State<SOSScreen>
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final sourceLabel =
-        _formatTriggerSource(widget.triggerSource, widget.autoStart);
-    debugPrint(
-      'SOSScreen: triggerSource=${widget.triggerSource} '
-      'autoStart=${widget.autoStart} label=$sourceLabel',
-    );
-
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.background,
-        elevation: 0,
-        leading: _isSosSent
-            ? null
-            : IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
-                onPressed: _handleBackAction,
-              ),
-        title: Text(
-          _isSosSent ? 'SYSTEM LOCKED' : 'EMERGENCY MODE',
-          style: const TextStyle(fontSize: 16, color: Colors.white70),
-        ),
-        centerTitle: true,
-        automaticallyImplyLeading: false,
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            const SizedBox(height: 18),
-            _buildTopHeader(sourceLabel),
-            const SizedBox(height: 16),
-            Expanded(
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _buildLogoGlow(),
-                    const SizedBox(height: 20),
-                    Text(
-                      _isSosSent ? 'EMERGENCY ACTIVATED' : 'SOS ACTIVATING',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: AppColors.alert,
-                        fontSize: 28,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.4,
-                      ),
-                    ),
-                    const SizedBox(height: 34),
-                    SizedBox(
-                      width: 210,
-                      height: 210,
-                      child: _isSosSent
-                          ? const Icon(Icons.gpp_maybe_rounded,
-                              color: AppColors.alert, size: 160)
-                          : AnimatedBuilder(
-                              animation: _timerController,
-                              builder: (context, child) {
-                                return CircularProgressIndicator(
-                                  value: _timerController.value,
-                                  strokeWidth: 12,
-                                  backgroundColor:
-                                      AppColors.surfaceElevated.withOpacity(0.6),
-                                  valueColor:
-                                      const AlwaysStoppedAnimation<Color>(
-                                          AppColors.alert),
-                                  strokeCap: StrokeCap.round,
-                                );
-                              },
-                            ),
-                    ),
-                    const SizedBox(height: 26),
-                    if (_isSosSent)
-                      Column(
-                        children: [
-                          const Text(
-                            'Triggered SOS System',
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 20,
-                                fontWeight: FontWeight.w800),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'Emergency process started at $_triggeredTime',
-                            style: const TextStyle(
-                                color: AppColors.textSecondary, fontSize: 14),
-                          ),
-                          if (_isGuestMode) ...[
-                            const SizedBox(height: 8),
-                            Text(
-                              _guestContactsError ??
-                                  _guestContactsNotice ??
-                                  'Guest mode: using phone favorites (up to 5).',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: AppColors.textSecondary,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ],
-                        ],
-                      )
-                    else
-                      AnimatedBuilder(
-                        animation: _timerController,
-                        builder: (context, child) {
-                          final remaining =
-                              (_countdownSeconds * (1 - _timerController.value))
-                                  .ceil();
-                          return Text(
-                            'Sending alert in $remaining seconds',
-                            style: const TextStyle(
-                                color: Colors.white, fontSize: 16),
-                          );
-                        },
-                      ),
-                    const SizedBox(height: 36),
-                    if (!_isSosSent) ...[
-                      if (!widget.autoStart && !_timerController.isAnimating)
-                        SOSHoldButton(
-                            onSOSTriggered: () => _timerController.forward())
-                      else
-                        const Icon(Icons.sensors,
-                            color: AppColors.alert, size: 84),
-                      const SizedBox(height: 26),
-                      TextButton(
-                        onPressed: _handleBackAction,
-                        child: const Text('CANCEL SOS',
-                            style: TextStyle(
-                                color: AppColors.textSecondary, fontSize: 16)),
-                      ),
-                    ] else ...[
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 40),
-                        child: OutlinedButton(
-                          onPressed:
-                              _isStartingProcess ? null : _navigateToSafeExit,
-                          style: OutlinedButton.styleFrom(
-                            side: BorderSide(
-                                color:
-                                    AppColors.border.withOpacity(0.8)),
-                            padding: const EdgeInsets.symmetric(
-                                vertical: 15, horizontal: 30),
-                          ),
-                          child: Text(
-                            _isStartingProcess
-                                ? 'STARTING EMERGENCY...'
-                                : 'I AM SAFE - DISMISS',
-                            style: const TextStyle(color: Colors.white),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTopHeader(String sourceLabel) {
-    final sourceStatus = _formatTriggerStatus(sourceLabel);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 18),
-      child: Row(
-        children: [
-          Flexible(
-            fit: FlexFit.loose,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppColors.surfaceElevated.withOpacity(0.7),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: AppColors.border.withOpacity(0.5)),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: const BoxDecoration(
-                      color: AppColors.alert,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  const Flexible(
-                    child: Text(
-                      'SOS MODE',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 12,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const Spacer(),
-          Flexible(
-            fit: FlexFit.loose,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: AppColors.primary.withOpacity(0.3)),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.notifications_active_outlined,
-                      size: 14, color: AppColors.primary),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text(
-                      sourceStatus,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.textPrimary,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   String _formatTriggerSource(String? source, bool autoStart) {
     final raw = (source ?? '').trim();
     if (raw.isEmpty) {
@@ -1057,40 +826,570 @@ class _SOSScreenState extends State<SOSScreen>
     }
   }
 
-  Widget _buildLogoGlow() {
-    return Container(
-      width: 86,
-      height: 86,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: AppColors.background,
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withOpacity(0.35),
-            blurRadius: 28,
-            spreadRadius: 6,
-          ),
-          BoxShadow(
-            color: AppColors.alert.withOpacity(0.18),
-            blurRadius: 40,
-            spreadRadius: 2,
+  // ── UI ────────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    final sourceLabel =
+        _formatTriggerSource(widget.triggerSource, widget.autoStart);
+    debugPrint(
+      'SOSScreen: triggerSource=${widget.triggerSource} '
+      'autoStart=${widget.autoStart} label=$sourceLabel',
+    );
+
+    return Scaffold(
+      backgroundColor: _kBgDeep,
+      body: Stack(
+        children: [
+          _buildBackground(),
+          SafeArea(
+            child: Column(
+              children: [
+                _buildGlassAppBar(sourceLabel),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const SizedBox(height: 8),
+                      _buildCentralRing(),
+                      const SizedBox(height: 32),
+                      _buildStatusCard(),
+                      const SizedBox(height: 28),
+                      _buildActionArea(),
+                      const SizedBox(height: 16),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
-        border: Border.all(color: AppColors.primary.withOpacity(0.8), width: 2),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Image.asset(
-          'assets/usafe_logo.png',
-          fit: BoxFit.contain,
-          errorBuilder: (_, __, ___) => const Icon(
-            Icons.shield,
-            size: 40,
-            color: AppColors.primary,
+    );
+  }
+
+  // ── Background ────────────────────────────────────────────────────────────
+
+  Widget _buildBackground() {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Gradient layer
+        Container(
+          decoration: const BoxDecoration(
+            gradient: RadialGradient(
+              center: Alignment(0.0, -0.2),
+              radius: 1.3,
+              colors: [
+                Color(0xFF2B0808), // warm dark-red core
+                Color(0xFF160404),
+                Color(0xFF090202), // near-black edges
+              ],
+              stops: [0.0, 0.55, 1.0],
+            ),
+          ),
+        ),
+        // Big watermark logo — centred, see-through
+        Center(
+          child: Opacity(
+            opacity: 0.04,
+            child: Image.asset(
+              'assets/usafe_logo.png',
+              width: 340,
+              height: 340,
+              fit: BoxFit.contain,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Glass App Bar ─────────────────────────────────────────────────────────
+
+  Widget _buildGlassAppBar(String sourceLabel) {
+    final triggerStatus = _formatTriggerStatus(sourceLabel);
+
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
+          decoration: BoxDecoration(
+            color: _kGlassRed,
+            border: Border(
+              bottom: BorderSide(
+                color: _kSosRed.withValues(alpha: 0.25),
+                width: 0.8,
+              ),
+            ),
+          ),
+          child: Row(
+            children: [
+              // Back button / lock indicator
+              _buildAppBarEndWidget(isLeading: true),
+              const Spacer(),
+
+              // Centre title stack
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _isSosSent ? 'SYSTEM LOCKED' : 'EMERGENCY MODE',
+                    style: TextStyle(
+                      color: _isSosSent ? _kSosRed : Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 2.4,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    triggerStatus,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.45),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+                ],
+              ),
+
+              const Spacer(),
+              // Live-dot badge
+              _buildAppBarEndWidget(isLeading: false),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAppBarEndWidget({required bool isLeading}) {
+    if (isLeading) {
+      if (_isSosSent) return const SizedBox(width: 38);
+      return GestureDetector(
+        onTap: _handleBackAction,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+            child: Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: _kGlassWhite,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  width: 0.8,
+                ),
+              ),
+              child: const Icon(
+                Icons.arrow_back_ios_new,
+                color: Colors.white70,
+                size: 15,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Trailing: live red dot
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: _kGlassRed,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _kGlassBdr, width: 0.8),
+          ),
+          child: Center(
+            child: Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(
+                color: _kSosRed,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: _kSosRed.withValues(alpha: 0.85),
+                    blurRadius: 10,
+                    spreadRadius: 3,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Central pulsing ring ──────────────────────────────────────────────────
+
+  Widget _buildCentralRing() {
+    return SizedBox(
+      width: 280,
+      height: 280,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Ripple ring 1
+          AnimatedBuilder(
+            animation: _rippleController,
+            builder: (context, _) {
+              final t = _rippleController.value;
+              return Opacity(
+                opacity: (1 - t) * 0.35,
+                child: Container(
+                  width: 280 + t * 100,
+                  height: 280 + t * 100,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: _kSosRed,
+                      width: 1.5,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+
+          // Ripple ring 2 (staggered by 0.5)
+          AnimatedBuilder(
+            animation: _rippleController,
+            builder: (context, _) {
+              final t = (_rippleController.value + 0.5) % 1.0;
+              return Opacity(
+                opacity: (1 - t) * 0.35,
+                child: Container(
+                  width: 280 + t * 100,
+                  height: 280 + t * 100,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: _kSosRed,
+                      width: 1.5,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+
+          // Outermost ambient glow
+          Container(
+            width: 280,
+            height: 280,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: _kSosRed.withValues(alpha: 0.07),
+                  blurRadius: 70,
+                  spreadRadius: 30,
+                ),
+              ],
+            ),
+          ),
+
+          // Outer decorative ring
+          Container(
+            width: 264,
+            height: 264,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: _kSosRed.withValues(alpha: 0.10),
+                width: 1,
+              ),
+            ),
+          ),
+
+          // Mid decorative ring
+          Container(
+            width: 232,
+            height: 232,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: _kSosRed.withValues(alpha: 0.18),
+                width: 1,
+              ),
+            ),
+          ),
+
+          // Progress ring / activated glow ring
+          if (!_isSosSent)
+            SizedBox(
+              width: 210,
+              height: 210,
+              child: AnimatedBuilder(
+                animation: _timerController,
+                builder: (context, _) => CircularProgressIndicator(
+                  value: _timerController.value,
+                  strokeWidth: 5,
+                  backgroundColor: _kSosRed.withValues(alpha: 0.10),
+                  valueColor: AlwaysStoppedAnimation<Color>(_kSosRed),
+                  strokeCap: StrokeCap.round,
+                ),
+              ),
+            )
+          else
+            Container(
+              width: 210,
+              height: 210,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: _kSosRed.withValues(alpha: 0.55),
+                  width: 2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: _kSosRed.withValues(alpha: 0.25),
+                    blurRadius: 36,
+                    spreadRadius: 6,
+                  ),
+                ],
+              ),
+            ),
+
+          // Glass core circle
+          ClipOval(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+              child: Container(
+                width: 184,
+                height: 184,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _isSosSent
+                      ? _kSosRed.withValues(alpha: 0.20)
+                      : const Color(0xFF1E0606).withValues(alpha: 0.90),
+                  border: Border.all(
+                    color: _kSosRed.withValues(alpha: _isSosSent ? 0.60 : 0.40),
+                    width: 1.5,
+                  ),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Label
+                    Text(
+                      _isSosSent ? 'ACTIVATED' : 'SOS',
+                      style: TextStyle(
+                        color: _isSosSent ? _kSosRed : Colors.white,
+                        fontSize: _isSosSent ? 15 : 24,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 2.5,
+                      ),
+                    ),
+
+                    // Countdown number
+                    if (!_isSosSent)
+                      AnimatedBuilder(
+                        animation: _timerController,
+                        builder: (context, _) {
+                          final remaining = (_countdownSeconds *
+                                  (1 - _timerController.value))
+                              .ceil();
+                          return Text(
+                            '$remaining',
+                            style: TextStyle(
+                              color: _kSosRed.withValues(alpha: 0.95),
+                              fontSize: 30,
+                              fontWeight: FontWeight.w900,
+                              height: 1.1,
+                            ),
+                          );
+                        },
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Status glass card ─────────────────────────────────────────────────────
+
+  Widget _buildStatusCard() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 28),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            decoration: BoxDecoration(
+              color: _kGlassRed,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: _kGlassBdr, width: 0.8),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  _isSosSent ? 'EMERGENCY ACTIVATED' : 'SOS ACTIVATING',
+                  style: TextStyle(
+                    color: _isSosSent ? _kSosRed : Colors.white,
+                    fontSize: 19,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.8,
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                if (_isSosSent) ...[
+                  Text(
+                    'Triggered SOS at $_triggeredTime',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.50),
+                      fontSize: 13,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                  if (_isGuestMode) ...[
+                    const SizedBox(height: 12),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 9),
+                          decoration: BoxDecoration(
+                            color: _kAmber.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: _kAmber.withValues(alpha: 0.40),
+                              width: 0.8,
+                            ),
+                          ),
+                          child: Text(
+                            _guestContactsError ??
+                                _guestContactsNotice ??
+                                'Guest mode: using phone favorites (up to 5).',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: _kAmber.withValues(alpha: 0.90),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ] else
+                  AnimatedBuilder(
+                    animation: _timerController,
+                    builder: (context, _) {
+                      final remaining = (_countdownSeconds *
+                              (1 - _timerController.value))
+                          .ceil();
+                      return Text(
+                        'Sending alert in $remaining seconds...',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.50),
+                          fontSize: 13,
+                        ),
+                      );
+                    },
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Action area ───────────────────────────────────────────────────────────
+
+  Widget _buildActionArea() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 28),
+      child: Column(
+        children: [
+          if (!_isSosSent) ...[
+            if (!widget.autoStart && !_timerController.isAnimating)
+              SOSHoldButton(
+                  onSOSTriggered: () => _timerController.forward())
+            else
+              Icon(Icons.sensors, color: _kSosRed.withValues(alpha: 0.85), size: 52),
+            const SizedBox(height: 22),
+            _buildGlassButton(
+              label: 'CANCEL SOS',
+              onTap: _handleBackAction,
+              borderColor: Colors.white.withValues(alpha: 0.25),
+              labelColor: Colors.white.withValues(alpha: 0.55),
+              fillColor: Colors.white.withValues(alpha: 0.05),
+            ),
+          ] else
+            _buildGlassButton(
+              label: _isStartingProcess
+                  ? 'STARTING EMERGENCY...'
+                  : 'I AM SAFE — DISMISS',
+              onTap: _isStartingProcess ? null : _navigateToSafeExit,
+              borderColor: _kSosRed.withValues(alpha: 0.55),
+              labelColor: Colors.white,
+              fillColor: _kSosRed.withValues(alpha: 0.18),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGlassButton({
+    required String label,
+    required VoidCallback? onTap,
+    required Color borderColor,
+    required Color labelColor,
+    required Color fillColor,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 17),
+            decoration: BoxDecoration(
+              color: fillColor,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: borderColor, width: 1.0),
+            ),
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: labelColor,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.4,
+              ),
+            ),
           ),
         ),
       ),
     );
   }
 }
-

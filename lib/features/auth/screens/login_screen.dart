@@ -10,15 +10,9 @@ import 'package:usafe_front_end/features/onboarding/onboarding_controller.dart';
 import 'package:usafe_front_end/features/onboarding/screens/emergency_contacts_setup_screen.dart';
 import 'package:usafe_front_end/src/pages/home_screen.dart';
 
-// --- 1. THEME GRADIENT ---
+// --- 1. THEME BACKGROUND ---
 BoxDecoration _buildBackgroundGradient() {
-  return const BoxDecoration(
-    gradient: LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: [AppColors.background, AppColors.backgroundBlack],
-    ),
-  );
+  return const BoxDecoration(color: AppColors.background);
 }
 
 // --- 2. SPLASH SCREEN ---
