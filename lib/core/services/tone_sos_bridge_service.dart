@@ -27,7 +27,7 @@ class ToneSOSBridgeService {
 
   Future<void> initialize() async {
     try {
-      final status = await Permission.microphone.request();
+      final status = await Permission.microphone.status;
       if (!status.isGranted) {
         return;
       }

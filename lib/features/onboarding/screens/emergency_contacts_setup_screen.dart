@@ -37,7 +37,9 @@ class _EmergencyContactsSetupScreenState
     );
     _fadeIn = CurvedAnimation(parent: _animController, curve: Curves.easeOut);
     _animController.forward();
-    _loadContacts();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadContacts();
+    });
   }
 
   @override

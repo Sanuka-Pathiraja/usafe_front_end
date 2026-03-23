@@ -49,7 +49,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _currentIndex = widget.initialTabIndex;
     _loadedTabs.add(_currentIndex);
-    _loadContactCount();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadContactCount();
+    });
   }
 
   @override

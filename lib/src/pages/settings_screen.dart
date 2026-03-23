@@ -39,6 +39,8 @@ class _SettingsPageState extends State<SettingsPage>
   bool contactEmergencyAuthorities = true;
 
   // Page guide states — true means the guide will show on next visit
+  bool _loginGuideEnabled = false;
+  bool _signupGuideEnabled = false;
   bool _silentCallGuideEnabled = false;
   bool _communityReportGuideEnabled = false;
   bool _communityMapGuideEnabled = false;
@@ -52,7 +54,9 @@ class _SettingsPageState extends State<SettingsPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _loadSettings();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadSettings();
+    });
     if (widget.highlightLocationSection) {
       _highlightController = AnimationController(
         vsync: this,
@@ -89,6 +93,8 @@ class _SettingsPageState extends State<SettingsPage>
     final permission = await Geolocator.checkPermission();
     final permissionGranted = permission == LocationPermission.always ||
         permission == LocationPermission.whileInUse;
+    final loginGuide = await OnboardingController.shouldShowLoginTour();
+    final signupGuide = await OnboardingController.shouldShowSignupTour();
     final silentCallGuide =
         await OnboardingController.shouldShowSilentCallTour();
     final communityReportGuide =
@@ -112,6 +118,8 @@ class _SettingsPageState extends State<SettingsPage>
           prefs.getBool("active_microphone_listening") ?? false;
       contactEmergencyAuthorities =
           prefs.getBool("contact_emergency_authorities") ?? true;
+      _loginGuideEnabled = loginGuide;
+      _signupGuideEnabled = signupGuide;
       _silentCallGuideEnabled = silentCallGuide;
       _communityReportGuideEnabled = communityReportGuide;
       _communityMapGuideEnabled = communityMapGuide;
@@ -735,6 +743,28 @@ class _SettingsPageState extends State<SettingsPage>
                     fontSize: 12,
                     height: 1.5,
                   ),
+                ),
+              ),
+              _guideTile(
+                icon: Icons.login_rounded,
+                title: "Login",
+                enabled: _loginGuideEnabled,
+                onChanged: (val) => _toggleGuide(
+                  val,
+                  onEnable: OnboardingController.resetLoginTour,
+                  onDisable: OnboardingController.markLoginTourSeen,
+                  applyState: (v) => _loginGuideEnabled = v,
+                ),
+              ),
+              _guideTile(
+                icon: Icons.person_add_rounded,
+                title: "Sign Up",
+                enabled: _signupGuideEnabled,
+                onChanged: (val) => _toggleGuide(
+                  val,
+                  onEnable: OnboardingController.resetSignupTour,
+                  onDisable: OnboardingController.markSignupTourSeen,
+                  applyState: (v) => _signupGuideEnabled = v,
                 ),
               ),
               _guideTile(

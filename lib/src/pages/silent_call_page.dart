@@ -44,7 +44,9 @@ class _SilentCallPageState extends State<SilentCallPage> {
     _selectedContactKeys.addAll(
       widget.contacts.map(_contactKey).where((k) => k.trim().isNotEmpty),
     );
-    _checkOnboarding();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkOnboarding();
+    });
   }
 
   @override

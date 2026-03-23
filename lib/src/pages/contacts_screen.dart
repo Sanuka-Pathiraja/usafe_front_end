@@ -66,7 +66,9 @@ class ContactsScreenState extends State<ContactsScreen> {
   @override
   void initState() {
     super.initState();
-    _loadContacts();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadContacts();
+    });
   }
 
   Future<void> _loadContacts() async {

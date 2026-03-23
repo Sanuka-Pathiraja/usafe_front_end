@@ -2,8 +2,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class OnboardingController {
   static const bool alwaysShowTours = false;
-  static const _loginTourSeenKey = 'login_tour_seen';
-  static const _signupTourSeenKey = 'signup_tour_seen';
+  static const _loginTourSeenKey = 'login_tour_v3_seen';
+  static const _signupTourSeenKey = 'signup_tour_v3_seen';
   static const _contactsTourSeenKey = 'contacts_tour_seen';
   static const _silentCallTourSeenKey = 'silent_call_tour_seen';
   static const _communityReportTourSeenKey = 'community_report_tour_seen';

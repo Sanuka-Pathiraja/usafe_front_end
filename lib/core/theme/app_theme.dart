@@ -1,5 +1,36 @@
 import 'package:flutter/material.dart';
 
+/// Lightweight fade + slide-up transition used for all routes.
+/// Much cheaper than the default Material 3 zoom because the outgoing page
+/// is not kept alive and re-painted during the animation.
+class _FadeSlideTransitionsBuilder extends PageTransitionsBuilder {
+  const _FadeSlideTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    final curved = CurvedAnimation(
+      parent: animation,
+      curve: Curves.easeOutCubic,
+    );
+    return FadeTransition(
+      opacity: curved,
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0.04, 0),
+          end: Offset.zero,
+        ).animate(curved),
+        child: child,
+      ),
+    );
+  }
+}
+
 class AppTheme {
   // ── Core Palette ──
   static const Color backgroundColor = Color(0xFF0A1128); // Deep Navy
@@ -159,6 +190,14 @@ class AppTheme {
       ),
 
       iconTheme: const IconThemeData(color: textPrimary),
+
+      // ── Page Transitions ──
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: _FadeSlideTransitionsBuilder(),
+          TargetPlatform.iOS: _FadeSlideTransitionsBuilder(),
+        },
+      ),
     );
   }
 }

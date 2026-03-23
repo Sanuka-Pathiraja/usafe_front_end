@@ -51,35 +51,33 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> with SingleTickerProv
   @override
   void initState() {
     super.initState();
-    _loadMapStyle();
-    _initCurrentLocation();
-    
     _pulseController = AnimationController(
       duration: const Duration(seconds: 2),
       vsync: this,
     )..repeat(reverse: true);
-    
+
     _pulseAnimation = Tween<double>(begin: 300, end: 500).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
-    _audioService.initialize();
     _audioService.onDistressDetected = (event, confidence) {
       if (_isSafetyModeActive) {
         _showDangerDialog(event);
       }
     };
 
-    if (widget.selectLocationForReport) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || _didShowSelectionHint) return;
-        _didShowSelectionHint = true;
-        _showStatusSnack("Please select a location.");
-      });
-    }
-
     _searchController.addListener(() {
       if (mounted) setState(() {});
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadMapStyle();
+      _initCurrentLocation();
+      _audioService.initialize();
+      if (widget.selectLocationForReport && mounted && !_didShowSelectionHint) {
+        _didShowSelectionHint = true;
+        _showStatusSnack("Please select a location.");
+      }
     });
   }
 

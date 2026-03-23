@@ -43,9 +43,11 @@ class _DetectorPageState extends State<DetectorPage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _statusSub = _monitorService.statusStream.listen(_applyStatus);
-    unawaited(_loadFeatureState());
-    unawaited(_refreshStatus());
-    unawaited(_handlePendingRestoreRequest());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_loadFeatureState());
+      unawaited(_refreshStatus());
+      unawaited(_handlePendingRestoreRequest());
+    });
   }
 
   @override

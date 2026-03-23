@@ -38,7 +38,6 @@ class PushNotificationService {
     if (_initialized) return;
 
     await _initializeLocalNotifications();
-    await _requestPermissions();
     await _messaging.setForegroundNotificationPresentationOptions(
       alert: true,
       badge: true,
@@ -282,14 +281,6 @@ class PushNotificationService {
         description: _channelDescription,
         importance: Importance.max,
       ),
-    );
-  }
-
-  static Future<void> _requestPermissions() async {
-    await _messaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
     );
   }
 

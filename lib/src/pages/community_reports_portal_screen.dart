@@ -168,8 +168,10 @@ class _CommunityReportsPortalScreenState
   void initState() {
     super.initState();
     MapboxOptions.setAccessToken(_communityPortalMapboxToken);
-    _loadPortal();
-    _fetchCurrentPositionOnce();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadPortal();
+      _fetchCurrentPositionOnce();
+    });
   }
 
   @override
