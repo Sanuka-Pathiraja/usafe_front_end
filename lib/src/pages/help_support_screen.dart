@@ -1,152 +1,184 @@
 import 'package:flutter/material.dart';
 import 'package:usafe_front_end/core/constants/app_colors.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 class HelpSupportScreen extends StatelessWidget {
   const HelpSupportScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.of(context).size.width;
-    final isNarrow = width < 360;
-    const iitCityCampus = LatLng(6.8652715, 79.8598505);
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title:
-            const Text("Help & Support", style: TextStyle(color: Colors.white)),
+        title: const Text("Help & Support",
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
         backgroundColor: Colors.transparent,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
         children: [
+          // ── Hero card ──
           Container(
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              color: AppColors.surfaceCard,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: AppColors.border.withOpacity(0.6)),
+              gradient: LinearGradient(
+                colors: [
+                  AppColors.primary.withValues(alpha: 0.18),
+                  AppColors.surfaceElevated.withValues(alpha: 0.3),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(22),
+              border:
+                  Border.all(color: AppColors.primary.withValues(alpha: 0.25)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  "Need help fast?",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
+                const Row(
+                  children: [
+                    Icon(Icons.support_agent_rounded,
+                        color: AppColors.primary, size: 26),
+                    SizedBox(width: 10),
+                    Text(
+                      "How can we help?",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  "Find answers or reach the USafe team. We respond quickly to safety-related issues.",
+                const Text(
+                  "Browse the FAQ below or reach out directly. We prioritise safety-related queries.",
                   style: TextStyle(
-                    color: AppColors.textGrey,
-                    fontSize: isNarrow ? 12 : 13,
+                    color: AppColors.textSecondary,
+                    fontSize: 13,
+                    height: 1.5,
                   ),
                 ),
                 const SizedBox(height: 16),
                 Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
+                  spacing: 10,
+                  runSpacing: 10,
                   children: const [
-                    _QuickChip(label: "SOS Help"),
-                    _QuickChip(label: "Account"),
+                    _QuickChip(label: "SOS & Emergency"),
+                    _QuickChip(label: "AI Detection"),
+                    _QuickChip(label: "Safety Score"),
+                    _QuickChip(label: "Contacts"),
                     _QuickChip(label: "Privacy"),
-                    _QuickChip(label: "Payments"),
                   ],
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 24),
-          const Text("FAQ",
-              style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold)),
-          const SizedBox(height: 14),
-          _buildFaqItem("How do I activate SOS?",
-              "Press and hold the large button on the home screen for 3 seconds."),
-          _buildFaqItem("Who receives my alerts?",
-              "All contacts listed in your 'Emergency Contacts' tab."),
-          _buildFaqItem("Does it work offline?",
-              "Basic features work, but location sharing requires an internet connection."),
+
           const SizedBox(height: 28),
-          const Text("Contact Us",
-              style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold)),
+
+          // ── FAQ ──
+          const Text(
+            "Frequently Asked Questions",
+            style: TextStyle(
+                color: Colors.white,
+                fontSize: 17,
+                fontWeight: FontWeight.w700),
+          ),
           const SizedBox(height: 14),
+
+          _buildFaqItem(
+            "How do I activate SOS?",
+            "Press and hold the large SOS button on the home screen for 3 seconds. A countdown will begin — release early to cancel, or wait for it to complete to send an emergency alert to all your contacts.",
+          ),
+          _buildFaqItem(
+            "Who receives my emergency alerts?",
+            "Alerts are sent to all contacts listed in your Emergency Contacts tab. You need at least 3 contacts added for the emergency system to activate.",
+          ),
+          _buildFaqItem(
+            "What is the AI Danger Detection?",
+            "When enabled in Settings, the AI listens to surrounding audio using an on-device model to detect signs of distress such as screaming or shouting. It activates automatically when your safety score drops below 30. All processing happens locally — no audio is uploaded.",
+          ),
+          _buildFaqItem(
+            "What is the Safety Score?",
+            "Your safety score is a real-time risk assessment based on your location, time of day, proximity to emergency services, population density, and traffic levels. A score below 30 triggers additional protective features.",
+          ),
+          _buildFaqItem(
+            "What is the Silent Call feature?",
+            "Silent Call lets you place a call to a trusted contact that appears silent on your end. It can be used discreetly in situations where speaking aloud is not safe.",
+          ),
+          _buildFaqItem(
+            "What does 'Contact Authorities' do?",
+            "When enabled in Settings, the app will automatically attempt to call emergency services (119) during an active SOS session, in addition to notifying your personal contacts.",
+          ),
+          _buildFaqItem(
+            "Does the app work offline?",
+            "Basic SOS alerts via SMS can be sent without internet. However, live location sharing, safety score updates, and AI-backed features require an active internet connection.",
+          ),
+          _buildFaqItem(
+            "How do I re-enable a page guide?",
+            "Go to Settings → Page Guides and toggle on the guide for the page you want to revisit. The guide will play once on your next visit and then turn itself off automatically.",
+          ),
+          _buildFaqItem(
+            "How do I delete my account?",
+            "To permanently delete your account and all associated data, contact us at teamusafe@gmail.com with the subject 'Account Deletion'. We will process your request within 7 business days.",
+          ),
+
+          const SizedBox(height: 28),
+
+          // ── Contact ──
+          const Text(
+            "Contact Us",
+            style: TextStyle(
+                color: Colors.white,
+                fontSize: 17,
+                fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 14),
+
           Container(
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              color: AppColors.surfaceCard,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: AppColors.border.withOpacity(0.6)),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: AppColors.primarySky.withOpacity(0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.email,
-                      color: AppColors.primarySky, size: 20),
+              gradient: LinearGradient(
+                colors: [
+                  AppColors.surfaceElevated.withValues(alpha: 0.5),
+                  AppColors.surface.withValues(alpha: 0.35),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(22),
+              border:
+                  Border.all(color: AppColors.border.withValues(alpha: 0.45)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.18),
+                  blurRadius: 14,
+                  offset: const Offset(0, 6),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text("Email Support",
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 4),
-                      const Text("teamusafe@gmail.com",
-                          style: TextStyle(color: Colors.white70)),
-                      const SizedBox(height: 12),
-                      const Text("Location",
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600)),
-                      const SizedBox(height: 4),
-                      const SizedBox(height: 12),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(14),
-                        child: SizedBox(
-                          height: 160,
-                          width: double.infinity,
-                          child: GoogleMap(
-                            initialCameraPosition: const CameraPosition(
-                              target: iitCityCampus,
-                              zoom: 16,
-                            ),
-                            markers: {
-                              Marker(
-                                markerId: const MarkerId("iit_city_campus"),
-                                position: iitCityCampus,
-                              ),
-                            },
-                            zoomControlsEnabled: false,
-                            myLocationButtonEnabled: false,
-                            mapToolbarEnabled: false,
-                            liteModeEnabled: true,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                )
+              ],
+            ),
+            child: Column(
+              children: [
+                _contactRow(
+                  icon: Icons.email_outlined,
+                  label: "Email",
+                  value: "teamusafe@gmail.com",
+                  note: "For general enquiries, bug reports, and account issues.",
+                ),
+                const SizedBox(height: 16),
+                Divider(
+                    color: AppColors.border.withValues(alpha: 0.4), height: 1),
+                const SizedBox(height: 16),
+                _contactRow(
+                  icon: Icons.crisis_alert_rounded,
+                  label: "Safety Issues",
+                  value: "teamusafe@gmail.com",
+                  note:
+                      "Mark your subject as 'URGENT – Safety' for priority handling.",
+                ),
               ],
             ),
           ),
@@ -155,26 +187,93 @@ class HelpSupportScreen extends StatelessWidget {
     );
   }
 
+  Widget _contactRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    required String note,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: AppColors.primary.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: AppColors.primary, size: 18),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label,
+                  style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.5)),
+              const SizedBox(height: 3),
+              Text(value,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600)),
+              const SizedBox(height: 5),
+              Text(note,
+                  style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                      height: 1.4)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildFaqItem(String question, String answer) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 15),
+      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: AppColors.surfaceCard,
-        borderRadius: BorderRadius.circular(12),
+        gradient: LinearGradient(
+          colors: [
+            AppColors.surfaceElevated.withValues(alpha: 0.45),
+            AppColors.surface.withValues(alpha: 0.3),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border.withValues(alpha: 0.4)),
       ),
       child: ExpansionTile(
+        tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
         title: Text(question,
             style: const TextStyle(
-                color: Colors.white, fontWeight: FontWeight.w600)),
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w600)),
+        iconColor: AppColors.primary,
+        collapsedIconColor: AppColors.textSecondary,
+        shape: const Border(),
+        collapsedShape: const Border(),
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child:
-                Text(answer, style: const TextStyle(color: AppColors.textGrey)),
-          )
+            child: Text(
+              answer,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 13,
+                height: 1.55,
+              ),
+            ),
+          ),
         ],
-        iconColor: AppColors.primarySky,
-        collapsedIconColor: Colors.white70,
       ),
     );
   }
@@ -188,11 +287,11 @@ class _QuickChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
-        color: AppColors.primary.withOpacity(0.18),
+        color: AppColors.primary.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.primary.withOpacity(0.35)),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
       ),
       child: Text(
         label,
