@@ -47,17 +47,25 @@ class EmergencyStep {
 enum StepState { pending, running, done, skipped, failed }
 
 class EmergencyProcessScreen extends StatefulWidget {
+  final bool contactAuthoritiesDuringEmergency;
   final Future<EmergencyActionResult> Function()? onMessageAllContacts;
   final Future<EmergencyCallResult> Function(int contactIndex)? onCallContact;
   final Future<EmergencyActionResult> Function()? onCall119;
   final Future<EmergencyActionResult> Function()? onCancelEmergency;
 
+  /// Called just before navigating to the result screen with the final
+  /// [EmergencySummary]. Use this to persist the session outcome to the
+  /// backend. Exceptions are swallowed so navigation is never blocked.
+  final Future<void> Function(EmergencySummary summary)? onSessionFinished;
+
   const EmergencyProcessScreen({
     super.key,
+    this.contactAuthoritiesDuringEmergency = true,
     this.onMessageAllContacts,
     this.onCallContact,
     this.onCall119,
     this.onCancelEmergency,
+    this.onSessionFinished,
   });
 
   @override
@@ -180,6 +188,14 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
     super.initState();
     _states = List<StepState>.filled(_steps.length, StepState.pending);
     _failureReasons = List<String?>.filled(_steps.length, null);
+    if (!widget.contactAuthoritiesDuringEmergency) {
+      for (int i = 0; i < _steps.length; i++) {
+        if (_steps[i].type == EmergencyStepType.waitBefore119 ||
+            _steps[i].type == EmergencyStepType.call119) {
+          _states[i] = StepState.skipped;
+        }
+      }
+    }
     _startDefaultProcess();
   }
 
@@ -194,6 +210,15 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
     if (!mounted || _screenClosed) return;
     _screenClosed = true;
 
+    if (widget.onSessionFinished != null) {
+      try {
+        await widget.onSessionFinished!(summary);
+      } catch (e) {
+        _debugLog("onSessionFinished error (ignored): $e");
+      }
+    }
+
+    if (!mounted) return;
     final payload = await Navigator.push<HomeEmergencyBannerPayload>(
       context,
       MaterialPageRoute(builder: (_) => EmergencyResultScreen(summary: summary)),
@@ -220,6 +245,12 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
       if (!mounted || myFlow != _flowId) return;
 
       if (_someoneAnswered && _steps[i].type == EmergencyStepType.callContact) {
+        setState(() => _states[i] = StepState.skipped);
+        continue;
+      }
+      if (!widget.contactAuthoritiesDuringEmergency &&
+          (_steps[i].type == EmergencyStepType.waitBefore119 ||
+              _steps[i].type == EmergencyStepType.call119)) {
         setState(() => _states[i] = StepState.skipped);
         continue;
       }
@@ -447,6 +478,18 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
   }
 
   Future<void> _call119NowTakeOver() async {
+    if (!widget.contactAuthoritiesDuringEmergency) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Emergency authority calling is disabled in Settings.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
     _cancelCurrentFlow();
     final myFlow = ++_flowId;
     _debugLog("Manual override: call 119 now, new flowId=$myFlow");
@@ -619,6 +662,17 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
         });
         _debugLog("Instant notify: call idx=$idx failed reason=$reason");
       }
+    }
+
+    if (!widget.contactAuthoritiesDuringEmergency) {
+      setState(() {
+        _states[idx119] = StepState.skipped;
+      });
+      _debugLog("Instant notify: 119 call skipped by settings");
+      await _goToResult(_buildSummary(
+        outcome: EmergencyOutcome.completed,
+      ));
+      return;
     }
 
     // Call 119 (fast but visible)
@@ -1124,17 +1178,19 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
                                   onTap: () async => await _stopProcess(),
                                 ),
                               ),
-                              const SizedBox(height: 10),
-                              SizedBox(
-                                width: double.infinity,
-                                child: _button(
-                                  label: "CALL 119 NOW",
-                                  bg: dangerRed,
-                                  fg: Colors.white,
-                                  icon: Icons.local_phone_rounded,
-                                  onTap: () async => await _call119NowTakeOver(),
+                              if (widget.contactAuthoritiesDuringEmergency) ...[
+                                const SizedBox(height: 10),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: _button(
+                                    label: "CALL 119 NOW",
+                                    bg: dangerRed,
+                                    fg: Colors.white,
+                                    icon: Icons.local_phone_rounded,
+                                    onTap: () async => await _call119NowTakeOver(),
+                                  ),
                                 ),
-                              ),
+                              ],
                             ],
                           );
                         }
@@ -1150,16 +1206,18 @@ class _EmergencyProcessScreenState extends State<EmergencyProcessScreen> {
                                 onTap: () async => await _stopProcess(),
                               ),
                             ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: _button(
-                                label: "CALL 119 NOW",
-                                bg: dangerRed,
-                                fg: Colors.white,
-                                icon: Icons.local_phone_rounded,
-                                onTap: () async => await _call119NowTakeOver(),
+                            if (widget.contactAuthoritiesDuringEmergency) ...[
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: _button(
+                                  label: "CALL 119 NOW",
+                                  bg: dangerRed,
+                                  fg: Colors.white,
+                                  icon: Icons.local_phone_rounded,
+                                  onTap: () async => await _call119NowTakeOver(),
+                                ),
                               ),
-                            ),
+                            ],
                           ],
                         );
                       },

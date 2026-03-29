@@ -1,8 +1,16 @@
+import java.util.Properties
+
 allprojects {
     repositories {
         google()
         mavenCentral()
     }
+}
+
+val secretsFile = rootProject.file("secrets.properties")
+if (secretsFile.exists()) {
+    val secrets = Properties().apply { load(secretsFile.inputStream()) }
+    secrets.forEach { key, value -> extra[key.toString()] = value }
 }
 
 val newBuildDir: Directory =
@@ -17,6 +25,23 @@ subprojects {
 }
 subprojects {
     project.evaluationDependsOn(":app")
+}
+
+subprojects {
+    if (name == "mapbox_maps_flutter") {
+        afterEvaluate {
+            dependencies.add("implementation", "androidx.lifecycle:lifecycle-common:2.7.0")
+            dependencies.add("implementation", "androidx.lifecycle:lifecycle-runtime:2.7.0")
+            dependencies.add("implementation", "androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
+            configurations.configureEach {
+                resolutionStrategy.force(
+                    "androidx.lifecycle:lifecycle-common:2.7.0",
+                    "androidx.lifecycle:lifecycle-runtime:2.7.0",
+                    "androidx.lifecycle:lifecycle-runtime-ktx:2.7.0",
+                )
+            }
+        }
+    }
 }
 
 tasks.register<Delete>("clean") {

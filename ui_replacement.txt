@@ -1,0 +1,418 @@
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Container(
+        color: AppColors.background,
+        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 8),
+            // ── Greeting Header & Ambient Status (Visibility of System Status) ──
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Good Morning',
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        const Text(
+                          'Sanuka',
+                          style: TextStyle(
+                            color: Colors.white, // High Contrast (WCAG)
+                            fontSize: 32,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text('👋', style: TextStyle(fontSize: 28)),
+                      ],
+                    ),
+                  ],
+                ),
+                Row(
+                  children: [
+                    _buildStatusPill(),
+                    const SizedBox(width: 8),
+                    // Keep Settings Accessible
+                    IconButton(
+                      icon: const Icon(Icons.settings_outlined, color: AppColors.textSecondary, size: 28),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const SettingsPage()),
+                        );
+                      },
+                      tooltip: 'Settings',
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            
+            const SizedBox(height: 36),
+            
+            // ── Quick Actions Grid (Hick's Law: 3 Choices) ──
+            const Text(
+              'Quick Actions',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildQuickAction(
+                  title: 'Navigation',
+                  icon: Icons.map_rounded,
+                  onTap: () {
+                    // TODO: Add existing Navigator.push here
+                  },
+                ),
+                _buildQuickAction(
+                  title: 'Reports',
+                  icon: Icons.campaign_rounded,
+                  onTap: () {
+                    // TODO: Add existing Navigator.push here
+                  },
+                ),
+                _buildQuickAction(
+                  title: 'Contacts',
+                  icon: Icons.people_rounded,
+                  onTap: () {
+                    // TODO: Add existing Navigator.push here
+                  },
+                ),
+              ],
+            ),
+            
+            const Expanded(child: SizedBox(height: 24)),
+            
+            // ── Center SOS Button / Active State (Fitts Law + Visual Hierarchy) ──
+            if (isSOSActive)
+              Center(child: _buildSOSActiveView())
+            else
+              Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Emergency SOS',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Hold the button for 3 seconds',
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+                    _buildHoldButton(),
+                  ],
+                ),
+              ),
+              
+            const Expanded(child: SizedBox(height: 24)),
+
+            // ── Safety Tip Card ──────────────────────────────────────
+            if (!isSOSActive)
+              _buildSafetyTipCard(),
+              
+            const SizedBox(height: 80), // Padding for bottom nav bar
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuickAction({required String title, required IconData icon, required VoidCallback onTap}) {
+    // Fitts's Law: Large touch targets.
+    // Signifiers: Distinct box with shadow to indicate button-ness.
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 105,
+        height: 115,
+        decoration: BoxDecoration(
+          color: AppColors.primary.withOpacity(0.25),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: AppColors.primary.withOpacity(0.4), width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.15),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            )
+          ],
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.35),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: Colors.white, size: 28), // White icons for contrast
+            ),
+            const SizedBox(height: 12),
+            Text(
+              title,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w800, // Heavy font for legibility
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusPill() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceElevated.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.border.withOpacity(0.5)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 10,
+            height: 10,
+            decoration: const BoxDecoration(
+              color: AppColors.success, // High contrast safe green
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 8),
+          const Text(
+            'SAFE',
+            style: TextStyle(
+              color: AppColors.success,
+              fontWeight: FontWeight.w900,
+              fontSize: 14,
+              letterSpacing: 1.0,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSafetyTipCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withOpacity(0.20),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(Icons.lightbulb_outline, color: Colors.white, size: 24),
+              ),
+              const SizedBox(width: 16),
+              const Text(
+                'Safety Tip',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Share your live location with trusted contacts before walking alone at night. Stay on well-lit paths.',
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 14,
+              height: 1.5,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSOSHeader() {
+    return Column(
+      children: [
+        const Text(
+          'EMERGENCY\nACTIVATED',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: AppColors.alert,
+            fontSize: 32,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1.2,
+            height: 1.2,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          decoration: BoxDecoration(
+            color: AppColors.alertBg,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: const Text(
+            'Dispatching alerts...',
+            style: TextStyle(color: AppColors.alert, fontSize: 16, fontWeight: FontWeight.w800),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHoldButton() {
+    return SOSHoldInteraction(
+      accentColor: AppColors.alert,
+      onComplete: () {
+        setState(() => isSOSActive = true);
+        _startSosCountdown();
+      },
+    );
+  }
+
+  Widget _buildSOSActiveView() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            SizedBox(
+              width: 300,
+              height: 300,
+              child: CircularProgressIndicator(
+                value: _remaining.inSeconds / _sosDuration.inSeconds,
+                strokeWidth: 16,
+                backgroundColor: AppColors.surfaceElevated,
+                valueColor: const AlwaysStoppedAnimation<Color>(AppColors.alert),
+                strokeCap: StrokeCap.round,
+              ),
+            ),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _formatDuration(_remaining),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 64,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -2,
+                  ),
+                ),
+                const Text(
+                  'Auto-dispatch in',
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 56),
+        _buildActionButton(
+          label: 'SEND HELP NOW',
+          bg: AppColors.alert,
+          text: Colors.white,
+          icon: Icons.flash_on_rounded,
+          onTap: _openEmergencyProcess,
+        ),
+        const SizedBox(height: 16),
+        _buildActionButton(
+          label: 'CANCEL SOS',
+          bg: AppColors.surfaceElevated,
+          text: Colors.white,
+          icon: Icons.close_rounded,
+          onTap: () {
+            _resetSosCountdown();
+            setState(() => isSOSActive = false);
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActionButton({
+    required String label,
+    required Color bg,
+    required Color text,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    // Massive touch targets for high stress
+    return SizedBox(
+      width: double.infinity,
+      height: 68, 
+      child: ElevatedButton(
+        onPressed: onTap,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: bg,
+          foregroundColor: text,
+          elevation: 4,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 28),
+            const SizedBox(width: 12),
+            Text(
+              label,
+              style: const TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 18,
+                letterSpacing: 1.2,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }

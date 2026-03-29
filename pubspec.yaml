@@ -4,27 +4,38 @@ publish_to: "none"
 version: 1.0.0+1
 
 environment:
-  # Minimum version 2.17.0 required for 'super.key'
-  sdk: ">=2.17.0 <4.0.0"
+  # Minimum version 3.0.0 required for records and patterns
+  sdk: ">=3.0.0 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
+  image_picker: ^1.1.2
+  webview_flutter: ^4.2.2
 
   # Core Functionality
   flutter_contacts: ^1.1.9
   geolocator: ^10.1.0
+  geocoding: ^3.0.0
   url_launcher: ^6.3.1
+  flutter_sms: ^3.0.0
+  flutter_phone_direct_caller: ^2.2.1
   intl: ^0.19.0
   permission_handler: ^11.0.0
   shared_preferences: ^2.3.5
   battery_plus: ^5.0.0
+  firebase_core: ^3.13.0
+  firebase_messaging: ^15.2.5
+  flutter_local_notifications: ^19.1.0
+
 
   # Maps & Payment
   flutter_stripe: ^9.0.0
   http: ^1.0.0
   google_maps_flutter: ^2.10.0
+  location: ^6.0.1
+  mapbox_maps_flutter: ^2.20.0
 
   # Machine Learning & Audio
   tflite_flutter: ^0.12.1
@@ -32,7 +43,9 @@ dependencies:
   audio_session: ^0.2.2
 
   # Supabase Integration
-  supabase_flutter: ^1.10.4
+  supabase_flutter: ^2.5.6
+  google_sign_in: ^6.3.0
+  showcaseview: ^5.0.1
 
   # Environment Variables
   flutter_dotenv: ^5.1.0
@@ -40,6 +53,8 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  integration_test:
+    sdk: flutter
 
 flutter:
   uses-material-design: true
@@ -49,5 +64,8 @@ flutter:
     - .env
     - assets/usafe_logo.png
     - assets/google.jpg
+    - assets/red_pin.png
+    - assets/red-pin bg r.png
     - assets/models/yamnet.tflite
     - assets/models/yamnet_class_map.csv
+    - assets/models/scream_logmel_best.tflite

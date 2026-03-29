@@ -4,16 +4,25 @@ import 'dart:io';
 import 'dart:async';
 import 'package:usafe_front_end/features/auth/community_report_service.dart';
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+class CommunityReportScreen extends StatefulWidget {
+  const CommunityReportScreen({
+    super.key,
+    this.title = 'Community Reports',
+    this.locationLabel,
+    this.locationLat,
+    this.locationLng,
+  });
 
   final String title;
+  final String? locationLabel;
+  final double? locationLat;
+  final double? locationLng;
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<CommunityReportScreen> createState() => _CommunityReportScreenState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
+class _CommunityReportScreenState extends State<CommunityReportScreen> {
   Set<int> selectedIndices = {};
   final TextEditingController _descriptionController = TextEditingController();
   final ImagePicker _picker = ImagePicker();
@@ -75,6 +84,53 @@ class _MyHomePageState extends State<MyHomePage> {
       'description':
           'Property damage, graffiti, or destruction of public assets'
     },
+    // ── High-severity types (classify as Red) ──────────────────────────────
+    {
+      'icon': Icons.gpp_bad_rounded,
+      'title': 'Gunshots / Shooting',
+      'value': 'Gunshot',
+      'color': Colors.red.shade900,
+      'description': 'Gunfire heard or witnessed in the area',
+    },
+    {
+      'icon': Icons.personal_injury_rounded,
+      'title': 'Assault',
+      'color': Colors.red.shade800,
+      'description': 'Physical attack on a person',
+    },
+    {
+      'icon': Icons.money_off_rounded,
+      'title': 'Armed Robbery',
+      'color': Colors.red.shade800,
+      'description': 'Robbery involving a weapon',
+    },
+    {
+      'icon': Icons.warning_rounded,
+      'title': 'Sexual Assault',
+      'color': Colors.red.shade800,
+      'description': 'Sexual violence or attempted sexual violence',
+    },
+    {
+      'icon': Icons.child_care_rounded,
+      'title': 'Kidnapping / Abduction',
+      'value': 'Kidnapping',
+      'color': Colors.red.shade900,
+      'description':
+          'Person forcibly taken or missing under suspicious circumstances',
+    },
+    {
+      'icon': Icons.groups_3_rounded,
+      'title': 'Gang Activity',
+      'color': Colors.red.shade800,
+      'description': 'Visible gang presence or gang-related incident',
+    },
+    {
+      'icon': Icons.crisis_alert_rounded,
+      'title': 'Bomb / Explosive Threat',
+      'value': 'Bomb Threat',
+      'color': Colors.red.shade900,
+      'description': 'Suspected explosive device or threat',
+    },
   ];
 
   @override
@@ -106,8 +162,9 @@ class _MyHomePageState extends State<MyHomePage> {
     report.writeln("        COMMUNITY SAFETY REPORT");
     report.writeln("═══════════════════════════════════════\n");
 
-    report.writeln("📅 Date: ${DateTime.now().toString().split('.')[0]}");
-    report.writeln("📍 Location: [Auto-detected or User Input]\n");
+    report.writeln("Date: ${DateTime.now().toString().split('.')[0]}");
+    report.writeln(
+        "Location: ${widget.locationLabel?.isNotEmpty == true ? widget.locationLabel : 'Auto-detected or User Input'}\n");
 
     if (selectedIndices.length == 1) {
       final issue = issueTypes[selectedIndices.first];
@@ -229,6 +286,14 @@ class _MyHomePageState extends State<MyHomePage> {
       final result = await CommunityReportService.submitReport(
         reportContent: _descriptionController.text,
         images: _selectedImages,
+        location: widget.locationLabel ?? 'User submitted via mobile app',
+        locationLat: widget.locationLat,
+        locationLng: widget.locationLng,
+        issueTypes: selectedIndices
+            .map((index) => (issueTypes[index]['value'] ??
+                    issueTypes[index]['title'])
+                .toString())
+            .toList(),
       );
 
       if (result['success']) {
@@ -332,6 +397,37 @@ class _MyHomePageState extends State<MyHomePage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (widget.locationLabel != null &&
+                          widget.locationLabel!.trim().isNotEmpty) ...[
+                        Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(bottom: 16),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.06),
+                            borderRadius: BorderRadius.circular(12),
+                            border:
+                                Border.all(color: Colors.white.withOpacity(0.15)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.location_on,
+                                  color: Colors.white70, size: 18),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  widget.locationLabel!,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                       /// SECTION TITLE
                       Row(
                         children: [
@@ -642,6 +738,11 @@ class _MyHomePageState extends State<MyHomePage> {
       ),
     );
   }
+}
+
+// Backward compatibility for old routes/imports.
+class MyHomePage extends CommunityReportScreen {
+  const MyHomePage({super.key, required super.title});
 }
 
 /* ================= MODERN PHOTO BUTTON WIDGET ================= */

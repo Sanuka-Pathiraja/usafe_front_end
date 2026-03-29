@@ -1,166 +1,949 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import 'package:usafe_front_end/core/constants/app_colors.dart';
+import 'package:usafe_front_end/features/auth/auth_service.dart';
+import 'package:usafe_front_end/features/onboarding/onboarding_controller.dart';
+import 'package:usafe_front_end/src/pages/splash_screen.dart';
+
+import './payment_screen.dart';
+import './privacy_screen.dart';
+import './help_support_screen.dart';
+import './detector_page.dart';
 
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key});
+  final bool focusLocationSection;
+  final bool highlightLocationSection;
+  final bool returnToSafetyScoreOnEnable;
+
+  const SettingsPage({
+    super.key,
+    this.focusLocationSection = false,
+    this.highlightLocationSection = false,
+    this.returnToSafetyScoreOnEnable = false,
+  });
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
-class _SettingsPageState extends State<SettingsPage> {
+class _SettingsPageState extends State<SettingsPage>
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   bool shareLocation = true;
-  bool pushNotifications = true;
+  bool notificationsEnabled = false;
+  bool activeMicrophoneListening = false;
+  bool contactEmergencyAuthorities = false;
+
+  bool _guidesExpanded = false;
+
+  // Page guide states — true means the guide will show on next visit
+  bool _loginGuideEnabled = false;
+  bool _signupGuideEnabled = false;
+  bool _silentCallGuideEnabled = false;
+  bool _communityReportGuideEnabled = false;
+  bool _communityMapGuideEnabled = false;
+  bool _safeRouteGuideEnabled = false;
+  bool _contactsPageGuideEnabled = false;
+  final GlobalKey _locationTileKey = GlobalKey();
+  final ScrollController _scrollController = ScrollController();
+  AnimationController? _highlightController;
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      bottomNavigationBar: _buildBottomNav(),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF0F0F1A), Color(0xFF000000)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadSettings();
+    });
+    if (widget.highlightLocationSection) {
+      _highlightController = AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 1200),
+      )..repeat(reverse: true);
+    }
+    if (widget.focusLocationSection) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToLocationTile();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _highlightController?.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadSettings();
+    }
+  }
+
+  // ================= LOAD SETTINGS =================
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    final notificationStatus = await Permission.notification.status;
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    final permission = await Geolocator.checkPermission();
+    final permissionGranted = permission == LocationPermission.always ||
+        permission == LocationPermission.whileInUse;
+    final loginGuide = await OnboardingController.shouldShowLoginTour();
+    final signupGuide = await OnboardingController.shouldShowSignupTour();
+    final silentCallGuide =
+        await OnboardingController.shouldShowSilentCallTour();
+    final communityReportGuide =
+        await OnboardingController.shouldShowCommunityReportTour();
+    final communityMapGuide =
+        await OnboardingController.shouldShowCommunityMapTour();
+    final safeRouteGuide =
+        await OnboardingController.shouldShowSafeRouteTour();
+    final contactsPageGuide =
+        await OnboardingController.shouldShowContactsPageTour();
+
+    setState(() {
+      final storedShare = prefs.getBool("share_location") ?? true;
+      final effectiveShare = storedShare && serviceEnabled && permissionGranted;
+      if (storedShare && !effectiveShare) {
+        prefs.setBool("share_location", false);
+      }
+      shareLocation = effectiveShare;
+      notificationsEnabled = notificationStatus.isGranted;
+      activeMicrophoneListening =
+          prefs.getBool("active_microphone_listening") ?? false;
+      contactEmergencyAuthorities =
+          prefs.getBool("contact_emergency_authorities") ?? false;
+      _loginGuideEnabled = loginGuide;
+      _signupGuideEnabled = signupGuide;
+      _silentCallGuideEnabled = silentCallGuide;
+      _communityReportGuideEnabled = communityReportGuide;
+      _communityMapGuideEnabled = communityMapGuide;
+      _safeRouteGuideEnabled = safeRouteGuide;
+      _contactsPageGuideEnabled = contactsPageGuide;
+    });
+  }
+
+  Future<void> _toggleGuide(
+    bool value, {
+    required Future<void> Function() onEnable,
+    required Future<void> Function() onDisable,
+    required void Function(bool) applyState,
+  }) async {
+    if (value) {
+      await onEnable();
+    } else {
+      await onDisable();
+    }
+    if (mounted) setState(() => applyState(value));
+  }
+
+  // ================= LOCATION =================
+  Future<bool> _toggleLocation(bool value) async {
+    if (value) {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        await Geolocator.openLocationSettings();
+        _showSnack("Turn on device location services.");
+        return false;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied) {
+        _showSnack("Location permission is required.");
+        return false;
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        await openAppSettings();
+        _showSnack("Allow location permission in app settings.");
+        return false;
+      }
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool("share_location", value);
+
+    setState(() => shareLocation = value);
+
+    _showSnack(
+      value ? "📍 Location sharing enabled" : "📍 Location sharing disabled",
+    );
+
+    if (value && widget.returnToSafetyScoreOnEnable) {
+      if (!mounted) return true;
+      Navigator.of(context).pop(true);
+    }
+
+    return true;
+  }
+
+  // ================= NOTIFICATIONS =================
+  Future<void> _openNotificationSettings() async {
+    if (Platform.isAndroid) {
+      // Android: direct app notification page
+      final packageName =
+          "com.yourcompany.yourapp"; // <-- REPLACE with your app id
+      final uri = Uri.parse("android-app://$packageName/settings");
+      try {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (e) {
+        // fallback
+        await openAppSettings();
+      }
+    } else if (Platform.isIOS) {
+      // iOS: open app settings (cannot go directly to notification page)
+      final url = Uri.parse("app-settings:");
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      } else {
+        _showSnack("Cannot open app settings");
+      }
+    }
+  }
+
+  Future<void> _toggleActiveMicrophoneListening(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool("active_microphone_listening", value);
+
+    if (!mounted) return;
+    setState(() => activeMicrophoneListening = value);
+    _showSnack(
+      value
+          ? "Active microphone listening enabled"
+          : "Active microphone listening disabled",
+    );
+  }
+
+  Future<void> _toggleContactEmergencyAuthorities(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool("contact_emergency_authorities", value);
+
+    if (!mounted) return;
+    setState(() => contactEmergencyAuthorities = value);
+    _showSnack(
+      value
+          ? "Emergency authority calling enabled"
+          : "Emergency authority calling disabled",
+    );
+  }
+
+  void _openDetectorPage() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const DetectorPage()),
+    );
+  }
+
+  Future<void> _resetOnboardingFlow() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Reset Onboarding Flow',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
-        child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Center(
-                  child: Text(
-                    "Settings",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
+        content: const Text(
+          'This will log you out and restart the full first-time setup — permissions, welcome, privacy consent, and emergency contacts.\n\nUse this to test the new user flow.',
+          style: TextStyle(color: AppColors.textGrey, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel',
+                style: TextStyle(color: AppColors.textGrey)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Reset & Log Out',
+                style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('onboarding_completed', false);
+    await prefs.setBool('authorization_seen', false);
+    await OnboardingController.resetContactsTour();
+    await OnboardingController.resetContactsPageTour();
+    await AuthService.logout();
+
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const SplashScreen()),
+      (_) => false,
+    );
+  }
+
+  Future<void> _handleLogout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Log Out',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+        content: const Text('Are you sure you want to log out?',
+            style: TextStyle(color: AppColors.textSecondary)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel',
+                style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.alert,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Log Out',
+                style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    await AuthService.logout();
+
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const SplashScreen()),
+      (_) => false,
+    );
+  }
+
+  void _showSnack(String text) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(text),
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
+  // ================= UI =================
+  @override
+  Widget build(BuildContext context) {
+    final highlightAnimation = _highlightController;
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        backgroundColor: AppColors.background,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+          onPressed: () => Navigator.of(context).maybePop(),
+        ),
+        title: const Text(
+          "Settings",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+        ),
+        centerTitle: true,
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          controller: _scrollController,
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 30),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildHeaderCard(),
+              const SizedBox(height: 24),
+              _buildSettingsPanel(
+                children: [
+                  if (highlightAnimation != null)
+                    AnimatedBuilder(
+                      animation: highlightAnimation,
+                      builder: (context, child) {
+                        return _premiumToggleTile(
+                          tileKey: _locationTileKey,
+                          icon: Icons.location_on_outlined,
+                          title: "Share Location",
+                          subtitle: "Live location for emergencies",
+                          value: shareLocation,
+                          onChanged: _toggleLocation,
+                          highlight: true,
+                          highlightPulse: highlightAnimation.value,
+                        );
+                      },
+                    )
+                  else
+                    _premiumToggleTile(
+                      tileKey: _locationTileKey,
+                      icon: Icons.location_on_outlined,
+                      title: "Share Location",
+                      subtitle: "Live location for emergencies",
+                      value: shareLocation,
+                      onChanged: _toggleLocation,
+                    ),
+                  _premiumToggleTile(
+                    icon: Icons.notifications_outlined,
+                    title: "Push Notifications",
+                    subtitle: notificationsEnabled
+                        ? "Enabled in device settings"
+                        : "Disabled in device settings",
+                    value: notificationsEnabled,
+                    onChanged: (_) => _openNotificationSettings(),
+                  ),
+                  _actionTile(
+                    icon: Icons.lock_outline,
+                    title: "Privacy & Security",
+                    subtitle: "Manage data and permissions",
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const PrivacyScreen()),
                     ),
                   ),
-                ),
-                const SizedBox(height: 20),
-                _buildProfileCard(),
-                const SizedBox(height: 20),
-                _buildToggleTile(
-                  icon: Icons.location_on_outlined,
-                  title: "Share location",
-                  subtitle: "Share your location with emergency contacts",
-                  value: shareLocation,
-                  onChanged: (val) {
-                    setState(() => shareLocation = val);
-                  },
-                ),
-                _buildToggleTile(
-                  icon: Icons.notifications_none,
-                  title: "Push Notifications",
-                  subtitle: "Receive notifications about emergency status",
-                  value: pushNotifications,
-                  onChanged: (val) {
-                    setState(() => pushNotifications = val);
-                  },
-                ),
-                const SizedBox(height: 16),
-                _buildActionTile(
-                  icon: Icons.security,
-                  title: "Test Emergency System",
-                  subtitle: "Send a test alert to your emergency contacts",
-                ),
-                _buildActionTile(
-                  icon: Icons.person_outline,
-                  title: "Profile Settings",
-                  subtitle: "Update your personal information",
-                ),
-                _buildActionTile(
-                  icon: Icons.info_outline,
-                  title: "About SafeZone",
-                  subtitle: "App version and information",
-                ),
-                const SizedBox(height: 24),
-                _buildPremiumCard(),
-                const SizedBox(height: 12),
-                _buildPremiumFeature(
-                  icon: Icons.signal_cellular_off,
-                  title: "Offline Emergency Mode",
-                  subtitle: "Contact your loved ones with no signal",
-                ),
-                _buildPremiumFeature(
-                  icon: Icons.map_outlined,
-                  title: "The SafePath Navigation",
-                  subtitle: "Suggests the safest route",
-                ),
-              ],
-            ),
+                  _actionTile(
+                    icon: Icons.help_outline,
+                    title: "Help & Support",
+                    subtitle: "FAQs and contact support",
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const HelpSupportScreen()),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              _buildAiFeaturesPanel(),
+              const SizedBox(height: 20),
+              _buildGuidesPanel(),
+              const SizedBox(height: 20),
+              _buildEmergencyPanel(),
+              const SizedBox(height: 20),
+              _buildDevToolsPanel(),
+              const SizedBox(height: 20),
+              _premiumCard(),
+              const SizedBox(height: 20),
+              _buildLogoutButton(),
+            ],
           ),
         ),
       ),
     );
   }
 
-  // ===================== Widgets =====================
+  // ================= COMPONENTS =================
+  Widget _sectionTitle(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: Colors.white70,
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
 
-  Widget _buildProfileCard() {
+  Widget _buildHeaderCard() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFF151525),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white24),
+        gradient: LinearGradient(
+          colors: [
+            AppColors.primary.withOpacity(0.35),
+            AppColors.primary.withOpacity(0.15),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.primary.withOpacity(0.35), width: 1.5),
       ),
       child: Row(
         children: [
-          const CircleAvatar(
-            radius: 28,
-            backgroundImage: AssetImage("assets/profile.jpg"),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.2),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.tune, color: Colors.white),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 16),
           const Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  "Miheli Senaya",
+                  "Control Center",
                   style: TextStyle(
                     color: Colors.white,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                SizedBox(height: 4),
+                SizedBox(height: 6),
                 Text(
-                  "example@gmail.com",
-                  style: TextStyle(color: Colors.white60, fontSize: 12),
+                  "Manage privacy, safety tools, and app preferences",
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),
-          ),
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.edit, color: Colors.white),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildToggleTile({
+  Widget _buildSectionCard({required List<Widget> children}) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.primary.withOpacity(0.35), width: 1.2),
+      ),
+      child: Column(
+        children: children,
+      ),
+    );
+  }
+
+  Widget _premiumToggleTile({
+    Key? tileKey,
     required IconData icon,
     required String title,
     required String subtitle,
     required bool value,
     required Function(bool) onChanged,
+    bool highlight = false,
+    double highlightPulse = 0,
   }) {
+    final baseColor = AppColors.surface;
+    final highlightColor = Color.lerp(
+          AppColors.primary.withOpacity(0.2),
+          AppColors.safetyTeal.withOpacity(0.25),
+          highlightPulse,
+        ) ??
+        baseColor;
+    final shadowOpacity = 0.18 + (0.22 * highlightPulse);
     return Container(
+      key: tileKey,
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF151525),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white24),
+        color: highlight ? highlightColor : baseColor,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: highlight
+              ? AppColors.safetyTeal.withOpacity(0.6)
+              : AppColors.border.withOpacity(0.6),
+        ),
+        boxShadow: highlight
+            ? [
+                BoxShadow(
+                  color: AppColors.safetyTeal.withOpacity(shadowOpacity),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
+                ),
+              ]
+            : [],
       ),
       child: Row(
         children: [
-          Icon(icon, color: Colors.white),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: value
+                  ? AppColors.safetyTeal.withOpacity(0.2)
+                  : Colors.white10,
+            ),
+            child: Icon(
+              icon,
+              color: value ? AppColors.safetyTeal : Colors.white70,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style:
+                      const TextStyle(color: Colors.white60, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: value,
+            onChanged: (next) async {
+              await onChanged(next);
+            },
+            activeColor: AppColors.safetyTeal,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSettingsPanel({required List<Widget> children}) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.surfaceElevated.withOpacity(0.5),
+            AppColors.surface.withOpacity(0.35),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: AppColors.border.withOpacity(0.45)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        children: children,
+      ),
+    );
+  }
+
+  Widget _buildEmergencyPanel() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.alert.withOpacity(0.35), width: 1.4),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.alert.withOpacity(0.15),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.alert.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.warning_rounded,
+                    color: AppColors.alert),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  "Emergency System",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.success.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Text(
+                  "READY",
+                  style: TextStyle(
+                    color: AppColors.success,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            "Run a safe test to verify location, alerts, and UI readiness. No real alerts will be sent.",
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 12,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 14),
+          _premiumToggleTile(
+            icon: Icons.local_phone_outlined,
+            title: "Contact 119 Authorities",
+            subtitle: "Automatically call 119 during emergency processes",
+            value: contactEmergencyAuthorities,
+            onChanged: _toggleContactEmergencyAuthorities,
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _openTestEmergencySheet,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.alert,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              child: const Text(
+                "Run Emergency Test",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGuidesPanel() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionTitle("Page Guides"),
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                AppColors.surfaceElevated.withValues(alpha: 0.5),
+                AppColors.surface.withValues(alpha: 0.35),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(color: AppColors.border.withValues(alpha: 0.45)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 18,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              // ── Dropdown header ──
+              InkWell(
+                onTap: () => setState(() => _guidesExpanded = !_guidesExpanded),
+                borderRadius: BorderRadius.circular(26),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  child: Row(
+                    children: [
+                      Icon(Icons.menu_book_rounded,
+                          size: 18, color: AppColors.textSecondary),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          "Re-enable step-by-step guides for each page",
+                          style: TextStyle(
+                            color: AppColors.textSecondary.withValues(alpha: 0.85),
+                            fontSize: 13,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                      AnimatedRotation(
+                        turns: _guidesExpanded ? 0.5 : 0,
+                        duration: const Duration(milliseconds: 250),
+                        child: Icon(Icons.keyboard_arrow_down_rounded,
+                            size: 20, color: AppColors.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // ── Collapsible tiles ──
+              AnimatedSize(
+                duration: const Duration(milliseconds: 280),
+                curve: Curves.easeInOut,
+                child: _guidesExpanded
+                    ? Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                        child: Column(
+                          children: [
+                            const Divider(height: 1, thickness: 0.4),
+                            const SizedBox(height: 10),
+                            _guideTile(
+                              icon: Icons.login_rounded,
+                              title: "Login",
+                              enabled: _loginGuideEnabled,
+                              onChanged: (val) => _toggleGuide(
+                                val,
+                                onEnable: OnboardingController.resetLoginTour,
+                                onDisable: OnboardingController.markLoginTourSeen,
+                                applyState: (v) => _loginGuideEnabled = v,
+                              ),
+                            ),
+                            _guideTile(
+                              icon: Icons.person_add_rounded,
+                              title: "Sign Up",
+                              enabled: _signupGuideEnabled,
+                              onChanged: (val) => _toggleGuide(
+                                val,
+                                onEnable: OnboardingController.resetSignupTour,
+                                onDisable: OnboardingController.markSignupTourSeen,
+                                applyState: (v) => _signupGuideEnabled = v,
+                              ),
+                            ),
+                            _guideTile(
+                              icon: Icons.phone_in_talk_rounded,
+                              title: "Silent Call",
+                              enabled: _silentCallGuideEnabled,
+                              onChanged: (val) => _toggleGuide(
+                                val,
+                                onEnable: OnboardingController.resetSilentCallTour,
+                                onDisable: OnboardingController.markSilentCallTourSeen,
+                                applyState: (v) => _silentCallGuideEnabled = v,
+                              ),
+                            ),
+                            _guideTile(
+                              icon: Icons.rate_review_rounded,
+                              title: "Community Report",
+                              enabled: _communityReportGuideEnabled,
+                              onChanged: (val) => _toggleGuide(
+                                val,
+                                onEnable: OnboardingController.resetCommunityReportTour,
+                                onDisable: OnboardingController.markCommunityReportTourSeen,
+                                applyState: (v) => _communityReportGuideEnabled = v,
+                              ),
+                            ),
+                            _guideTile(
+                              icon: Icons.map_rounded,
+                              title: "Community Map",
+                              enabled: _communityMapGuideEnabled,
+                              onChanged: (val) => _toggleGuide(
+                                val,
+                                onEnable: OnboardingController.resetCommunityMapTour,
+                                onDisable: OnboardingController.markCommunityMapTourSeen,
+                                applyState: (v) => _communityMapGuideEnabled = v,
+                              ),
+                            ),
+                            _guideTile(
+                              icon: Icons.route_rounded,
+                              title: "Safe Route Navigation",
+                              enabled: _safeRouteGuideEnabled,
+                              onChanged: (val) => _toggleGuide(
+                                val,
+                                onEnable: OnboardingController.resetSafeRouteTour,
+                                onDisable: OnboardingController.markSafeRouteTourSeen,
+                                applyState: (v) => _safeRouteGuideEnabled = v,
+                              ),
+                            ),
+                            _guideTile(
+                              icon: Icons.people_alt_rounded,
+                              title: "Emergency Contacts",
+                              enabled: _contactsPageGuideEnabled,
+                              onChanged: (val) => _toggleGuide(
+                                val,
+                                onEnable: OnboardingController.resetContactsPageTour,
+                                onDisable: OnboardingController.markContactsPageTourSeen,
+                                applyState: (v) => _contactsPageGuideEnabled = v,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _guideTile({
+    required IconData icon,
+    required String title,
+    required bool enabled,
+    required void Function(bool) onChanged,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: enabled
+            ? const Color(0xFF3B82F6).withValues(alpha: 0.1)
+            : AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: enabled
+              ? const Color(0xFF3B82F6).withValues(alpha: 0.45)
+              : AppColors.border.withValues(alpha: 0.6),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: enabled
+                  ? const Color(0xFF3B82F6).withValues(alpha: 0.2)
+                  : Colors.white10,
+            ),
+            child: Icon(
+              icon,
+              color: enabled ? const Color(0xFF3B82F6) : Colors.white54,
+              size: 20,
+            ),
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -175,149 +958,321 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  subtitle,
-                  style: const TextStyle(color: Colors.white60, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-          Switch(value: value, activeColor: Colors.green, onChanged: onChanged),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionTile({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFF151525),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white24),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: Colors.white),
-          const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                subtitle,
-                style: const TextStyle(color: Colors.white60, fontSize: 12),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPremiumCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF2A1D0A),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.amber),
-      ),
-      child: Row(
-        children: const [
-          Icon(Icons.workspace_premium, color: Colors.amber),
-          SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "Upgrade To Pro",
+                  enabled
+                      ? "Guide will show on next visit"
+                      : "Guide already seen",
                   style: TextStyle(
-                    color: Colors.amber,
-                    fontWeight: FontWeight.bold,
+                    color: enabled
+                        ? const Color(0xFF3B82F6)
+                        : Colors.white38,
+                    fontSize: 12,
                   ),
                 ),
-                SizedBox(height: 4),
-                Text(
-                  "Unlock premium safety features",
-                  style: TextStyle(color: Colors.white70, fontSize: 12),
-                ),
               ],
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPremiumFeature({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E1408),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.amber),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: Colors.amber),
-          const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  color: Colors.amber,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                subtitle,
-                style: const TextStyle(color: Colors.white60, fontSize: 12),
-              ),
-            ],
+          Switch(
+            value: enabled,
+            onChanged: onChanged,
+            activeThumbColor: const Color(0xFF3B82F6),
+            activeTrackColor: const Color(0xFF3B82F6).withValues(alpha: 0.35),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildBottomNav() {
-    return Theme(
-      data: Theme.of(
+  Widget _buildAiFeaturesPanel() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionTitle("AI Features"),
+        _buildSettingsPanel(
+          children: [
+            _premiumToggleTile(
+              icon: Icons.mic_none_rounded,
+              title: "Active Microphone Listening",
+              subtitle: "When your safety score drops below 30, the AI model will automatically analyze surrounding audio to detect signs of distress",
+              value: activeMicrophoneListening,
+              onChanged: _toggleActiveMicrophoneListening,
+            ),
+            _actionTile(
+              icon: Icons.crisis_alert_rounded,
+              title: "AI Danger Detection Panel",
+              subtitle: "View live audio analysis, distress probability, and monitor status",
+              onTap: _openDetectorPage,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Future<void> _scrollToLocationTile() async {
+    final context = _locationTileKey.currentContext;
+    if (context == null) return;
+    await Scrollable.ensureVisible(
+      context,
+      alignment: 0.2,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  Widget _actionTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppColors.border.withOpacity(0.6)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.2),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: AppColors.primarySky, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: const TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 4),
+                  Text(subtitle,
+                      style: const TextStyle(
+                          color: Colors.white60, fontSize: 12)),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Colors.white38),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDevToolsPanel() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionTitle("Developer Tools"),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+                color: AppColors.primary.withValues(alpha: 0.25), width: 1.2),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: 14),
+                child: Text(
+                  'Reset the app to the first-time user flow to test onboarding without reinstalling.',
+                  style: TextStyle(
+                    color: AppColors.textSecondary.withValues(alpha: 0.85),
+                    fontSize: 12,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _resetOnboardingFlow,
+                  icon: const Icon(Icons.restart_alt_rounded,
+                      color: Colors.white, size: 20),
+                  label: const Text(
+                    'Reset Onboarding & Log Out',
+                    style: TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w600),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
+                    elevation: 0,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _premiumCard() {
+    return InkWell(
+      borderRadius: BorderRadius.circular(22),
+      onTap: () => Navigator.push(
         context,
-      ).copyWith(canvasColor: const Color.fromARGB(255, 0, 0, 0)),
-      child: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: const Color.fromARGB(255, 5, 5, 5),
-        selectedItemColor: const Color.fromARGB(255, 0, 0, 0),
-        unselectedItemColor: const Color.fromARGB(96, 136, 130, 130),
-        elevation: 0,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.sos), label: ""),
-          BottomNavigationBarItem(icon: Icon(Icons.map), label: ""),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: ""),
-          BottomNavigationBarItem(icon: Icon(Icons.settings), label: ""),
-        ],
+        MaterialPageRoute(builder: (_) => const PaymentScreen()),
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFFD54F), Color(0xFFFFA000)],
+          ),
+          borderRadius: BorderRadius.circular(22),
+        ),
+        child: Row(
+          children: const [
+            Icon(Icons.workspace_premium, color: Colors.black, size: 30),
+            SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                "Upgrade to Pro",
+                style: TextStyle(
+                  color: Colors.black,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openTestEmergencySheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.alert.withOpacity(0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.warning_rounded,
+                        color: AppColors.alert),
+                  ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    "Emergency System Test",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                "This will simulate the SOS flow without notifying anyone. Use it to verify location, alerts, and UI readiness.",
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white70,
+                        side: BorderSide(color: AppColors.border),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      child: const Text("Cancel"),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _showSnack(
+                          "Test started. No real alerts were sent.",
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.alert,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      child: const Text("Run Test"),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildLogoutButton() {
+    return GestureDetector(
+      onTap: _handleLogout,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(
+          color: AppColors.alert.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: AppColors.alert.withValues(alpha: 0.40),
+            width: 1,
+          ),
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.logout_rounded, color: AppColors.alert, size: 20),
+            SizedBox(width: 10),
+            Text(
+              'Log Out',
+              style: TextStyle(
+                color: AppColors.alert,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.4,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

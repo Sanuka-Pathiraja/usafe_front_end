@@ -6,13 +6,45 @@ import 'package:usafe_front_end/features/auth/auth_service.dart';
 class CommunityReportService {
   static const String baseUrl = "http://10.0.2.2:5000";
 
+  static List<Map<String, dynamic>> _decodeReportList(dynamic decoded) {
+    if (decoded is Map<String, dynamic> && decoded['reports'] is List) {
+      return (decoded['reports'] as List)
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    }
+    if (decoded is Map<String, dynamic> && decoded['data'] is List) {
+      return (decoded['data'] as List)
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    }
+    if (decoded is List) {
+      return decoded
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    }
+    return <Map<String, dynamic>>[];
+  }
+
   /* ================= SUBMIT COMMUNITY REPORT ================= */
   static Future<Map<String, dynamic>> submitReport({
     required String reportContent,
     required List<File> images,
+    String? location,
+    double? locationLat,
+    double? locationLng,
+    List<String>? issueTypes,
   }) async {
     try {
       final token = await AuthService.getToken();
+      if (token.isEmpty) {
+        return {
+          'success': false,
+          'error': 'Session expired. Please login again.',
+        };
+      }
 
       var request = http.MultipartRequest(
         'POST',
@@ -25,6 +57,18 @@ class CommunityReportService {
       // Add text fields
       request.fields['reportContent'] = reportContent;
       request.fields['reportDate_time'] = DateTime.now().toIso8601String();
+      request.fields['location'] = (location == null || location.trim().isEmpty)
+          ? 'Unknown'
+          : location.trim();
+      if (locationLat != null && locationLng != null) {
+        request.fields['locationCoordinates'] = jsonEncode({
+          'lat': locationLat,
+          'lng': locationLng,
+        });
+      }
+      if (issueTypes != null && issueTypes.isNotEmpty) {
+        request.fields['issueTypes'] = jsonEncode(issueTypes);
+      }
 
       // Add images
       for (var image in images) {
@@ -40,15 +84,33 @@ class CommunityReportService {
 
       var response = await http.Response.fromStream(streamedResponse);
 
-      if (response.statusCode == 201) {
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        dynamic parsed;
+        try {
+          parsed = jsonDecode(response.body);
+        } catch (_) {
+          parsed = {'message': response.body};
+        }
+        await AuthService.incrementLocalCommunityReportCount();
         return {
           'success': true,
-          'data': jsonDecode(response.body),
+          'data': parsed,
         };
       } else {
+        if (response.statusCode == 401) {
+          await AuthService.logout();
+        }
+        String backendError = 'Failed with status: ${response.statusCode}';
+        try {
+          final body = jsonDecode(response.body);
+          if (body is Map<String, dynamic>) {
+            backendError = (body['message'] ?? body['error'] ?? backendError)
+                .toString();
+          }
+        } catch (_) {}
         return {
           'success': false,
-          'error': 'Failed with status: ${response.statusCode}',
+          'error': backendError,
         };
       }
     } catch (e) {
@@ -56,6 +118,157 @@ class CommunityReportService {
         'success': false,
         'error': e.toString(),
       };
+    }
+  }
+
+  static Future<int> getMyReportCount() async {
+    return AuthService.fetchCommunityReportCount();
+  }
+
+  static Future<List<Map<String, dynamic>>> getMyReports() async {
+    final token = await AuthService.getToken();
+    if (token.isEmpty) {
+      throw Exception('Session expired. Please login again.');
+    }
+
+    final response = await http.get(
+      Uri.parse('$baseUrl/report/my-reports'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+
+    if (response.statusCode == 401) {
+      await AuthService.logout();
+      throw Exception('Invalid or expired token. Please re-login.');
+    }
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Failed to load reports (${response.statusCode})');
+    }
+
+    return _decodeReportList(jsonDecode(response.body));
+  }
+
+  static Future<List<Map<String, dynamic>>> getCommunityFeed() async {
+    final token = await AuthService.getToken();
+    if (token.isEmpty) {
+      throw Exception('Session expired. Please login again.');
+    }
+
+    final endpoints = <String>[
+      '$baseUrl/report/feed',
+      '$baseUrl/report/all-reports',
+      '$baseUrl/report/all',
+    ];
+
+    http.Response? lastResponse;
+    for (final endpoint in endpoints) {
+      final response = await http.get(
+        Uri.parse(endpoint),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      lastResponse = response;
+
+      if (response.statusCode == 401) {
+        await AuthService.logout();
+        throw Exception('Invalid or expired token. Please re-login.');
+      }
+
+      if (response.statusCode == 404 || response.statusCode == 405) {
+        continue;
+      }
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return _decodeReportList(jsonDecode(response.body));
+      }
+
+      throw Exception('Failed to load community reports (${response.statusCode})');
+    }
+
+    throw Exception(
+      'Public community feed endpoint is not available'
+      ' (${lastResponse?.statusCode ?? 'no-response'}).',
+    );
+  }
+
+  static Future<Map<String, dynamic>> getReportDetails(int reportId) async {
+    final token = await AuthService.getToken();
+    if (token.isEmpty) {
+      throw Exception('Session expired. Please login again.');
+    }
+
+    final response = await http.get(
+      Uri.parse('$baseUrl/report/$reportId'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+
+    if (response.statusCode == 401) {
+      await AuthService.logout();
+      throw Exception('Invalid or expired token. Please re-login.');
+    }
+
+    if (response.statusCode == 404) {
+      throw Exception('Report not found.');
+    }
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Failed to load report details (${response.statusCode})');
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is Map<String, dynamic> && decoded['report'] is Map) {
+      return Map<String, dynamic>.from(decoded['report'] as Map);
+    }
+    if (decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+    throw Exception('Invalid report details response.');
+  }
+
+  static Future<Map<String, dynamic>> deleteReport(int reportId) async {
+    final token = await AuthService.getToken();
+    if (token.isEmpty) {
+      return {
+        'success': false,
+        'error': 'Session expired. Please login again.',
+      };
+    }
+
+    final response = await http.delete(
+      Uri.parse('$baseUrl/report/$reportId'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+
+    if (response.statusCode == 401) {
+      await AuthService.logout();
+      return {
+        'success': false,
+        'error': 'Invalid or expired token. Please re-login.',
+      };
+    }
+
+    if (response.statusCode == 404) {
+      return {
+        'success': false,
+        'error': 'Report not found.',
+      };
+    }
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      return {
+        'success': false,
+        'error': 'Failed to delete report (${response.statusCode})',
+      };
+    }
+
+    if (response.body.isEmpty) {
+      return {'success': true};
+    }
+
+    try {
+      final decoded = jsonDecode(response.body);
+      return {'success': true, 'data': decoded};
+    } catch (_) {
+      return {'success': true};
     }
   }
 }

@@ -22,6 +22,8 @@ class AudioAnalysisService {
   bool _isRecording = false;
   List<String> _labels = [];
   String? _lastError;
+  int _consecutiveAudioErrors = 0;
+  static const int _maxConsecutiveAudioErrors = 3;
 
   bool get isReady => _interpreter != null;
   String? get lastError => _lastError;
@@ -83,8 +85,19 @@ class AudioAnalysisService {
     );
 
     _isRecording = true;
+    _consecutiveAudioErrors = 0;
     _audioBuffer.clear();
-    _audioSubscription = stream.listen(_processAudioData);
+    _audioSubscription = stream.listen(
+      _processAudioData,
+      onError: (Object error, StackTrace stackTrace) async {
+        _consecutiveAudioErrors++;
+        _lastError = 'Audio stream error: $error';
+        if (_consecutiveAudioErrors >= _maxConsecutiveAudioErrors) {
+          await stopListening();
+        }
+      },
+      cancelOnError: true,
+    );
     _lastError = null;
     return true;
   }
@@ -150,6 +163,7 @@ class AudioAnalysisService {
     _isRecording = false;
     _audioBuffer.clear();
     await _audioSubscription?.cancel();
+    _audioSubscription = null;
     await _audioRecorder?.stop();
     await _audioRecorder?.dispose();
     _audioRecorder = null;

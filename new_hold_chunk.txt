@@ -1,0 +1,138 @@
+class SOSHoldInteraction extends StatefulWidget {
+  final Color accentColor;
+  final VoidCallback onComplete;
+
+  const SOSHoldInteraction({
+    required this.accentColor,
+    required this.onComplete,
+    super.key,
+  });
+
+  @override
+  State<SOSHoldInteraction> createState() => _SOSHoldInteractionState();
+}
+
+class _SOSHoldInteractionState extends State<SOSHoldInteraction>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    );
+    _controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        widget.onComplete();
+        _controller.reset();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Visibility of System Status: Shows a ring filling up during hold.
+    // Fitts's Law: Massive single touch element.
+    return GestureDetector(
+      onTapDown: (_) => _controller.forward(),
+      onTapUp: (_) => _controller.reverse(),
+      onTapCancel: () => _controller.reverse(),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Outer subtle pulse ring
+          Container(
+            width: 290,
+            height: 290,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: widget.accentColor.withOpacity(0.3),
+                width: 2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: widget.accentColor.withOpacity(0.15),
+                  blurRadius: 40,
+                  spreadRadius: 20,
+                )
+              ],
+            ),
+          ),
+          
+          // Outer progress ring path (background line)
+          SizedBox(
+            width: 290,
+            height: 290,
+            child: CircularProgressIndicator(
+              value: 1.0,
+              strokeWidth: 6,
+              valueColor: AlwaysStoppedAnimation<Color>(AppColors.surfaceElevated.withOpacity(0.3)),
+            ),
+          ),
+          
+          // Actual animated progress indicator that fills up
+          SizedBox(
+            width: 290,
+            height: 290,
+            child: AnimatedBuilder(
+              animation: _controller,
+              builder: (context, child) {
+                return CircularProgressIndicator(
+                  value: _controller.value,
+                  strokeWidth: 8,
+                  backgroundColor: Colors.transparent,
+                  valueColor: AlwaysStoppedAnimation<Color>(widget.accentColor),
+                  strokeCap: StrokeCap.round,
+                );
+              },
+            ),
+          ),
+
+          // Core Massive Button (Visual Hierarchy King)
+          Container(
+            width: 250,
+            height: 250,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: widget.accentColor, // Vibrant Red
+              boxShadow: [
+                BoxShadow(
+                  color: widget.accentColor.withOpacity(0.4),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
+                )
+              ],
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.touch_app, color: Colors.white, size: 56), // Signifier
+                const SizedBox(height: 12),
+                const Text(
+                  'HOLD TO\nSOS',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white, // High Contrast
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.5,
+                    height: 1.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

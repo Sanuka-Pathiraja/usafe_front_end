@@ -46,3 +46,20 @@ app.*.map.json
 
 # Ignore environment variable files
 .env
+android/gradle.properties
+
+# Ignore logs and build files
+build*.txt
+log*.txt
+*log*.txt
+*errors*.txt
+*analysis*.txt
+final_*_verbose.txt
+logs2.txt
+.git-rewrite/
+android/gradle.properties
+android/gradle.properties
+android/gradle.properties
+android/gradle.properties
+lib/src/config/app_config.dart
+android/secrets.properties

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "812513383547",
+    "project_id": "usafe-747b7",
+    "storage_bucket": "usafe-747b7.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:812513383547:android:bf24bf6d4d701311e27ede",
+        "android_client_info": {
+          "package_name": "com.example.usafe_fresh"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBgUWCK25wp7Qd_FRwJJWnixZJ4zwp0LmU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

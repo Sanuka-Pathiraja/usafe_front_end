@@ -5,6 +5,7 @@ class AppColors {
   static const Color background = Color(0xFF0F172A);
   static const Color surface = Color(0xFF1E293B);
   static const Color surfaceElevated = Color(0xFF334155);
+  static const Color panelBackground = Color(0xFF182235);
 
   // Accents (Trustworthy Blue)
   static const Color primary = Color(0xFF3B82F6);
